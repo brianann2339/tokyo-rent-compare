@@ -77,6 +77,46 @@ export type Metric = {
 
 const EMPTY: readonly string[] = [];
 
+const FIELD_ZH: Record<string, string> = {
+  rent: '賃料', adminFee: '管理費', utilities: '水電費', internet: '網路費',
+  otherMonthly: '其他月費', keyMoney: '禮金', deposit: '敷金',
+  depositNonRefundable: '敷引', agencyFee: '仲介手數料',
+  guarantorInitialFee: '保證公司初回料', fireInsurance: '火災保險',
+  keyExchangeFee: '換鎖費', contractFee: '契約手續費',
+  cleaningFeeUpfront: '入住清潔費', otherInitial: '其他初期費用',
+};
+
+/**
+ * 把缺項分成兩種，因為它們的意義完全不同：
+ *
+ *  - `onPage`：**這一筆**沒寫，但同來源其他筆有 → 這是這筆資料的缺陷，
+ *    該讓它在排序上降級（B 區）。
+ *  - `notOffered`：**整個來源**都沒有這個欄位（例：ひつじ 不公開仲介手數料）→
+ *    同來源每一筆都一樣，拿它降級等於整個來源全落 B 區，訊號退化成沒有資訊。
+ *    這種不確定性改用揭露警語承擔，讓使用者知道「這個來源的數字是總成本的下界」。
+ *
+ * 混在一起會同時失去兩個訊號：既看不出哪筆資料特別差，也看不出來源本身的侷限。
+ */
+function partition(entries: ReadonlyArray<readonly [string, Field<Yen>]>): {
+  lower: Yen; onPage: string[]; notOffered: string[];
+} {
+  let total = 0;
+  const onPage: string[] = [];
+  const notOffered: string[] = [];
+  for (const [id, f] of entries) {
+    if (f.known) { total += f.v.jpy; continue; }
+    if (f.why === 'not_offered_by_source') notOffered.push(id);
+    else onPage.push(id);
+  }
+  return { lower: { jpy: total }, onPage, notOffered };
+}
+
+function disclosure(notOffered: readonly string[], what: string): readonly string[] {
+  if (notOffered.length === 0) return EMPTY;
+  const names = notOffered.map((id) => FIELD_ZH[id] ?? id).join('、');
+  return [`本來源不公開${names}，實際${what}可能更高`];
+}
+
 function withCaveats(base: { lower: Yen; missing: readonly string[]; completeness: Completeness }, caveats: readonly string[]): Metric {
   return { lower: base.lower, missing: base.missing, completeness: base.completeness, caveats };
 }
@@ -95,7 +135,7 @@ function withCaveats(base: { lower: Yen; missing: readonly string[]; completenes
  *   2. 結果集混合兩種基準時，列表頂端出現警示橫幅
  */
 export function monthlyCost(u: Unit): Metric {
-  const s = sumYen(monthlyBreakdown(u));
+  const p = partition(monthlyBreakdown(u));
   const caveats: string[] = [];
   if (u.utilitiesBasis === 'unknown' && !u.monthly.utilities.known) {
     caveats.push('原站未說明水電是否含在月額內');
@@ -103,9 +143,10 @@ export function monthlyCost(u: Unit): Metric {
   if (u.utilitiesBasis === 'excluded' && !u.monthly.utilities.known) {
     caveats.push('水電需另付，原站未載明金額');
   }
-  const missing = s.missing.filter((m) => m !== 'utilities');
+  caveats.push(...disclosure(p.notOffered, '月額'));
+  const missing = p.onPage.filter((m) => m !== 'utilities');
   return {
-    lower: s.lower,
+    lower: p.lower,
     missing,
     completeness: missing.length === 0 ? 'COMPLETE' : 'LOWER_BOUND',
     caveats,
@@ -113,17 +154,27 @@ export function monthlyCost(u: Unit): Metric {
 }
 
 export function initialCash(u: Unit): Metric {
-  return withCaveats(sumYen(initialCashBreakdown(u)), EMPTY);
+  const p = partition(initialCashBreakdown(u));
+  return {
+    lower: p.lower, missing: p.onPage,
+    completeness: p.onPage.length === 0 ? 'COMPLETE' : 'LOWER_BOUND',
+    caveats: disclosure(p.notOffered, '初期現金需求'),
+  };
 }
 
 export function initialSunk(u: Unit): Metric {
-  const s = sumYen(initialSunkBreakdown(u));
+  const p = partition(initialSunkBreakdown(u));
   const caveats: string[] = [];
   // 有敷金但不知道敷引多少 → 沉沒成本只能是下界
   if (u.initial.deposit.known && u.initial.deposit.v.jpy > 0 && !u.initial.depositNonRefundable.known) {
     caveats.push('敷金可能有部分不退（敷引／償却），原站未載明');
   }
-  return withCaveats(s, caveats);
+  caveats.push(...disclosure(p.notOffered, '沉沒成本'));
+  return {
+    lower: p.lower, missing: p.onPage,
+    completeness: p.onPage.length === 0 ? 'COMPLETE' : 'LOWER_BOUND',
+    caveats,
+  };
 }
 
 /**
@@ -147,7 +198,7 @@ export function totalOverHorizon(u: Unit, horizon: Horizon, moveInDate: Date | n
     if (u.deferred.renewalFee.known) {
       total += u.deferred.renewalFee.v.jpy * renewals;
     } else {
-      missing.push('renewalFee');
+      if (u.deferred.renewalFee.why !== 'not_offered_by_source') missing.push('renewalFee');
       caveats.push(`${horizon / 12} 年視野會遇到 ${renewals} 次更新，但原站未載明更新料`);
     }
     if (u.deferred.renewalAdminFee.known) {

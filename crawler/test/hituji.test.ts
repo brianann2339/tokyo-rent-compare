@@ -134,7 +134,7 @@ describe('端到端：extract 產出可比價的 Listing', () => {
     assert.ok(listing.units.length >= 1);
   });
 
-  test('月額 = 賃料 + 共益費，且水電未知時標為 LOWER_BOUND', () => {
+  test('月額 = 賃料 + 共益費；水電未知與來源侷限都以警語承擔', () => {
     const listing = adapter.extract(
       { url: 'https://www.hituji.jp/comret/info/tokyo/minato/tokyo-sync-akasaka', body: akasakaHtml, fetchedAt: '2026-08-16T00:00:00Z', sha256: 'x', status: 200, notModified: false },
       {
@@ -148,14 +148,16 @@ describe('端到端：extract 產出可比價的 Listing', () => {
     assert.ok(u);
     const m = monthlyCost(u);
     assert.equal(m.lower.jpy, 95000 + 20000);
-    // 站上沒說水電含不含 → 不可宣稱含，必須是下界
-    assert.equal(m.completeness, 'LOWER_BOUND');
     assert.equal(u.utilitiesBasis, 'unknown');
+    // 站上沒說水電含不含 → 不可宣稱含，但這是警語不是缺項
+    assert.ok(m.caveats.some((c) => c.includes('水電')));
+    assert.equal(m.completeness, 'COMPLETE');
+    assert.equal(tierOf(u, m), 'A');
 
-    // 初期現金 = 敷金 50,000 + 礼金 95,000（其餘欄位站上不提供）
+    // 初期現金 = 敷金 50,000 + 礼金 95,000；其餘欄位整個來源都不公開 → 揭露
     const c = initialCash(u);
     assert.equal(c.lower.jpy, 145000);
-    assert.equal(tierOf(u, m), 'B');
+    assert.ok(c.caveats.some((x) => x.includes('本來源不公開')));
   });
 
   test('性別條件由標籤列解析', () => {

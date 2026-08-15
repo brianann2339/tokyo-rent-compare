@@ -238,14 +238,19 @@ describe('使用者自填水電假設', () => {
 });
 
 describe('來源不提供的欄位', () => {
-  test('Couverture 無礼金欄位 → not_offered_by_source，仍算缺項但不是解析故障', () => {
+  test('整個來源都沒有的欄位 → 不算成這一筆的缺項，改用揭露警語承擔', () => {
+    // 若拿它降級，同來源每一筆都會落 B 區，分區訊號就退化成沒有資訊。
     const u = makeUnit({ keyMoney: notOffered<Yen>() });
+    const s = initialSunk(u);
+    assert.equal(s.completeness, 'COMPLETE');
+    assert.ok(!s.missing.includes('keyMoney'));
+    assert.ok(s.caveats.some((c) => c.includes('本來源不公開') && c.includes('禮金')));
+  });
+
+  test('這一筆沒寫（但同來源其他筆有）→ 仍然降級為 B 區', () => {
+    const u = makeUnit({ keyMoney: MISSING });
     const s = initialSunk(u);
     assert.equal(s.completeness, 'LOWER_BOUND');
     assert.ok(s.missing.includes('keyMoney'));
-    assert.equal(u.initial.keyMoney.known, false);
-    if (!u.initial.keyMoney.known) {
-      assert.equal(u.initial.keyMoney.why, 'not_offered_by_source');
-    }
   });
 });

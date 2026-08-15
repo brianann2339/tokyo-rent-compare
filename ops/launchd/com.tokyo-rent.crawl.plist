@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tokyo-rent.crawl</string>
+
+  <!-- launchd 的 PATH 是最小集，node 不在裡面。
+       這是「排程明明設了卻沒跑」最常見的原因，所以直接用絕對路徑。 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/shrape/Desktop/Codex/東京租屋查詢/crawler/src/cli/crawl.ts</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/shrape/Desktop/Codex/東京租屋查詢</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- 用 StartCalendarInterval 而不是 StartInterval：
+       機器睡著時錯過的排程會在喚醒後補跑。每週一凌晨 3 點（日本非尖峰）。 -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>1</integer>
+    <key>Hour</key><integer>3</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <!-- 抓取數百 MB HTML 時不要卡住桌面 -->
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>Nice</key>
+  <integer>5</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/shrape/Desktop/Codex/東京租屋查詢/data/health/crawl.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/shrape/Desktop/Codex/東京租屋查詢/data/health/crawl.err.log</string>
+</dict>
+</plist>
