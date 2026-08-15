@@ -1,0 +1,12 @@
+node_modules/
+.DS_Store
+*.log
+
+# 抓下來的原始 HTML：體積大（單次數百 MB），不進 git
+data/raw/
+# conditional GET 的 ETag / Last-Modified 快取
+data/cache/
+# 建置產物
+data/dist/
+web/public/data/
+web/dist/

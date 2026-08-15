@@ -1,0 +1,30 @@
+{
+  "name": "tokyo-rent-compare",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "東京租屋整合比價網 — 把分散的自營房源網站整合成同一把尺",
+  "workspaces": [
+    "packages/*",
+    "crawler",
+    "web"
+  ],
+  "engines": {
+    "node": ">=23.6.0"
+  },
+  "scripts": {
+    "test": "node --test --experimental-strip-types packages/*/test/*.test.ts crawler/test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "crawl": "node crawler/src/cli/crawl.ts",
+    "reparse": "node crawler/src/cli/crawl.ts --offline",
+    "build:data": "node crawler/src/cli/build-data.ts",
+    "verify": "node crawler/src/cli/verify.ts",
+    "dev": "npm -w web run dev",
+    "build": "npm run build:data && npm -w web run build",
+    "preview": "npm -w web run preview"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^5.7.2"
+  }
+}
