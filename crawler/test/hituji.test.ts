@@ -170,6 +170,25 @@ describe('端到端：extract 產出可比價的 Listing', () => {
   });
 });
 
+describe('個室 vs ドミトリー 必須分得出來', () => {
+  test('兩個陣列合併前先標記來源，否則相部屋會被標成個室', () => {
+    // 2026-08-16 親自比對 HAKUSAN HOUSE 原站時發現的實際錯誤
+    const rooms = parseRooms(akasakaHtml);
+    assert.ok(rooms.every((r) => r.__kind === '個室'), '赤坂全為個室');
+  });
+
+  test('房間物件本身沒有任何欄位能區分房型', () => {
+    const rooms = parseRooms(akasakaHtml);
+    const r = rooms[0];
+    assert.ok(r);
+    const { __kind, ...rawFields } = r;
+    assert.ok(__kind !== undefined);
+    // 原始 payload 的欄位裡沒有任何一個提到房型 → 只能靠來源陣列判斷
+    assert.ok(!Object.keys(rawFields).some((k) => /kind|type|dormitory|single/i.test(k)),
+      `原始欄位：${Object.keys(rawFields).join(',')}`);
+  });
+});
+
 describe('水電基準判定（抽樣 7 個物件所得的規則）', () => {
   test('variableCommonServiceFee 為「実費」時 → excluded', () => {
     const html = fixture('detail-sample3.html.gz');

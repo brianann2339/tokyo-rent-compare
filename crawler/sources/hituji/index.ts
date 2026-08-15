@@ -107,6 +107,8 @@ type HitujiRoom = {
   keyMoney: number;
   availabilityCode: string;
   availabilityLabel: string;
+  /** 由 adapter 依來源陣列補上：個室 vs ドミトリー（相部屋）。原始 payload 沒有這個欄位。 */
+  __kind?: '個室' | 'ドミトリー';
 };
 
 /**
@@ -152,11 +154,20 @@ export function parseSummaries(html: string): HitujiSummary[] {
   return out;
 }
 
+/**
+ * 房間分別掛在 `singleRoom`（個室）與 `dormitoryRoom`（相部屋）兩個陣列下。
+ * 合併前必須先記住來源——原始 payload 的房間物件本身沒有任何欄位可以區分，
+ * 合併後就再也分不出來，會把相部屋標成個室。
+ * （2026-08-16 親自比對 HAKUSAN HOUSE 原站時發現。）
+ */
 export function parseRooms(html: string): HitujiRoom[] {
   const buf = reassembleFlight(html);
-  const direct = extractArrayAfterKey<HitujiRoom>(buf, 'singleRoom')
-    .concat(extractArrayAfterKey<HitujiRoom>(buf, 'dormitoryRoom'));
-  const pool = direct.length > 0 ? direct : extractObjects<HitujiRoom>(buf, ROOM_ANCHOR);
+  const tagged: HitujiRoom[] = [
+    ...extractArrayAfterKey<HitujiRoom>(buf, 'singleRoom').map((r) => ({ ...r, __kind: '個室' as const })),
+    ...extractArrayAfterKey<HitujiRoom>(buf, 'dormitoryRoom').map((r) => ({ ...r, __kind: 'ドミトリー' as const })),
+  ];
+  // 兩個具名陣列都取不到時才退回錨點掃描，此時無法判斷房型
+  const pool = tagged.length > 0 ? tagged : extractObjects<HitujiRoom>(buf, ROOM_ANCHOR);
   const seen = new Set<number>();
   return pool.filter((r) => {
     if (typeof r?.number !== 'string' || seen.has(r.id)) return false;
@@ -306,7 +317,9 @@ function buildUnit(
     unitKey: String(r.id),
     sourceUrl,
     roomNo: known(r.number, 'measured', `number=${r.number}`),
-    layout: known('個室', 'measured', 'singleRoom'),
+    layout: r.__kind === undefined
+      ? notListed('')
+      : known(r.__kind, 'measured', r.__kind === '個室' ? 'singleRoom[]' : 'dormitoryRoom[]'),
     areaM2: numField(r.sizeSquareMeter, 'sizeSquareMeter'),
     floor: notListed(''),
     monthly: {
