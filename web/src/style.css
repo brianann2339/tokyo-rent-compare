@@ -153,3 +153,16 @@ footer p { margin: 0 0 8px; }
 /* 賃料未知時不顯示金額：一個看起來合理的錯數字比留白危險 */
 .price .big .nodata { font-size: 1rem; font-weight: 500; color: var(--muted); }
 .price .parts .nodata { color: var(--warn); font-weight: 600; }
+
+/* 生效條件指示器：篩選器捲出視野後，使用者仍看得到為什麼結果變少 */
+.active {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-bottom: 10px; font-size: .82rem; color: var(--muted);
+}
+.active .pill {
+  font: inherit; font-size: .78rem; padding: 3px 9px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  border: 1px solid transparent; cursor: pointer;
+}
+.active .pill:hover { border-color: var(--accent); }
+.active .pill.clear { background: none; color: var(--muted); border-color: var(--line); }

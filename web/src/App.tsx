@@ -127,6 +127,26 @@ export default function App() {
   const { b, u, dict, meta } = wire;
   const set = (patch: Partial<Filters>): void => setF({ ...f, ...patch });
 
+  // 篩選器在左側欄，捲下去就看不見，但結果數可能已經被砍掉九成——
+  // 沒有生效條件的指示，使用者只會覺得「明明有 7,900 間卻只剩幾十筆」。
+  const activeFilters: Array<{ key: string; label: string; clear: () => void }> = [];
+  const addF = (key: string, label: string, patch: Partial<Filters>): void => {
+    activeFilters.push({ key, label, clear: () => set(patch) });
+  };
+  if (f.q !== '') addF('q', `關鍵字「${f.q}」`, { q: '' });
+  if (f.wards.length > 0) addF('ward', `區域 ${f.wards.length} 個`, { wards: [] });
+  if (f.sources.length > 0) addF('src', `來源 ${f.sources.length} 個`, { sources: [] });
+  if (f.maxMonthly !== null) addF('mm', `月額 ≤ ${yen(f.maxMonthly)}`, { maxMonthly: null });
+  if (f.maxInitCash !== null) addF('mi', `初期現金 ≤ ${yen(f.maxInitCash)}`, { maxInitCash: null });
+  if (f.minArea !== null) addF('ma', `面積 ≥ ${f.minArea}㎡`, { minArea: null });
+  if (f.maxWalk !== null) addF('mw', `步行 ≤ ${f.maxWalk} 分`, { maxWalk: null });
+  if (f.gender !== '') addF('g', GENDER_ZH[f.gender] ?? f.gender, { gender: '' });
+  if (f.foreignerOnly) addF('fgn', '只看外國人可租', { foreignerOnly: false });
+  if (f.noKeyMoney) addF('nk', '零禮金', { noKeyMoney: false });
+  if (f.noDeposit) addF('nd', '零敷金', { noDeposit: false });
+  if (f.utilIncluded) addF('ui', '明確含水電', { utilIncluded: false });
+  if (!f.vacantOnly) addF('v', '含無空房', { vacantOnly: true });
+
   // 結果同時含「含水電」與「水電另計」時要警示——直接比會低估後者
   const mixedBasis = new Set(rows.slice(0, 400).map((r) => u.utilBasis[r.i])).size > 1;
 
@@ -222,6 +242,19 @@ export default function App() {
         </form>
 
         <main>
+          {activeFilters.length > 0 && (
+            <div className="active">
+              <span>已套用 {activeFilters.length} 個條件：</span>
+              {activeFilters.map((a) => (
+                <button key={a.key} type="button" className="pill" onClick={a.clear}>
+                  {a.label} ✕
+                </button>
+              ))}
+              <button type="button" className="pill clear" onClick={() => { location.hash = ''; }}>
+                全部清除
+              </button>
+            </div>
+          )}
           <div className="tiers">
             <span><b>{counts[0]}</b> 筆完整可比</span>
             <span><b>{counts[1]}</b> 筆僅有下限</span>
