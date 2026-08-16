@@ -12,6 +12,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { gzipSync } from 'node:zlib';
 
 import { DATA_ROOT } from '../http.ts';
@@ -131,9 +132,9 @@ async function main(): Promise<void> {
 
   const SOURCES = await loadSourceIds();
   for (const id of SOURCES) {
-    const p = path.join(DATA_ROOT, 'normalized', `${id}.ndjson`);
+    const p = path.join(DATA_ROOT, 'normalized', `${id}.ndjson.gz`);
     if (!existsSync(p)) { g.warnings.push(`找不到 ${p}，跳過`); continue; }
-    const text = await readFile(p, 'utf8');
+    const text = gunzipSync(await readFile(p)).toString('utf8');
     for (const line of text.split('\n')) {
       if (line.trim() === '') continue;
       listings.push(JSON.parse(line) as Listing);

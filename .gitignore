@@ -8,5 +8,7 @@ data/raw/
 data/cache/
 # 建置產物
 data/dist/
+# 舊的未壓縮真相層（已改用 .ndjson.gz）
+data/normalized/*.ndjson
 web/public/data/
 web/dist/

@@ -60,11 +60,19 @@ import { parseYearBuilt } from '../../../packages/jp-parse/src/contract.ts';
 
 const SITE = 'https://suumo.jp';
 
-/** 首版收錄範圍：東京都心3区。擴張範圍改這裡。 */
+/**
+ * 首版收錄範圍：**千代田区一区**。擴張範圍改這個陣列即可。
+ *
+ * 為什麼只有一区：SUUMO 的量級跟其他來源差兩個數量級。實測都心 3 区就有
+ * 5,879 棟 / 16,499 間房，讓首屏索引從 78 KB 膨脹到 617 KB gzip
+ * （超過 500 KB 預算），真相層 NDJSON 更達 88 MB（超過 GitHub 建議的單檔 50 MB）。
+ *
+ * 這是**暫時的取捨不是最終設計**：正確解法是把索引按都道府県／区分片，
+ * 首屏只載當前條件需要的片。分片做完之前，先收一区讓其他 9 個來源可用，
+ * 而不是讓整站被一個來源拖垮。
+ */
 export const WARDS: ReadonlyArray<{ readonly slug: string; readonly nameJa: string }> = [
   { slug: 'sc_chiyoda', nameJa: '千代田区' },
-  { slug: 'sc_chuo', nameJa: '中央区' },
-  { slug: 'sc_minato', nameJa: '港区' },
 ];
 
 /**

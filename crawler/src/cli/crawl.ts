@@ -14,6 +14,7 @@
 
 import { mkdir, writeFile, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 import { HttpFetcher, DATA_ROOT } from '../http.ts';
 import { collectHealth, compareToBaseline, medianBaseline, renderMarkdown, type SourceHealth } from '../health.ts';
@@ -106,10 +107,11 @@ async function crawlSource(adapter: SourceAdapter, args: Args): Promise<SourceHe
 
   const runAt = new Date().toISOString();
   await mkdir(path.join(DATA_ROOT, 'normalized'), { recursive: true });
+  // 真相層以 gzip 存放：SUUMO 一家未壓縮就 88 MB，超過 GitHub 建議的單檔上限。
+  // 代價是 git diff 不再直接可讀，改用 `npm run diff:data` 之類的方式看（尚未做）。
   await writeFile(
-    path.join(DATA_ROOT, 'normalized', `${m.id}.ndjson`),
-    listings.map((l) => JSON.stringify(l)).join('\n') + '\n',
-    'utf8',
+    path.join(DATA_ROOT, 'normalized', `${m.id}.ndjson.gz`),
+    gzipSync(Buffer.from(listings.map((l) => JSON.stringify(l)).join('\n') + '\n', 'utf8')),
   );
 
   const health = collectHealth(m, listings, {

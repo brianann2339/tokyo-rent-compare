@@ -14,6 +14,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { gunzipSync } from 'node:zlib';
 
 import { DATA_ROOT } from '../http.ts';
 import { loadSourceIds } from '../registry.ts';
@@ -88,9 +89,9 @@ async function main(): Promise<void> {
 
   const SOURCES = await loadSourceIds();
   for (const id of SOURCES) {
-    const p = path.join(DATA_ROOT, 'normalized', `${id}.ndjson`);
+    const p = path.join(DATA_ROOT, 'normalized', `${id}.ndjson.gz`);
     if (!existsSync(p)) continue;
-    const listings = (await readFile(p, 'utf8'))
+    const listings = gunzipSync(await readFile(p)).toString('utf8')
       .split('\n').filter((x) => x.trim() !== '')
       .map((x) => JSON.parse(x) as Listing);
 
