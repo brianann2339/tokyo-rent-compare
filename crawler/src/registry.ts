@@ -7,6 +7,7 @@
  */
 
 import { readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -21,7 +22,13 @@ export async function loadAdapters(): Promise<SourceAdapter[]> {
   const out: SourceAdapter[] = [];
   for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     if (!e.isDirectory() || e.name.startsWith('_') || e.name.startsWith('.')) continue;
-    const url = pathToFileURL(path.join(SOURCES_DIR, e.name, 'index.ts')).href;
+    const entry = path.join(SOURCES_DIR, e.name, 'index.ts');
+    // 還沒寫完的來源目錄（只有 fixtures/）不該讓整個註冊表爆掉
+    if (!existsSync(entry)) {
+      console.warn(`[registry] 略過 ${e.name}：沒有 index.ts（來源尚未完成？）`);
+      continue;
+    }
+    const url = pathToFileURL(entry).href;
     const mod: AdapterModule = await import(url);
     const adapter = mod.default;
     if (adapter === undefined || adapter.manifest === undefined) {
