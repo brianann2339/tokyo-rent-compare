@@ -120,9 +120,9 @@ describe('robots.txt 合規（凍結 2026-08-16 的真實 robots.txt）', () => 
     }
   });
 
-  test('首版收錄範圍是東京都心3区，且 legal 尚未開啟', () => {
-    assert.deepEqual(WARDS.map((w) => w.nameJa), ['千代田区', '中央区', '港区']);
-    // 利用規約第2条／第3条(7) 的限制需要使用者裁決，未裁決前不得產出資料
+  test('首版收錄範圍是千代田区一区（分片實作前的暫時取捨），legal 已開啟', () => {
+    assert.deepEqual(WARDS.map((w) => w.nameJa), ['千代田区']);
+    // 使用者已裁決自行承擔（2026-08-16），條文原文仍須留在 notes 存證
     assert.equal(manifest.legal.enabled, true);
     assert.ok(manifest.legal.notes.includes('私的利用の範囲を超える使用をしてはならない'));
     assert.ok(manifest.legal.notes.includes('商業目的で利用する行為'));
