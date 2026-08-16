@@ -47,9 +47,9 @@ function Chip({ tone, children }: { tone?: 'good' | 'warn' | 'flat'; children: R
   return <span className={`chip ${tone ?? 'flat'}`}>{children}</span>;
 }
 
-function Detail({ unitId, onClose }: { unitId: string; onClose: () => void }) {
+function Detail({ wire, unitIdx, onClose }: { wire: Wire; unitIdx: number; onClose: () => void }) {
   const [p, setP] = useState<Prov | null | 'loading'>('loading');
-  useEffect(() => { void loadProv(unitId).then(setP); }, [unitId]);
+  useEffect(() => { void loadProv(wire, unitIdx).then(setP); }, [wire, unitIdx]);
 
   return (
     <aside className="detail" role="dialog" aria-label="費用拆解">
@@ -110,7 +110,7 @@ export default function App() {
   const [wire, setWire] = useState<Wire | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [f, setF] = useHashFilters();
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
   const [limit, setLimit] = useState(60);
 
   useEffect(() => {
@@ -319,7 +319,7 @@ export default function App() {
               const monthly = (u.monthlyLower[i] as number) + (assumed ? (f.assumeUtil as number) : 0);
               const tier = r.tier;
               return (
-                <li key={u.id[i]} className={`card t${tier}`}>
+                <li key={i} className={`card t${tier}`}>
                   <div className="head">
                     <h3>{b.name[bi]}</h3>
                     <span className="ward">
@@ -371,7 +371,7 @@ export default function App() {
                   </div>
 
                   <div className="actions">
-                    <button type="button" onClick={() => setOpen(u.id[i] ?? null)}>費用拆解</button>
+                    <button type="button" onClick={() => setOpen(i)}>費用拆解</button>
                     <a href={b.url[bi]} target="_blank" rel="noreferrer noopener" className="primary">
                       前往原站 ↗
                     </a>
@@ -390,7 +390,7 @@ export default function App() {
         </main>
       </div>
 
-      {open !== null && <Detail unitId={open} onClose={() => setOpen(null)} />}
+      {open !== null && <Detail wire={wire} unitIdx={open} onClose={() => setOpen(null)} />}
 
       <footer>
         <p>

@@ -61,18 +61,24 @@ import { parseYearBuilt } from '../../../packages/jp-parse/src/contract.ts';
 const SITE = 'https://suumo.jp';
 
 /**
- * 首版收錄範圍：**千代田区一区**。擴張範圍改這個陣列即可。
+ * 收錄範圍（使用者指定，2026-08-16）：都心 10 区。擴張改這個陣列即可。
  *
- * 為什麼只有一区：SUUMO 的量級跟其他來源差兩個數量級。實測都心 3 区就有
- * 5,879 棟 / 16,499 間房，讓首屏索引從 78 KB 膨脹到 617 KB gzip
- * （超過 500 KB 預算），真相層 NDJSON 更達 88 MB（超過 GitHub 建議的單檔 50 MB）。
- *
- * 這是**暫時的取捨不是最終設計**：正確解法是把索引按都道府県／区分片，
- * 首屏只載當前條件需要的片。分片做完之前，先收一区讓其他 9 個來源可用，
- * 而不是讓整站被一個來源拖垮。
+ * 量級提醒：SUUMO 跟其他來源差兩個數量級（都心 3 区實測 16,499 間房）。
+ * 首屏索引已做字串瘦身（id／availFrom／img 移出索引），10 区仍可能超過
+ * 500 KB gzip 預算——已知取捨，下一步是按区分片或二進位索引。
+ * 真相層以 .ndjson.gz 存放，不受單檔上限影響。
  */
 export const WARDS: ReadonlyArray<{ readonly slug: string; readonly nameJa: string }> = [
+  { slug: 'sc_bunkyo', nameJa: '文京区' },
+  { slug: 'sc_chuo', nameJa: '中央区' },
+  { slug: 'sc_minato', nameJa: '港区' },
+  { slug: 'sc_shibuya', nameJa: '渋谷区' },
   { slug: 'sc_chiyoda', nameJa: '千代田区' },
+  { slug: 'sc_taito', nameJa: '台東区' },
+  { slug: 'sc_toshima', nameJa: '豊島区' },
+  { slug: 'sc_meguro', nameJa: '目黒区' },
+  { slug: 'sc_shinagawa', nameJa: '品川区' },
+  { slug: 'sc_koto', nameJa: '江東区' },
 ];
 
 /**

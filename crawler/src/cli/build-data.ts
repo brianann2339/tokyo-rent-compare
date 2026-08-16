@@ -9,7 +9,7 @@
  * （小整數的十進位表示比固定 4 bytes 省，gzip 又吃得很好）。
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
@@ -28,6 +28,8 @@ import {
 } from '../../../packages/schema/src/invariants.ts';
 
 const OUT_DIR = path.resolve(import.meta.dirname, '../../../web/public/data');
+/** provenance 每桶的 unit 數。桶位由序號直算，改這個值要連同舊桶一起重建。 */
+const PROV_BUCKET = 400;
 
 
 const UTIL_BASIS = { unknown: 0, included: 1, excluded: 2 } as const;
@@ -165,18 +167,20 @@ async function main(): Promise<void> {
     return arr.length - 1;
   };
 
+  // 索引只放「搜尋當下就要用」的欄位。id／availFrom／img 都搬去 prov 桶：
+  // 10 万級的 unit id 字串（每個 ~40 字元）光自己就吃掉數百 KB gzip，
+  // 而它只在點開詳情時才需要。
   const B = {
     name: [] as string[], url: [] as string[], ward: [] as number[], src: [] as number[],
-    station: [] as number[], walk: [] as (number | null)[], img: [] as string[],
+    station: [] as number[], walk: [] as (number | null)[],
     total: [] as (number | null)[], fetchedAt: [] as string[], kind: [] as string[],
   };
   const U = {
-    id: [] as string[], bid: [] as number[], room: [] as (string | null)[], layout: [] as (string | null)[],
+    bid: [] as number[], room: [] as (string | null)[], layout: [] as (string | null)[],
     area: [] as (number | null)[], rent: [] as (number | null)[], admin: [] as (number | null)[],
     util: [] as (number | null)[], utilBasis: [] as number[], key: [] as (number | null)[],
     dep: [] as (number | null)[], depNR: [] as (number | null)[],
     gender: [] as number[], foreigner: [] as number[], vacant: [] as number[],
-    availFrom: [] as (string | null)[],
     monthlyLower: [] as number[], monthlyTier: [] as number[],
     initCash: [] as number[], initCashTier: [] as number[],
     initSunk: [] as number[], effMonthly12: [] as number[],
@@ -195,7 +199,6 @@ async function main(): Promise<void> {
     B.src.push(idx(sources, b.sourceId));
     B.station.push(st ? idx(stations, st.station) : -1);
     B.walk.push(st?.walkMinutes.known === true ? st.walkMinutes.v : null);
-    B.img.push(b.imageUrls[0] ?? '');
     B.total.push(numOrNull(b.totalUnits));
     B.fetchedAt.push(b.fetchedAt.slice(0, 10));
     B.kind.push(b.kind);
@@ -207,7 +210,7 @@ async function main(): Promise<void> {
       const s = initialSunk(u);
       const e = effectiveMonthly(u, 12, null);
 
-      U.id.push(u.id); U.bid.push(bi);
+      U.bid.push(bi);
       U.room.push(strOrNull(u.roomNo)); U.layout.push(strOrNull(u.layout));
       U.area.push(numOrNull(u.areaM2));
       U.rent.push(yenOrNull(u.monthly.rent)); U.admin.push(yenOrNull(u.monthly.adminFee));
@@ -218,14 +221,17 @@ async function main(): Promise<void> {
       U.gender.push(GENDER[u.genderRestriction]);
       U.foreigner.push(boolOrNull(u.foreigner.welcomed));
       U.vacant.push(boolOrNull(u.isVacant));
-      U.availFrom.push(strOrNull(u.availableFrom));
       U.monthlyLower.push(m.lower.jpy); U.monthlyTier.push(TIER[tierOf(u, m)]);
       U.initCash.push(c.lower.jpy); U.initCashTier.push(TIER[tierOf(u, c)]);
       U.initSunk.push(s.lower.jpy); U.effMonthly12.push(e.lower.jpy);
       U.missing.push(missingMask(u));
 
-      // provenance：每欄的原文出處，只在使用者點開房源時才載入
-      prov[u.id] = {
+      // provenance：每欄的原文出處，只在使用者點開房源時才載入。
+      // 鍵是 unit 的序號——桶位由序號直算（floor(i / PROV_BUCKET)），
+      // 不需要一個 7 萬鍵的 map.json 對照表。
+      prov[String(U.bid.length - 1)] = {
+        id: u.id,
+        availFrom: u.availableFrom.known ? u.availableFrom.v : null,
         url: u.sourceUrl,
         fetchedAt: b.fetchedAt,
         foreignerRaw: u.foreigner.rawText,
@@ -253,31 +259,29 @@ async function main(): Promise<void> {
   const meta = {
     generatedAt: new Date().toISOString(),
     buildings: B.name.length,
-    units: U.id.length,
+    units: U.bid.length,
+    provBucket: PROV_BUCKET,
     sources: sources.map((id) => ({ id })),
     missingBits: MISSING_BITS,
     violations: g.violations.length,
   };
 
+  // 先清掉舊桶：桶的鍵與數量會隨資料變動，殘留的舊桶會被誤讀
+  await rm(path.join(OUT_DIR, 'prov'), { recursive: true, force: true });
   await mkdir(path.join(OUT_DIR, 'prov'), { recursive: true });
   const index = { meta, dict: { wards, stations, sources, sourceMeta }, b: B, u: U };
   const json = JSON.stringify(index);
   await writeFile(path.join(OUT_DIR, 'index.json'), json, 'utf8');
 
-  // provenance 依建物分桶，每桶約 200 棟
-  const ids = Object.keys(prov);
-  const BUCKET = 400;
+  // provenance 依 unit 序號分桶，桶位 = floor(序號 / PROV_BUCKET)
   const buckets: Record<string, Record<string, unknown>> = {};
-  ids.forEach((k, i) => {
-    const bkt = `p${Math.floor(i / BUCKET)}`;
-    (buckets[bkt] ??= {})[k] = prov[k];
-  });
-  const provIndex: Record<string, string> = {};
+  for (const [k, v] of Object.entries(prov)) {
+    const bkt = `p${Math.floor(Number(k) / PROV_BUCKET)}`;
+    (buckets[bkt] ??= {})[k] = v;
+  }
   for (const [bkt, obj] of Object.entries(buckets)) {
     await writeFile(path.join(OUT_DIR, 'prov', `${bkt}.json`), JSON.stringify(obj), 'utf8');
-    for (const k of Object.keys(obj)) provIndex[k] = bkt;
   }
-  await writeFile(path.join(OUT_DIR, 'prov', 'map.json'), JSON.stringify(provIndex), 'utf8');
 
   const gz = gzipSync(Buffer.from(json, 'utf8')).length;
   console.log(`✔ 建置完成`);

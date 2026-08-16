@@ -12,6 +12,7 @@ export const TIER = ['A', 'B', 'C'] as const;
 export type Wire = {
   meta: {
     generatedAt: string; buildings: number; units: number;
+    provBucket: number;
     sources: Array<{ id: string }>; missingBits: string[]; violations: number;
   };
   dict: {
@@ -20,15 +21,15 @@ export type Wire = {
   };
   b: {
     name: string[]; url: string[]; ward: number[]; src: number[];
-    station: number[]; walk: (number | null)[]; img: string[];
+    station: number[]; walk: (number | null)[];
     total: (number | null)[]; fetchedAt: string[]; kind: string[];
   };
   u: {
-    id: string[]; bid: number[]; room: (string | null)[]; layout: (string | null)[];
+    bid: number[]; room: (string | null)[]; layout: (string | null)[];
     area: (number | null)[]; rent: (number | null)[]; admin: (number | null)[];
     util: (number | null)[]; utilBasis: number[]; key: (number | null)[];
     dep: (number | null)[]; depNR: (number | null)[];
-    gender: number[]; foreigner: number[]; vacant: number[]; availFrom: (string | null)[];
+    gender: number[]; foreigner: number[]; vacant: number[];
     monthlyLower: number[]; monthlyTier: number[];
     initCash: number[]; initCashTier: number[];
     initSunk: number[]; effMonthly12: number[]; missing: number[];
@@ -54,18 +55,18 @@ export async function loadWire(): Promise<Wire> {
 }
 
 const provCache = new Map<string, Record<string, Prov>>();
-let provMap: Record<string, string> | null = null;
 
-export async function loadProv(unitId: string): Promise<Prov | null> {
-  provMap ??= (await (await fetch(`${base}data/prov/map.json`)).json()) as Record<string, string>;
-  const bucket = provMap[unitId];
-  if (bucket === undefined) return null;
+/** 桶位由 unit 序號直算——不需要下載一個數萬鍵的對照表。 */
+export async function loadProv(w: Wire, unitIdx: number): Promise<Prov | null> {
+  const bucket = `p${Math.floor(unitIdx / w.meta.provBucket)}`;
   let obj = provCache.get(bucket);
   if (obj === undefined) {
-    obj = (await (await fetch(`${base}data/prov/${bucket}.json`)).json()) as Record<string, Prov>;
+    const res = await fetch(`${base}data/prov/${bucket}.json`);
+    if (!res.ok) return null;
+    obj = (await res.json()) as Record<string, Prov>;
     provCache.set(bucket, obj);
   }
-  return obj[unitId] ?? null;
+  return obj[String(unitIdx)] ?? null;
 }
 
 export type Filters = {
@@ -148,7 +149,7 @@ export type Row = { i: number; tier: number; key: number };
  */
 export function query(w: Wire, f: Filters): { rows: Row[]; counts: [number, number, number] } {
   const { u, b, dict } = w;
-  const n = u.id.length;
+  const n = u.bid.length;
   const wardIdx = new Set(f.wards.map((x) => dict.wards.indexOf(x)).filter((i) => i >= 0));
   const srcIdx = new Set(f.sources.map((x) => dict.sources.indexOf(x)).filter((i) => i >= 0));
   const q = f.q.trim().toLowerCase();
