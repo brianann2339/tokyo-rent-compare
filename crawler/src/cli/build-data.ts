@@ -15,6 +15,7 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 
 import { DATA_ROOT } from '../http.ts';
+import { loadSourceIds } from '../registry.ts';
 import type { Listing, Unit, Building } from '../../../packages/schema/src/model.ts';
 import type { Field, Yen } from '../../../packages/schema/src/field.ts';
 import {
@@ -26,7 +27,7 @@ import {
 } from '../../../packages/schema/src/invariants.ts';
 
 const OUT_DIR = path.resolve(import.meta.dirname, '../../../web/public/data');
-const SOURCES = ['hituji', 'ur', 'oakhouse', 'couverture'] as const;
+
 
 const UTIL_BASIS = { unknown: 0, included: 1, excluded: 2 } as const;
 const GENDER = { unknown: 0, mixed: 1, female_only: 2, male_only: 3 } as const;
@@ -125,7 +126,10 @@ async function main(): Promise<void> {
   const g: GateResult = { errors: [], warnings: [], violations: [] };
   const listings: Listing[] = [];
   const manifests: Array<{ id: string; provides: Set<string> }> = [];
+  // 來源顯示名從 manifest 帶進資料，UI 就不必為每個新來源改一次硬編碼對照表
+  const sourceMeta: Record<string, { nameZh: string; homepage: string }> = {};
 
+  const SOURCES = await loadSourceIds();
   for (const id of SOURCES) {
     const p = path.join(DATA_ROOT, 'normalized', `${id}.ndjson`);
     if (!existsSync(p)) { g.warnings.push(`找不到 ${p}，跳過`); continue; }
@@ -134,8 +138,11 @@ async function main(): Promise<void> {
       if (line.trim() === '') continue;
       listings.push(JSON.parse(line) as Listing);
     }
-    const mod = await import(`../../sources/${id}/index.ts`) as { manifest: { capabilities: { provides: readonly string[] } } };
+    const mod = await import(`../../sources/${id}/index.ts`) as {
+      manifest: { nameZh: string; homepage: string; capabilities: { provides: readonly string[] } };
+    };
     manifests.push({ id, provides: new Set(mod.manifest.capabilities.provides) });
+    sourceMeta[id] = { nameZh: mod.manifest.nameZh, homepage: mod.manifest.homepage };
   }
 
   if (listings.length === 0) {
@@ -252,7 +259,7 @@ async function main(): Promise<void> {
   };
 
   await mkdir(path.join(OUT_DIR, 'prov'), { recursive: true });
-  const index = { meta, dict: { wards, stations, sources }, b: B, u: U };
+  const index = { meta, dict: { wards, stations, sources, sourceMeta }, b: B, u: U };
   const json = JSON.stringify(index);
   await writeFile(path.join(OUT_DIR, 'index.json'), json, 'utf8');
 

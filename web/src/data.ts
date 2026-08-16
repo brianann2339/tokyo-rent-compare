@@ -14,7 +14,10 @@ export type Wire = {
     generatedAt: string; buildings: number; units: number;
     sources: Array<{ id: string }>; missingBits: string[]; violations: number;
   };
-  dict: { wards: string[]; stations: string[]; sources: string[] };
+  dict: {
+    wards: string[]; stations: string[]; sources: string[];
+    sourceMeta: Record<string, { nameZh: string; homepage: string }>;
+  };
   b: {
     name: string[]; url: string[]; ward: number[]; src: number[];
     station: number[]; walk: (number | null)[]; img: string[];

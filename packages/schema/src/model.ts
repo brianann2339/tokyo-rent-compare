@@ -20,6 +20,8 @@ export type SourceId =
   | 'socialapartment'
   | 'villagehouse'
   | 'sakurahouse'
+  | 'suumo'
+  | 'jkk'
   | 'manual';
 
 /** 物件種類。share house 與一般物件的費用結構完全不同，必須能分辨。 */

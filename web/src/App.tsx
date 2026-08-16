@@ -8,13 +8,10 @@ const GENDER_ZH: Record<string, string> = {
   unknown: '未提供', mixed: '男女皆可', female_only: '女性專用', male_only: '男性專用',
 };
 const UTIL_ZH = ['未提供', '含水電', '水電另計'];
-/** 來源顯示名。多來源之後，使用者要知道這筆是誰家的、費用揭露程度可能不同。 */
-const SOURCE_ZH: Record<string, string> = {
-  hituji: 'ひつじ不動産',
-  ur: 'UR 賃貸住宅',
-  couverture: 'Couverture',
-  oakhouse: 'Oak House',
-};
+/**
+ * 來源顯示名直接從資料的 dict.sourceMeta 讀（由各來源的 manifest.nameZh 產生），
+ * 不在 UI 維護硬編碼對照表——否則每加一個來源就要記得改這裡，漏改會顯示成 id。
+ */
 const FIELD_ZH: Record<string, string> = {
   rent: '賃料', adminFee: '管理費／共益費', utilities: '水電費', internet: '網路費',
   otherMonthly: '其他月費', keyMoney: '禮金', deposit: '敷金（押金）',
@@ -30,6 +27,11 @@ const WHY_ZH: Record<string, string> = {
   unparsed: '解析失敗（有文字但讀不出來）',
   conflicting: '多處資料互相矛盾，不予採用',
 };
+
+function srcName(dict: Wire['dict'], srcIdx: number): string {
+  const id = dict.sources[srcIdx] ?? '';
+  return dict.sourceMeta[id]?.nameZh ?? id;
+}
 
 function useHashFilters(): [Filters, (f: Filters) => void] {
   const [f, setF] = useState<Filters>(() => queryToFilters(location.hash.slice(1)));
@@ -204,7 +206,7 @@ export default function App() {
             <select multiple size={3} value={f.sources}
               onChange={(e) => set({ sources: [...e.target.selectedOptions].map((o) => o.value) })}>
               {dict.sources.map((sid) => (
-                <option key={sid} value={sid}>{SOURCE_ZH[sid] ?? sid}</option>
+                <option key={sid} value={sid}>{dict.sourceMeta[sid]?.nameZh ?? sid}</option>
               ))}
             </select>
           </label>
@@ -249,7 +251,7 @@ export default function App() {
                     <h3>{b.name[bi]}</h3>
                     <span className="ward">
                       {dict.wards[b.ward[bi] as number]}
-                      <span className="src">{SOURCE_ZH[dict.sources[b.src[bi] as number] ?? ''] ?? dict.sources[b.src[bi] as number]}</span>
+                      <span className="src">{srcName(dict, b.src[bi] as number)}</span>
                     </span>
                   </div>
                   <p className="station">
@@ -318,7 +320,7 @@ export default function App() {
           點「前往原站」即可查看完整資訊並直接聯繫。金額以原站為準。
         </p>
         <p className="muted">
-          資料來源：{dict.sources.map((sid) => SOURCE_ZH[sid] ?? sid).join('、')} · 產生於 {meta.generatedAt.slice(0, 16).replace('T', ' ')}
+          資料來源：{dict.sources.map((sid) => dict.sourceMeta[sid]?.nameZh ?? sid).join('、')} · 產生於 {meta.generatedAt.slice(0, 16).replace('T', ' ')}
           {meta.violations > 0 && ` · ${meta.violations} 筆欄位因數值互相矛盾而未採用`}
         </p>
       </footer>

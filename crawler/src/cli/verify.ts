@@ -16,11 +16,12 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { DATA_ROOT } from '../http.ts';
+import { loadSourceIds } from '../registry.ts';
 import type { Listing, Unit } from '../../../packages/schema/src/model.ts';
 import type { Field, Yen } from '../../../packages/schema/src/field.ts';
 import { monthlyCost, initialCash, initialSunk } from '../../../packages/cost-model/src/index.ts';
 
-const SOURCES = ['hituji', 'ur', 'oakhouse', 'couverture'] as const;
+
 
 const LABEL: Record<string, string> = {
   rent: '賃料', adminFee: '管理費/共益費', utilities: '水電費',
@@ -85,6 +86,7 @@ async function main(): Promise<void> {
     '',
   ];
 
+  const SOURCES = await loadSourceIds();
   for (const id of SOURCES) {
     const p = path.join(DATA_ROOT, 'normalized', `${id}.ndjson`);
     if (!existsSync(p)) continue;

@@ -20,12 +20,8 @@ import { collectHealth, compareToBaseline, medianBaseline, renderMarkdown, type 
 import type { Listing } from '../../../packages/schema/src/model.ts';
 import type { SourceAdapter } from '../types.ts';
 
-import hituji from '../../sources/hituji/index.ts';
-import ur from '../../sources/ur/index.ts';
-import oakhouse from '../../sources/oakhouse/index.ts';
-import couverture from '../../sources/couverture/index.ts';
+import { loadAdapters } from '../registry.ts';
 
-const ALL: readonly SourceAdapter[] = [hituji, ur, oakhouse, couverture];
 
 type Args = { source: string | null; limit: number | null; noCache: boolean; offline: boolean };
 
@@ -147,6 +143,7 @@ async function crawlSource(adapter: SourceAdapter, args: Args): Promise<SourceHe
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  const ALL = await loadAdapters();
   const sources = args.source === null ? ALL : ALL.filter((a) => a.manifest.id === args.source);
   if (sources.length === 0) {
     console.error(`找不到來源：${args.source ?? ''}。可用：${ALL.map((a) => a.manifest.id).join(', ')}`);
