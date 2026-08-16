@@ -21,8 +21,10 @@ import type { Listing } from '../../../packages/schema/src/model.ts';
 import type { SourceAdapter } from '../types.ts';
 
 import hituji from '../../sources/hituji/index.ts';
+import ur from '../../sources/ur/index.ts';
+import oakhouse from '../../sources/oakhouse/index.ts';
 
-const ALL: readonly SourceAdapter[] = [hituji];
+const ALL: readonly SourceAdapter[] = [hituji, ur, oakhouse];
 
 type Args = { source: string | null; limit: number | null; noCache: boolean; offline: boolean };
 
@@ -83,7 +85,9 @@ async function crawlSource(adapter: SourceAdapter, args: Args): Promise<SourceHe
   let done = 0;
   for (const ref of targets) {
     try {
-      const raw = await fetcher.get(ref.url);
+      const raw = m.fetchMode === 'none'
+        ? { url: ref.url, body: '', fetchedAt: new Date().toISOString(), sha256: '', status: 200, notModified: false }
+        : await fetcher.get(ref.url);
       if (raw.buildId !== undefined) buildIds.add(raw.buildId);
       const listing = adapter.extract(raw, ref, ctx);
       if (listing !== null) listings.push(listing);

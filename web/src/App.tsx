@@ -8,6 +8,12 @@ const GENDER_ZH: Record<string, string> = {
   unknown: '未提供', mixed: '男女皆可', female_only: '女性專用', male_only: '男性專用',
 };
 const UTIL_ZH = ['未提供', '含水電', '水電另計'];
+/** 來源顯示名。多來源之後，使用者要知道這筆是誰家的、費用揭露程度可能不同。 */
+const SOURCE_ZH: Record<string, string> = {
+  hituji: 'ひつじ不動産',
+  ur: 'UR 賃貸住宅',
+  oakhouse: 'Oak House',
+};
 const FIELD_ZH: Record<string, string> = {
   rent: '賃料', adminFee: '管理費／共益費', utilities: '水電費', internet: '網路費',
   otherMonthly: '其他月費', keyMoney: '禮金', deposit: '敷金（押金）',
@@ -193,6 +199,15 @@ export default function App() {
             <small>套用後金額會標為「含你的假設」，這個數字<b>不會</b>寫進資料。</small>
           </label>
 
+          <label>資料來源
+            <select multiple size={3} value={f.sources}
+              onChange={(e) => set({ sources: [...e.target.selectedOptions].map((o) => o.value) })}>
+              {dict.sources.map((sid) => (
+                <option key={sid} value={sid}>{SOURCE_ZH[sid] ?? sid}</option>
+              ))}
+            </select>
+          </label>
+
           <label>區域
             <select multiple size={8} value={f.wards}
               onChange={(e) => set({ wards: [...e.target.selectedOptions].map((o) => o.value) })}>
@@ -231,7 +246,10 @@ export default function App() {
                 <li key={u.id[i]} className={`card t${tier}`}>
                   <div className="head">
                     <h3>{b.name[bi]}</h3>
-                    <span className="ward">{dict.wards[b.ward[bi] as number]}</span>
+                    <span className="ward">
+                      {dict.wards[b.ward[bi] as number]}
+                      <span className="src">{SOURCE_ZH[dict.sources[b.src[bi] as number] ?? ''] ?? dict.sources[b.src[bi] as number]}</span>
+                    </span>
                   </div>
                   <p className="station">
                     {stIdx >= 0 ? `${dict.stations[stIdx]}站` : '車站未提供'}
@@ -299,7 +317,7 @@ export default function App() {
           點「前往原站」即可查看完整資訊並直接聯繫。金額以原站為準。
         </p>
         <p className="muted">
-          資料來源：{dict.sources.join('、')} · 產生於 {meta.generatedAt.slice(0, 16).replace('T', ' ')}
+          資料來源：{dict.sources.map((sid) => SOURCE_ZH[sid] ?? sid).join('、')} · 產生於 {meta.generatedAt.slice(0, 16).replace('T', ' ')}
           {meta.violations > 0 && ` · ${meta.violations} 筆欄位因數值互相矛盾而未採用`}
         </p>
       </footer>

@@ -26,7 +26,7 @@ import {
 } from '../../../packages/schema/src/invariants.ts';
 
 const OUT_DIR = path.resolve(import.meta.dirname, '../../../web/public/data');
-const SOURCES = ['hituji'] as const;
+const SOURCES = ['hituji', 'ur', 'oakhouse'] as const;
 
 const UTIL_BASIS = { unknown: 0, included: 1, excluded: 2 } as const;
 const GENDER = { unknown: 0, mixed: 1, female_only: 2, male_only: 3 } as const;

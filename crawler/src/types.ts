@@ -37,6 +37,12 @@ export type SourceManifest = {
   readonly homepage: string;
   readonly origin: string;
   readonly transport: TransportKind;
+  /**
+   * 'page'：discover 只給 URL，由執行器抓詳情頁再 extract（多數來源）。
+   * 'none'：資料在 discover 階段就備齊（例：UR 全部走 JSON API），
+   *         不必再抓一次詳情頁——那會多打數百次大頁面請求，對對方是無謂負載。
+   */
+  readonly fetchMode?: 'page' | 'none';
   /** 單站單執行緒的請求間隔。robots.txt 有 Crawl-delay 時取兩者較大值。 */
   readonly crawlDelayMs: number;
   readonly capabilities: Capabilities;

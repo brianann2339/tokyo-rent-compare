@@ -68,6 +68,7 @@ export async function loadProv(unitId: string): Promise<Prov | null> {
 export type Filters = {
   q: string;
   wards: string[];
+  sources: string[];
   maxMonthly: number | null;
   maxInitCash: number | null;
   minArea: number | null;
@@ -83,7 +84,7 @@ export type Filters = {
 };
 
 export const DEFAULT_FILTERS: Filters = {
-  q: '', wards: [], maxMonthly: null, maxInitCash: null, minArea: null, maxWalk: null,
+  q: '', wards: [], sources: [], maxMonthly: null, maxInitCash: null, minArea: null, maxWalk: null,
   noKeyMoney: false, noDeposit: false, utilIncluded: false, foreignerOnly: false,
   vacantOnly: true, gender: '', sort: 'eff12', assumeUtil: null,
 };
@@ -94,6 +95,7 @@ export function filtersToQuery(f: Filters): string {
   const d = DEFAULT_FILTERS;
   if (f.q !== d.q) p.set('q', f.q);
   if (f.wards.length > 0) p.set('ward', f.wards.join(','));
+  if (f.sources.length > 0) p.set('src', f.sources.join(','));
   if (f.maxMonthly !== null) p.set('maxMonthly', String(f.maxMonthly));
   if (f.maxInitCash !== null) p.set('maxInit', String(f.maxInitCash));
   if (f.minArea !== null) p.set('minArea', String(f.minArea));
@@ -120,6 +122,7 @@ export function queryToFilters(qs: string): Filters {
   return {
     q: p.get('q') ?? '',
     wards: (p.get('ward') ?? '').split(',').filter((x) => x !== ''),
+    sources: (p.get('src') ?? '').split(',').filter((x) => x !== ''),
     maxMonthly: num('maxMonthly'), maxInitCash: num('maxInit'),
     minArea: num('minArea'), maxWalk: num('maxWalk'),
     noKeyMoney: p.get('noKey') === '1', noDeposit: p.get('noDep') === '1',
@@ -142,6 +145,7 @@ export function query(w: Wire, f: Filters): { rows: Row[]; counts: [number, numb
   const { u, b, dict } = w;
   const n = u.id.length;
   const wardIdx = new Set(f.wards.map((x) => dict.wards.indexOf(x)).filter((i) => i >= 0));
+  const srcIdx = new Set(f.sources.map((x) => dict.sources.indexOf(x)).filter((i) => i >= 0));
   const q = f.q.trim().toLowerCase();
   const rows: Row[] = [];
   const counts: [number, number, number] = [0, 0, 0];
@@ -150,6 +154,7 @@ export function query(w: Wire, f: Filters): { rows: Row[]; counts: [number, numb
     const bi = u.bid[i] as number;
     if (f.vacantOnly && u.vacant[i] === 0) continue;
     if (wardIdx.size > 0 && !wardIdx.has(b.ward[bi] as number)) continue;
+    if (srcIdx.size > 0 && !srcIdx.has(b.src[bi] as number)) continue;
     if (f.foreignerOnly && u.foreigner[i] !== 1) continue;
     if (f.gender !== '' && GENDER[u.gender[i] as number] !== f.gender) continue;
     if (f.noKeyMoney && u.key[i] !== 0) continue;
