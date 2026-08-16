@@ -75,6 +75,7 @@ export type Filters = {
   maxMonthly: number | null;
   maxInitCash: number | null;
   minArea: number | null;
+  maxArea: number | null;
   maxWalk: number | null;
   noKeyMoney: boolean;
   noDeposit: boolean;
@@ -82,12 +83,12 @@ export type Filters = {
   foreignerOnly: boolean;
   vacantOnly: boolean;
   gender: string;
-  sort: 'eff12' | 'monthly' | 'initCash' | 'initSunk' | 'area';
+  sort: 'eff12' | 'monthly' | 'initCash' | 'initSunk' | 'area' | 'perM2';
   assumeUtil: number | null;
 };
 
 export const DEFAULT_FILTERS: Filters = {
-  q: '', wards: [], sources: [], maxMonthly: null, maxInitCash: null, minArea: null, maxWalk: null,
+  q: '', wards: [], sources: [], maxMonthly: null, maxInitCash: null, minArea: null, maxArea: null, maxWalk: null,
   noKeyMoney: false, noDeposit: false, utilIncluded: false, foreignerOnly: false,
   vacantOnly: true, gender: '', sort: 'eff12', assumeUtil: null,
 };
@@ -102,6 +103,7 @@ export function filtersToQuery(f: Filters): string {
   if (f.maxMonthly !== null) p.set('maxMonthly', String(f.maxMonthly));
   if (f.maxInitCash !== null) p.set('maxInit', String(f.maxInitCash));
   if (f.minArea !== null) p.set('minArea', String(f.minArea));
+  if (f.maxArea !== null) p.set('maxArea', String(f.maxArea));
   if (f.maxWalk !== null) p.set('maxWalk', String(f.maxWalk));
   if (f.noKeyMoney) p.set('noKey', '1');
   if (f.noDeposit) p.set('noDep', '1');
@@ -127,7 +129,7 @@ export function queryToFilters(qs: string): Filters {
     wards: (p.get('ward') ?? '').split(',').filter((x) => x !== ''),
     sources: (p.get('src') ?? '').split(',').filter((x) => x !== ''),
     maxMonthly: num('maxMonthly'), maxInitCash: num('maxInit'),
-    minArea: num('minArea'), maxWalk: num('maxWalk'),
+    minArea: num('minArea'), maxArea: num('maxArea'), maxWalk: num('maxWalk'),
     noKeyMoney: p.get('noKey') === '1', noDeposit: p.get('noDep') === '1',
     utilIncluded: p.get('util') === '1', foreignerOnly: p.get('fgn') === '1',
     vacantOnly: p.get('vacant') !== '0', gender: p.get('gender') ?? '',
@@ -166,6 +168,9 @@ export function query(w: Wire, f: Filters): { rows: Row[]; counts: [number, numb
 
     const area = u.area[i];
     if (f.minArea !== null && (area === null || area === undefined || area < f.minArea)) continue;
+    // 上限跟下限一樣排除面積未知者：出租方在圈「同量級競品」，
+    // 無法確認在區間內的物件混進來只會污染行情。
+    if (f.maxArea !== null && (area === null || area === undefined || area > f.maxArea)) continue;
     const walk = b.walk[bi];
     if (f.maxWalk !== null && (walk === null || walk === undefined || walk > f.maxWalk)) continue;
 
@@ -182,7 +187,7 @@ export function query(w: Wire, f: Filters): { rows: Row[]; counts: [number, numb
       if (!name.includes(q) && !st.toLowerCase().includes(q) && !ward.includes(q)) continue;
     }
 
-    const tier = (f.sort === 'initCash' || f.sort === 'initSunk'
+    let tier = (f.sort === 'initCash' || f.sort === 'initSunk'
       ? u.initCashTier[i]
       : u.monthlyTier[i]) as number;
 
@@ -192,6 +197,12 @@ export function query(w: Wire, f: Filters): { rows: Row[]; counts: [number, numb
       case 'initCash': key = u.initCash[i] as number; break;
       case 'initSunk': key = u.initSunk[i] as number; break;
       case 'area': key = -(area ?? -1); break;
+      case 'perM2':
+        // 每㎡單價：比較競品的核心指標——直接比月額會被面積差異騙。
+        // 面積未知就算不出單價 → 落入資料不足區，缺值不給排序位置。
+        if (area === null || area === undefined || area <= 0) { tier = 2; key = 0; }
+        else key = monthly / area;
+        break;
       default: key = (u.effMonthly12[i] as number) + (f.assumeUtil !== null && u.utilBasis[i] !== 1 && u.util[i] === null ? f.assumeUtil : 0);
     }
     rows.push({ i, tier, key });

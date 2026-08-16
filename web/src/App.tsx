@@ -120,6 +120,32 @@ export default function App() {
 
   const result = useMemo(() => (wire === null ? null : query(wire, f)), [wire, f]);
 
+  // 出租方比較競品用：目前條件下的行情中位數。
+  // 只計「完整可比」者——把下限值混進統計會把中位數往下拉，
+  // 得到一個看似真實其實偏低的行情。
+  const stats = useMemo(() => {
+    if (wire === null || result === null) return null;
+    const { u } = wire;
+    const monthlies: number[] = [];
+    const perM2: number[] = [];
+    for (const r of result.rows) {
+      const i = r.i;
+      if ((u.monthlyTier[i] as number) !== 0) continue;
+      let m = u.monthlyLower[i] as number;
+      if (f.assumeUtil !== null && u.utilBasis[i] !== 1 && u.util[i] === null) m += f.assumeUtil;
+      monthlies.push(m);
+      const a = u.area[i];
+      if (a !== null && a !== undefined && a > 0) perM2.push(m / a);
+    }
+    const median = (arr: number[]): number | null => {
+      if (arr.length === 0) return null;
+      const s = [...arr].sort((x, y) => x - y);
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 === 0 ? ((s[mid - 1] as number) + (s[mid] as number)) / 2 : (s[mid] as number);
+    };
+    return { n: monthlies.length, medMonthly: median(monthlies), nArea: perM2.length, medPerM2: median(perM2) };
+  }, [wire, result, f.assumeUtil]);
+
   if (err !== null) return <main className="wrap"><h1>東京租屋比價</h1><p className="error">{err}</p></main>;
   if (wire === null || result === null) return <main className="wrap"><h1>東京租屋比價</h1><p>載入中…</p></main>;
 
@@ -139,6 +165,7 @@ export default function App() {
   if (f.maxMonthly !== null) addF('mm', `月額 ≤ ${yen(f.maxMonthly)}`, { maxMonthly: null });
   if (f.maxInitCash !== null) addF('mi', `初期現金 ≤ ${yen(f.maxInitCash)}`, { maxInitCash: null });
   if (f.minArea !== null) addF('ma', `面積 ≥ ${f.minArea}㎡`, { minArea: null });
+  if (f.maxArea !== null) addF('mxa', `面積 ≤ ${f.maxArea}㎡`, { maxArea: null });
   if (f.maxWalk !== null) addF('mw', `步行 ≤ ${f.maxWalk} 分`, { maxWalk: null });
   if (f.gender !== '') addF('g', GENDER_ZH[f.gender] ?? f.gender, { gender: '' });
   if (f.foreignerOnly) addF('fgn', '只看外國人可租', { foreignerOnly: false });
@@ -173,6 +200,7 @@ export default function App() {
               <option value="initCash">初期現金需求</option>
               <option value="initSunk">初期沉沒成本（拿不回來的）</option>
               <option value="area">面積大→小</option>
+              <option value="perM2">每㎡單價（比競品）</option>
             </select>
           </label>
 
@@ -187,6 +215,10 @@ export default function App() {
           <label>面積下限 ㎡
             <input type="number" step={1} value={f.minArea ?? ''} placeholder="不限"
               onChange={(e) => set({ minArea: e.target.value === '' ? null : Number(e.target.value) })} />
+          </label>
+          <label>面積上限 ㎡
+            <input type="number" step={1} value={f.maxArea ?? ''} placeholder="不限"
+              onChange={(e) => set({ maxArea: e.target.value === '' ? null : Number(e.target.value) })} />
           </label>
           <label>步行分鐘上限
             <input type="number" step={1} value={f.maxWalk ?? ''} placeholder="不限"
@@ -260,6 +292,14 @@ export default function App() {
             <span><b>{counts[1]}</b> 筆僅有下限</span>
             <span><b>{counts[2]}</b> 筆資料不足</span>
           </div>
+          {stats !== null && stats.medMonthly !== null && stats.n >= 3 && (
+            <p className="stats">
+              目前條件的行情（僅計 {stats.n} 筆完整可比者）：月額中位數 <b>{yen(Math.round(stats.medMonthly))}</b>
+              {stats.medPerM2 !== null && (
+                <>　·　每㎡單價中位數 <b>{yen(Math.round(stats.medPerM2))}／㎡</b>（面積已知 {stats.nArea} 筆）</>
+              )}
+            </p>
+          )}
           {mixedBasis && (
             <p className="banner">
               結果同時包含「月額含水電」與「水電另計」的房源，直接比較會低估後者。
@@ -309,6 +349,9 @@ export default function App() {
                     </div>
                     <div className="parts">
                       初期現金 {yen(u.initCash[i])} · 拿不回來的 {yen(u.initSunk[i])}
+                      {u.area[i] !== null && (u.monthlyTier[i] as number) === 0 && (
+                        <> · 單價 {yen(Math.round(monthly / (u.area[i] as number)))}／㎡</>
+                      )}
                     </div>
                   </div>
 
