@@ -12,6 +12,7 @@ const UTIL_ZH = ['未提供', '含水電', '水電另計'];
 const SOURCE_ZH: Record<string, string> = {
   hituji: 'ひつじ不動産',
   ur: 'UR 賃貸住宅',
+  couverture: 'Couverture',
   oakhouse: 'Oak House',
 };
 const FIELD_ZH: Record<string, string> = {

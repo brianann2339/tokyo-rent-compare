@@ -23,8 +23,9 @@ import type { SourceAdapter } from '../types.ts';
 import hituji from '../../sources/hituji/index.ts';
 import ur from '../../sources/ur/index.ts';
 import oakhouse from '../../sources/oakhouse/index.ts';
+import couverture from '../../sources/couverture/index.ts';
 
-const ALL: readonly SourceAdapter[] = [hituji, ur, oakhouse];
+const ALL: readonly SourceAdapter[] = [hituji, ur, oakhouse, couverture];
 
 type Args = { source: string | null; limit: number | null; noCache: boolean; offline: boolean };
 
@@ -81,6 +82,10 @@ async function crawlSource(adapter: SourceAdapter, args: Args): Promise<SourceHe
   const listings: Listing[] = [];
   const buildIds = new Set<string>();
   const failures: Array<{ url: string; error: string }> = [];
+  // extract 回 null 與「丟出例外」是兩件事：前者多半是「不在收錄範圍」
+  // （例：Oak House 的 sitemap 是全國的，非東京物件會回 null），
+  // 後者才是真的壞掉。混在一起會讓真正的解析錯誤被幾百筆正常跳過淹沒。
+  let skipped = 0;
 
   let done = 0;
   for (const ref of targets) {
@@ -91,14 +96,14 @@ async function crawlSource(adapter: SourceAdapter, args: Args): Promise<SourceHe
       if (raw.buildId !== undefined) buildIds.add(raw.buildId);
       const listing = adapter.extract(raw, ref, ctx);
       if (listing !== null) listings.push(listing);
-      else failures.push({ url: ref.url, error: 'extract 回傳 null' });
+      else skipped += 1;
     } catch (e) {
       failures.push({ url: ref.url, error: e instanceof Error ? e.message : String(e) });
     }
     done += 1;
     if (done % 25 === 0 || done === targets.length) {
       const pct = ((done / targets.length) * 100).toFixed(0);
-      process.stdout.write(`\r  抓取進度 ${done}/${targets.length} (${pct}%)  成功 ${listings.length}  失敗 ${failures.length}   `);
+      process.stdout.write(`\r  抓取進度 ${done}/${targets.length} (${pct}%)  收錄 ${listings.length}  跳過 ${skipped}  錯誤 ${failures.length}   `);
     }
   }
   process.stdout.write('\n');
@@ -128,8 +133,9 @@ async function crawlSource(adapter: SourceAdapter, args: Args): Promise<SourceHe
   console.log(args.offline
     ? `  ✔ ${listings.length} 棟 / ${units} 間房（全部來自本機原始檔，0 次網路請求）`
     : `  ✔ ${listings.length} 棟 / ${units} 間房；HTTP ${fetcher.stats.requests} 次（304 快取命中 ${fetcher.stats.notModified}）`);
+  if (skipped > 0) console.log(`  · ${skipped} 筆不在收錄範圍（非東京或非房源頁），已跳過`);
   if (failures.length > 0) {
-    console.log(`  ⚠️ ${failures.length} 筆失敗，前 3 筆：`);
+    console.log(`  ⚠️ ${failures.length} 筆真的出錯，前 3 筆：`);
     for (const f of failures.slice(0, 3)) console.log(`     ${f.url} — ${f.error}`);
   }
 

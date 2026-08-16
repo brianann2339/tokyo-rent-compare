@@ -20,7 +20,7 @@ import type { Listing, Unit } from '../../../packages/schema/src/model.ts';
 import type { Field, Yen } from '../../../packages/schema/src/field.ts';
 import { monthlyCost, initialCash, initialSunk } from '../../../packages/cost-model/src/index.ts';
 
-const SOURCES = ['hituji', 'ur', 'oakhouse'] as const;
+const SOURCES = ['hituji', 'ur', 'oakhouse', 'couverture'] as const;
 
 const LABEL: Record<string, string> = {
   rent: '賃料', adminFee: '管理費/共益費', utilities: '水電費',
