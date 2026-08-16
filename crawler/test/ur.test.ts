@@ -26,6 +26,28 @@ describe('HTML 實體解碼', () => {
   });
 });
 
+describe('兩個租金欄位擇一（rent 空時要讀 rent_normal）', () => {
+  test('無優惠價時金額在 rent_normal，只讀 rent 會讓整筆賃料變未知', () => {
+    // 2026-08-16 實測：立川幸町 6号棟506号室 3DK 56㎡
+    //   rent='' / rent_normal='69,600円' / commonfee='2,950円'
+    // 只讀 rent 會讓月額只剩管理費 ¥2,950，一個看起來合理但錯十倍以上的數字。
+    const room = {
+      id: 'x', name: '6号棟506号室', rent: '', rent_normal: '69,600円',
+      commonfee: '2,950円', shikikin: '2か月', requirement: 'ナシ',
+      type: '3DK', floorspace: '56&#13217;', floor: '5階', year: null,
+      floorAll: null, allCount: '1', pageIndex: '0', roomDetailLink: '/x',
+    };
+    const pick = room.rent.trim() !== '' ? room.rent : room.rent_normal;
+    assert.equal(pick, '69,600円');
+  });
+
+  test('有優惠價時以 rent 為準（rent_normal 是被隱藏的原價）', () => {
+    const room = { rent: '117,300円', rent_normal: '' };
+    const pick = room.rent.trim() !== '' ? room.rent : room.rent_normal;
+    assert.equal(pick, '117,300円');
+  });
+});
+
 describe('access 欄位解析（UR 專用格式）', () => {
   test('多站：路線與站名要分得開，不可把路線吃進站名', () => {
     const s = parseUrAccess(

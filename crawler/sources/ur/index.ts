@@ -80,7 +80,16 @@ type UrBuilding = {
 };
 
 type UrRoom = {
-  id: string; name: string; rent: string; commonfee: string | null;
+  id: string; name: string; rent: string;
+  /**
+   * UR 有兩個租金欄位。實測（2026-08-16）：
+   *   有優惠價時 → `rent` 有值、`rent_normal` 空、`rent_normal_css=" dn"`（原價被隱藏）
+   *   無優惠價時 → `rent` **空字串**、`rent_normal` 才有值
+   * 只讀 `rent` 會讓後者整筆賃料變成未知，月額只剩管理費——
+   * 立川幸町 3DK 56㎡ 因此顯示成 ¥2,950（實際 69,600 円）。
+   */
+  rent_normal?: string;
+  commonfee: string | null;
   shikikin: string; requirement: string; type: string;
   floorspace: string; floor: string; year: string | null;
   floorAll: string | null; allCount: string; pageIndex: string;
@@ -221,7 +230,10 @@ function buildBuilding(b: UrBuilding, raw: RawDoc): Building {
 }
 
 function buildUnit(buildingId: string, b: UrBuilding, r: UrRoom): Unit {
-  const rentF = moneyField(r.rent, 'rent');
+  // 兩個租金欄位擇一，見 UrRoom.rent_normal 的說明
+  const rentRaw = r.rent.trim() !== '' ? r.rent : (r.rent_normal ?? '');
+  const rentKey = r.rent.trim() !== '' ? 'rent' : 'rent_normal';
+  const rentF = moneyField(rentRaw, rentKey);
   const free = isAllFree(r.requirement);
   const zeroSrc = `requirement=${r.requirement}`;
   const freeYen = (): Field<Yen> => known(yen(0), 'measured', zeroSrc);

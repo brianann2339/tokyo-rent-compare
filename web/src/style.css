@@ -149,3 +149,7 @@ footer p { margin: 0 0 8px; }
 
 .card .ward { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; line-height: 1.3; }
 .card .ward .src { font-size: .7rem; opacity: .75; }
+
+/* 賃料未知時不顯示金額：一個看起來合理的錯數字比留白危險 */
+.price .big .nodata { font-size: 1rem; font-weight: 500; color: var(--muted); }
+.price .parts .nodata { color: var(--warn); font-weight: 600; }

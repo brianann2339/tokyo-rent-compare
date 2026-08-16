@@ -263,13 +263,15 @@ export default function App() {
                   </p>
 
                   <div className="price">
+                    {/* 賃料未知時（tier C）絕不顯示金額——只有管理費的合計會變成
+                        一個看起來合理但完全錯誤的「月額」，那比留白危險得多。 */}
                     <div className="big">
-                      {tier === 1 && <span className="ge">≥</span>}
-                      {yen(monthly)}
-                      <small>／月</small>
+                      {tier === 2
+                        ? <span className="nodata">月額未提供</span>
+                        : <>{tier === 1 && <span className="ge">≥</span>}{yen(monthly)}<small>／月</small></>}
                     </div>
                     <div className="parts">
-                      賃料 {yen(u.rent[i])} ＋ 管理費 {yen(u.admin[i])}
+                      賃料 {u.rent[i] === null ? <b className="nodata">未提供</b> : yen(u.rent[i])} ＋ 管理費 {yen(u.admin[i])}
                       {assumed && <> ＋ <b className="assumed">你的水電假設 {yen(f.assumeUtil)}</b></>}
                     </div>
                     <div className="parts">
