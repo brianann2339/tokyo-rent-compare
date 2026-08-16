@@ -273,8 +273,9 @@ function text(html: string): string {
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/<[^>]+>/g, '｜')
-    .replace(/｜+/g, '｜')
-    .replace(/[ \t\r\n]+/g, ' ');
+    .replace(/[ \t\r\n]+/g, ' ')
+    // 空的分隔（`</td>\n<td>` → `｜ ｜`）要一起收掉，否則「標籤｜值」中間會多出空欄位
+    .replace(/(?:｜ ?)+/g, '｜');
 }
 
 function labelled(t: string, label: string, max = 40): string {

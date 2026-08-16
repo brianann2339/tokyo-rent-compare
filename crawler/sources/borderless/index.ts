@@ -139,13 +139,30 @@ export function parseHouseCode(html: string): string | null {
 }
 
 /**
- * 最寄駅。英文，而且**兩種語序都在用**（同一站不同物件寫法不同）：
- *   A `Roppongi Station, Tokyo-Metro Hibiya/ Toei Oedo Line 4 mins walk.`（站名在前）
- *   B `Toden Arakawa Line- 4minutes walk to Mukaihara Station`（路線在前）
- * 只支援這兩種，格式再變就跳過該行、不硬套——寧可少一個車站，不要標錯站名。
+ * 最寄駅。是各物件自己填的英文自由文字，實測 44 棟東京物件用了**四種語序**：
+ *   A `Kyodo Station,Odakyu Dentetsu Odawara Line,6mins walk.`         站名 → 路線 → 分鐘
+ *   B `Toden Arakawa Line- 4minutes walk to Mukaihara Station`         路線 → 分鐘 → 站名
+ *   C `6-minute walk to JR Yamanote Line Komagome Station`             分鐘 → 路線＋站名
+ *   D `Toei Shinjuku Line　Kikukawa station 6mins walk`                路線＋站名 → 分鐘
+ *
+ * 比對順序有意義：C 以數字開頭，必須排在 B 之前，否則 B 的「路線」會吃掉那個數字。
+ * 四種都不合就跳過該行、不硬套——寧可少一個車站，不要標錯站名。
  */
-const BH_STATION_A = /^(.+?)\s+Station,\s*(.+?)\s+(\d+)\s*min(?:ute)?s?\s*walk/i;
-const BH_STATION_B = /^(.+?)\s*-\s*(\d+)\s*min(?:ute)?s?\s*walk\s+to\s+(.+?)(?:\s+Station)?\.?$/i;
+const BH_STATION_A = /^(?<station>.+?)\s+Station\s*,\s*(?<line>.+?)[\s,]+(?<n>\d+)\s*min(?:ute)?s?\s*walk/i;
+const BH_STATION_C = /^(?<n>\d+)\s*-?\s*min(?:ute)?s?\s*walk\s+to\s+(?<rest>.+)$/i;
+const BH_STATION_B = /^(?<line>.+?)\s*-?\s*(?<n>\d+)\s*min(?:ute)?s?\s*walk\s+to\s+(?<rest>.+)$/i;
+const BH_STATION_D = /^(?<rest>.+?)[\s,]+(?<n>\d+)\s*min(?:ute)?s?\s*walk\.?$/i;
+
+/**
+ * 路線與站名黏在一起時（C／D）的切法：站方一律寫成「…{路線名} Line {站名} Station」，
+ * 所以在最後一個 `Line` 切開。找不到 `Line` 就整段當站名、路線留空，不亂猜。
+ */
+function splitLineStation(rest: string): { line: string; station: string } {
+  const i = rest.toLowerCase().lastIndexOf('line');
+  const clean = (s: string): string => s.replace(/\s*Station\.?$/i, '').replace(/[\s,]+$/, '').trim();
+  if (i < 0) return { line: '', station: clean(rest) };
+  return { line: rest.slice(0, i + 4).trim(), station: clean(rest.slice(i + 4)) };
+}
 
 export function parseBhStations(html: string): readonly Station[] {
   const block = /The closest station<\/p><ul>([\s\S]*?)<\/ul>/.exec(html)?.[1];
@@ -153,21 +170,29 @@ export function parseBhStations(html: string): readonly Station[] {
   const out: Station[] = [];
   const seen = new Set<string>();
   for (const li of block.matchAll(/<li>([\s\S]*?)<\/li>/g)) {
-    const line = plain(li[1] ?? '');
-    if (line === '') continue;
+    const text = plain(li[1] ?? '');
+    if (text === '') continue;
 
-    const a = BH_STATION_A.exec(line);
-    const b = a === null ? BH_STATION_B.exec(line) : null;
-    const station = (a?.[1] ?? b?.[3] ?? '').trim();
-    const lineName = (a?.[2] ?? b?.[1] ?? '').replace(/\s+/g, ' ').trim();
-    const walk = Number(a?.[3] ?? b?.[2] ?? NaN);
-    if (station === '' || seen.has(station) || !Number.isFinite(walk)) continue;
+    const g = (BH_STATION_A.exec(text) ?? BH_STATION_C.exec(text)
+      ?? BH_STATION_B.exec(text) ?? BH_STATION_D.exec(text))?.groups;
+    if (g?.['n'] === undefined) continue;
+    const walk = Number(g['n']);
+    if (!Number.isFinite(walk)) continue;
+
+    const split = g['rest'] === undefined
+      ? { line: (g['line'] ?? '').trim(), station: (g['station'] ?? '').replace(/\s*Station\.?$/i, '').trim() }
+      : g['line'] === undefined
+        ? splitLineStation(g['rest'])
+        : { line: g['line'].trim(), station: g['rest'].replace(/\s*Station\.?$/i, '').trim() };
+
+    const station = split.station;
+    if (station === '' || seen.has(station)) continue;
     seen.add(station);
     out.push({
-      line: lineName,
+      line: split.line.replace(/\s+/g, ' ').replace(/^[-\s,]+/, ''),
       station,
-      walkMinutes: known(walk, 'measured', line),
-      rawText: line,
+      walkMinutes: known(walk, 'measured', text),
+      rawText: text,
     });
   }
   return out;

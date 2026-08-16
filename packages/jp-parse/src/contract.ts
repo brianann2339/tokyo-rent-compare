@@ -19,7 +19,13 @@ export type ContractTypeResult = 'ordinary' | 'fixed_term' | 'unknown';
 
 export function parseContractType(input: string): ContractTypeResult {
   const t = norm(input);
-  if (FIXED_TERM_RE.test(t)) return 'fixed_term';
+  const fixed = FIXED_TERM_RE.exec(t);
+  if (fixed !== null) {
+    // 「定期借家…ではありません」：關鍵字後方緊接否定 → 不是定期借家
+    const after = t.slice(fixed.index + fixed[0].length, fixed.index + fixed[0].length + 20);
+    if (NEGATED_RE.test(after)) return 'ordinary';
+    return 'fixed_term';
+  }
   if (ORDINARY_RE.test(t)) return 'ordinary';
   return 'unknown';
 }
@@ -113,6 +119,13 @@ const MALE_ONLY_RE = /男性(専用|限定|のみ)|male\s*only/i;
 const MIXED_RE = /男女|男性・女性|男性,\s*女性|mixed|co-?ed/i;
 
 export type GenderResult = 'female_only' | 'male_only' | 'mixed' | 'unknown';
+
+/**
+ * 否定句必須先擋掉，否則「定期借家契約ではありません」會被判成 fixed_term——
+ * 判反的後果比判不出來嚴重得多：使用者會以為可以續約的房子不能續約。
+ * （2026-08-16 由 JKK 來源實測發現，JKK 的「定借期限・期間」欄多數就是這個否定句。）
+ */
+const NEGATED_RE = /(?:ではありません|ではない|じゃありません|ではございません|該当しません|not\s+applicable)/;
 
 /** 自由文字用：必須有「専用／限定／のみ」等明確字樣才判定，避免「女性に人気」被誤讀。 */
 export function parseGender(input: string): GenderResult {

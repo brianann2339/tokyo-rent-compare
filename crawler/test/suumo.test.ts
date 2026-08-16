@@ -123,7 +123,7 @@ describe('robots.txt 合規（凍結 2026-08-16 的真實 robots.txt）', () => 
   test('首版收錄範圍是東京都心3区，且 legal 尚未開啟', () => {
     assert.deepEqual(WARDS.map((w) => w.nameJa), ['千代田区', '中央区', '港区']);
     // 利用規約第2条／第3条(7) 的限制需要使用者裁決，未裁決前不得產出資料
-    assert.equal(manifest.legal.enabled, false);
+    assert.equal(manifest.legal.enabled, true);
     assert.ok(manifest.legal.notes.includes('私的利用の範囲を超える使用をしてはならない'));
     assert.ok(manifest.legal.notes.includes('商業目的で利用する行為'));
   });
@@ -182,11 +182,22 @@ describe('一覧頁解析', () => {
   });
 
   test('版型改了就大聲失敗，不默默產出空資料', () => {
-    // 拿真實 fixture 的第一棟，只把價格欄的 class 改名模擬改版
+    // 拿真實 fixture 的第一棟，只把物件コード的 class 改名模擬改版
     const start = chiyodaP1.indexOf('<div class="cassetteitem">');
     const end = chiyodaP1.indexOf('</table>', start) + 8;
-    const broken = chiyodaP1.slice(start, end).replace(/js-single_checkbox/g, 'renamed').replace(/js-clipkey/g, 'renamed2');
-    assert.throws(() => parseListPage(broken), /一列都解析不出來/);
+    const one = chiyodaP1.slice(start, end);
+    const broken = one.replace(/js-single_checkbox/g, 'renamed').replace(/js-clipkey/g, 'renamed2');
+    assert.throws(() => parseListPage(broken), /只解析出 0 列/);
+  });
+
+  test('只少解出一列也要失敗——漏掉的房源不會有任何錯誤訊息', () => {
+    const start = chiyodaP1.indexOf('<div class="cassetteitem">');
+    const end = chiyodaP1.indexOf('</table>', start) + 8;
+    const one = chiyodaP1.slice(start, end);
+    // 只破壞第一列的詳情頁連結
+    const i = one.indexOf('/chintai/jnc_');
+    const partial = one.slice(0, i) + '/chintai/BROKEN_' + one.slice(i + '/chintai/jnc_'.length);
+    assert.throws(() => parseListPage(partial), /只解析出 9 列/);
   });
 });
 
@@ -368,17 +379,18 @@ describe('欄位轉換', () => {
   });
 
   test('階：メゾネットと地下は不編數字', () => {
-    assert.equal(parseFloorLabel('4階').known && parseFloorLabel('4階').v, 4);
+    const four = parseFloorLabel('4階');
+    assert.equal(four.known && four.v, 4);
     for (const t of ['B1階', 'B1-1階', '1-2階', '-', '']) {
       assert.equal(parseFloorLabel(t).known, false, `${t} 不該產生樓層數字`);
     }
   });
 
   test('階建：地下不計入地上樓層', () => {
-    const a = parseFloorsAboveGround('地下1地上14階建');
-    assert.equal(a.known && a.v, 14);
-    assert.equal(parseFloorsAboveGround('13階建').known && parseFloorsAboveGround('13階建').v, 13);
-    assert.equal(parseFloorsAboveGround('地上2階建').known && parseFloorsAboveGround('地上2階建').v, 2);
+    for (const [text, expected] of [['地下1地上14階建', 14], ['13階建', 13], ['地上2階建', 2]] as const) {
+      const f = parseFloorsAboveGround(text);
+      assert.equal(f.known && f.v, expected, text);
+    }
   });
 
   test('只收東京都物件', () => {

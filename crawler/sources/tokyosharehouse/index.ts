@@ -321,14 +321,16 @@ export function genderOfRoom(r: TshRoom, fallback: GenderRestriction): GenderRes
 }
 
 /**
- * 「保証金」欄。實測四種寫法：
- *   `家賃1カ月分 （退去時¥25,000償却）`
- *   `家賃1カ月分 （退去時100％返却）`
- *   `¥50,000 （退去時100％償却）`
- *   `¥44,000`（無括號）
+ * 「保証金」欄。實測五種寫法：
+ *   `家賃1カ月分 （退去時¥25,000償却）`   償却額（＝敷引）直接給
+ *   `家賃1カ月分 （退去時100％返却）`     全額退還 → 敷引 0
+ *   `¥50,000 （退去時100％償却）`         全額不退 → 敷引＝保証金
+ *   `¥80,000 （退去時¥47,000返却）`       給的是**退還額**，敷引要減出來
+ *   `¥44,000`（無括號）                   敷引未知
  *
  * 月數要乘賃料才成金額，賃料未知時一律留未知（不換算）。
- * 「100％返却」＝退去時全額退還 → 敷引為 0，這個 0 有原文依據，是合法的 0。
+ * 括號裡的百分比與減法都是對「原站白紙黑字寫出來的兩個數字」做算術，不是憑空生值，
+ * 所以算式一律寫進 srcText 供稽核。
  */
 export function parseDeposit(
   raw: string,
@@ -359,7 +361,7 @@ export function parseDeposit(
   let nonRefundable: Field<Yen> = notListed(paren === '' ? t : paren);
   if (paren !== '') {
     const pct = /(\d+(?:\.\d+)?)\s*[％%]\s*償却/.exec(paren);
-    const amount = /償却/.test(paren) ? parseMoney(paren.replace(/償却/, '')) : null;
+    const written = parseMoney(paren.replace(/[償返]却/g, ''));
     if (/[％%]\s*返却|全額返却/.test(paren)) {
       nonRefundable = known(yen(0), 'measured', `保証金 ${paren}`);
     } else if (pct?.[1] !== undefined && deposit.known) {
@@ -367,8 +369,13 @@ export function parseDeposit(
         yen(Math.round((Number(pct[1]) / 100) * deposit.v.jpy)), 'measured',
         `保証金 ${paren} × 保証金 ${deposit.v.jpy}円`,
       );
-    } else if (amount !== null && amount.kind === 'amount') {
-      nonRefundable = known(yen(amount.jpy), 'measured', `保証金 ${paren}`);
+    } else if (/償却/.test(paren) && written.kind === 'amount') {
+      nonRefundable = known(yen(written.jpy), 'measured', `保証金 ${paren}`);
+    } else if (/返却/.test(paren) && written.kind === 'amount' && deposit.known
+      && written.jpy <= deposit.v.jpy) {
+      // 給的是退還額，敷引＝保証金 − 退還額。兩個數字都在原文裡，減法把算式留在出處
+      nonRefundable = known(yen(deposit.v.jpy - written.jpy), 'measured',
+        `保証金 ${deposit.v.jpy}円 − ${paren}`);
     }
   }
   return { deposit, nonRefundable };

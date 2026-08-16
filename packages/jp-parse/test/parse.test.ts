@@ -179,6 +179,13 @@ describe('契約條件', () => {
     assert.equal(parseContractType('普通借家契約'), 'ordinary');
     assert.equal(parseContractType('契約期間 2年'), 'unknown');
   });
+  test('否定句不可判反：「定期借家契約ではありません」是普通借家', () => {
+    // 判反比判不出來嚴重：使用者會以為可以續約的房子不能續約
+    assert.equal(parseContractType('定期借家契約ではありません'), 'ordinary');
+    assert.equal(parseContractType('定期借家ではない'), 'ordinary');
+    assert.equal(parseContractType('定期借家契約です'), 'fixed_term');
+  });
+
   test('契約期間：年換算成月', () => {
     assert.equal(parseContractMonths('契約期間 2年'), 24);
     assert.equal(parseContractMonths('契約期間：6ヶ月'), 6);
