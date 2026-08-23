@@ -174,3 +174,52 @@ footer p { margin: 0 0 8px; }
   border-radius: 9px;
 }
 .stats b { font-variant-numeric: tabular-nums; }
+
+/* ── 第二輪：種類／房型／路線／樓層／屋齡篩選器 ── */
+.filters .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.filters .pair label { min-width: 0; }
+/* input 的固有寬度（~170px）會讓 1fr 軌道拒絕縮小、整欄溢出到主內容底下 */
+.filters input, .filters select { min-width: 0; max-width: 100%; }
+.filters { min-width: 0; }
+.filters > * { min-width: 0; }  /* grid item 預設 min-width:auto，內容寬就撐破 260px 欄 */
+.filters fieldset.kind .cb { padding: 2px 0; }
+.layout-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.lchip {
+  font: inherit; font-size: .78rem; padding: 3px 8px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer;
+}
+.lchip.on { background: var(--accent); color: #fff; border-color: transparent; }
+.lchip:hover { border-color: var(--accent); }
+.filters .link { background: none; border: 0; color: var(--accent); font: inherit; font-size: .76rem; padding: 0; cursor: pointer; text-align: left; }
+.filters small.warn { color: var(--warn); font-size: .74rem; }
+.tiers .tools { margin-left: auto; display: flex; gap: 8px; }
+.tiers .tools button {
+  font: inherit; font-size: .8rem; padding: 4px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer;
+}
+.tiers .tools button:hover { border-color: var(--accent); color: var(--accent); }
+.tiers .tools button:disabled { opacity: .5; cursor: default; }
+.notice { font-size: .82rem; color: var(--muted); margin: 0 0 12px; }
+.notice b { color: var(--ink); }
+.card .station .more-st { color: var(--accent); cursor: help; margin-left: 2px; }
+
+/* ── 出租方：我的房子定位 ── */
+.my { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 0 0 16px; background: var(--card); }
+.my h2 { font-size: 1.05rem; margin-bottom: 4px; }
+.my-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; margin: 12px 0; }
+.my-inputs label { display: grid; gap: 4px; font-size: .8rem; color: var(--muted); }
+.my-inputs input, .my-inputs select {
+  font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink);
+}
+.my-inputs .apply {
+  font: inherit; font-size: .82rem; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--accent);
+  background: none; color: var(--accent); cursor: pointer;
+}
+.my-inputs .apply:disabled { opacity: .45; cursor: default; }
+.quart { border-collapse: collapse; font-size: .85rem; margin: 8px 0 12px; }
+.quart th, .quart td { text-align: right; padding: 5px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.quart th:first-child, .quart td:first-child { text-align: left; color: var(--muted); }
+.quart td b { color: var(--warn); }
+.hists { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.hists figure { margin: 0; }
+.hists figcaption { font-size: .74rem; color: var(--muted); margin-top: 2px; }

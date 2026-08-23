@@ -10,6 +10,7 @@ import { parseMoney, parseMoneyRange, monthsToYen } from '../src/money.ts';
 import { parseArea } from '../src/area.ts';
 import { parseWalk, parseStations } from '../src/station.ts';
 import { parseLayout, layoutSizeRank } from '../src/layout.ts';
+import { normalizeBuildingName, buildingMatchKey } from '../src/name.ts';
 import {
   parseContractType, parseContractMonths, parseMinStayMonths,
   parseEarlyTermination, parseYearBuilt, parseGender, parseGenderTags, parseForeignerSignals,
@@ -165,6 +166,33 @@ describe('間取り parseLayout', () => {
   test('UR「1K～2DK」區間 → unparsed（不擅自取一邊）', () => {
     assert.deepEqual(parseLayout('1K～2DK'), { kind: 'unparsed' });
   });
+  test('SUUMO「ワンルーム」與「ワンルーム（1R）」「1ルーム」→ 1R', () => {
+    const r1 = { kind: 'rooms', canonical: '1R', rooms: 1, type: 'R' };
+    assert.deepEqual(parseLayout('ワンルーム'), r1);
+    assert.deepEqual(parseLayout('ワンルーム（1R）'), r1);
+    assert.deepEqual(parseLayout('1ルーム'), r1);
+  });
+  test('「2LDK+S」「2LDK＋S」「2LDK+納戸」「2LDK+WIC」→ 2SLDK（S 併入 type）', () => {
+    const r = { kind: 'rooms', canonical: '2SLDK', rooms: 2, type: 'SLDK' };
+    assert.deepEqual(parseLayout('2LDK+S'), r);
+    assert.deepEqual(parseLayout('2LDK＋S'), r);
+    assert.deepEqual(parseLayout('2LDK+納戸'), r);
+    assert.deepEqual(parseLayout('2LDK+WIC'), r);
+    assert.deepEqual(parseLayout('1K+S'), { kind: 'rooms', canonical: '1SK', rooms: 1, type: 'SK' });
+    assert.deepEqual(parseLayout('2DK+S'), { kind: 'rooms', canonical: '2SDK', rooms: 2, type: 'SDK' });
+  });
+  test('Borderless 英文「Room for 1」「Room for 2」「Room for 3」→ 個室', () => {
+    assert.deepEqual(parseLayout('Room for 1'), { kind: 'sharehouse', canonical: '個室' });
+    assert.deepEqual(parseLayout('Room for 2'), { kind: 'sharehouse', canonical: '個室' });
+    assert.deepEqual(parseLayout('Room for 3'), { kind: 'sharehouse', canonical: '個室' });
+  });
+  test('Social Apartment 英文「1BR」「2BR」仍是 unparsed（BR 與 nLDK 對不上，不可猜）', () => {
+    assert.deepEqual(parseLayout('1BR'), { kind: 'unparsed' });
+    assert.deepEqual(parseLayout('2BR'), { kind: 'unparsed' });
+  });
+  test('TSH「ルームシェア」→ sharehouse', () => {
+    assert.deepEqual(parseLayout('ルームシェア'), { kind: 'sharehouse', canonical: 'ルームシェア' });
+  });
   test('排序分數：1R < 1K < 1DK < 1LDK < 2DK', () => {
     const r = ['1R', '1K', '1DK', '1LDK', '2DK'].map((x) => layoutSizeRank(x));
     assert.ok(r.every((x) => x !== null));
@@ -271,6 +299,28 @@ describe('水電與傢俱旗標', () => {
   });
   test('沒提到傢俱 → null（不知道，不是 false）', () => {
     assert.equal(statesFurnished('鉄筋コンクリート造'), null);
+  });
+});
+
+describe('建物名正規化', () => {
+  test('ひつじ「PLOW ＆ CO.」≡「PLOW&CO.」（全形 ＆、空白、句點）', () => {
+    assert.equal(normalizeBuildingName('PLOW ＆ CO.'), normalizeBuildingName('PLOW&CO.'));
+  });
+  test('「クランテラス 品川」≡「クランテラス品川」', () => {
+    assert.equal(normalizeBuildingName('クランテラス 品川'), normalizeBuildingName('クランテラス品川'));
+  });
+  test('ひつじ「Couverture（クーベルチュール） 中野富士見町」去括號 ≡「couverture中野富士見町」', () => {
+    assert.equal(normalizeBuildingName('Couverture（クーベルチュール） 中野富士見町'), 'couverture中野富士見町');
+  });
+  test('「ソーシャルレジデンス　福生」（全形空白）≡「ソーシャルレジデンス福生」', () => {
+    assert.equal(normalizeBuildingName('ソーシャルレジデンス　福生'), normalizeBuildingName('ソーシャルレジデンス福生'));
+  });
+  test('反例：「オークハウス 荻窪」≠「オークハウス 荻窪2」（不可誤併）', () => {
+    assert.notEqual(normalizeBuildingName('オークハウス 荻窪'), normalizeBuildingName('オークハウス 荻窪2'));
+  });
+  test('buildingMatchKey 以「|」分隔區與正規化名', () => {
+    assert.equal(buildingMatchKey('杉並区', 'X'), '杉並区|x');
+    assert.equal(buildingMatchKey('杉並区', 'オークハウス 荻窪'), '杉並区|オークハウス荻窪');
   });
 });
 

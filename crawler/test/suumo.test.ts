@@ -426,10 +426,11 @@ describe('欄位轉換', () => {
   test('間取り：parseLayout 認得的用 canonical，認不得的保留 SUUMO 原文', () => {
     const vals = new Set(allUnits(extractAll(chiyodaP1, 'sc_chiyoda')).map((u) => (u.layout.known ? u.layout.v : '')));
     assert.ok(vals.has('1DK') && vals.has('1LDK'));
-    // 「ワンルーム」「1SK」不在 nLDK 體系裡，jp-parse 解不出來——
-    // 但那是 SUUMO 的正式標示，保留原文比丟成 unparsed 誠實
+    // 「ワンルーム」是 1R 的別寫，jp-parse 已正規化（2026-08-16）——
+    // 否則 SUUMO 的 9,304 筆「ワンルーム」與其他來源的「1R」在篩選器裡會是兩種房型
     const all = allUnits([...extractAll(chiyodaP1, 'sc_chiyoda'), ...extractAll(chuoP1, 'sc_chuo')]);
-    assert.ok(all.some((u) => u.layout.known && u.layout.v === 'ワンルーム'));
+    assert.ok(all.some((u) => u.layout.known && u.layout.v === '1R'));
+    assert.ok(!all.some((u) => u.layout.known && u.layout.v === 'ワンルーム'));
     assert.ok(all.every((u) => u.layout.known || u.layout.why === 'not_listed_on_page'));
   });
 

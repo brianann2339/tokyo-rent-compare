@@ -555,8 +555,8 @@ function buildUnit(buildingId: string, h: Hint, r: SuumoRow): Unit {
     unitKey: r.bukkenCode,
     sourceUrl: r.detailUrl,
     roomNo: notOffered<string>(),
-    // parseLayout 認不得 SUUMO 也在用的「ワンルーム」「1SK」，
-    // 認得的用它的 canonical，認不得的就用原站原文——那本來就是站方的正式標示
+    // 認得的用 jp-parse 的 canonical（ワンルーム→1R、nLDK+S→nSLDK 已正規化），
+    // 認不得的就用原站原文——那本來就是站方的正式標示，不丟成 unparsed
     layout: r.layoutText === ''
       ? notListed('')
       : known(layout.kind === 'rooms' ? layout.canonical : r.layoutText, 'measured', `間取り ${r.layoutText}`),

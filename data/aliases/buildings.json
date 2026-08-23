@@ -1,0 +1,1178 @@
+{
+ "version": 1,
+ "reviewNote": "候選由 npm run alias:candidates 產生；本檔只收「跨來源房間層命中」且人審通過的組。同來源跨頁（SUUMO 兩個 jnc 同名）依計畫只標記不合併。",
+ "groups": [
+  {
+   "key": "三鷹市|アーバンハウス吉祥寺",
+   "primary": "tokyosharehouse:1712",
+   "members": [
+    "hituji:mitaka/urban-house-kichijoji"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "世田谷区|rtapartment三軒茶屋",
+   "primary": "hituji:setagaya/rt-apartment-sangenjaya",
+   "members": [
+    "tokyosharehouse:3890"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "世田谷区|世田谷machiya",
+   "primary": "hituji:setagaya/setagaya-machiya",
+   "members": [
+    "tokyosharehouse:1627"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "中央区|lovie銀座東",
+   "primary": "leopalace21:57370",
+   "members": [
+    "suumo:sc_chuo/82e2031397e9"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 3 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "中央区|レオネクストシンコーポ2",
+   "primary": "leopalace21:47870",
+   "members": [
+    "suumo:sc_chuo/9d7afacdbd4e"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "中野区|casabianca中野坂上",
+   "primary": "hituji:nakano/casa-bianca-nakano-sakaue",
+   "members": [
+    "tokyosharehouse:180"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "中野区|nakanonno",
+   "primary": "hituji:nakano/naka-nonno",
+   "members": [
+    "tokyosharehouse:1037"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "中野区|sommet中野",
+   "primary": "hituji:nakano/sommet-nakano",
+   "members": [
+    "tokyosharehouse:4199"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "中野区|ナカノサカウエ",
+   "primary": "hituji:nakano/nakano-sakaue",
+   "members": [
+    "tokyosharehouse:1247"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "中野区|中野north",
+   "primary": "hituji:nakano/nakano-north",
+   "members": [
+    "tokyosharehouse:2305"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "中野区|都立de集う",
+   "primary": "hituji:nakano/toritsu-de-tsudou",
+   "members": [
+    "tokyosharehouse:164"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "北区|k&kアーバン上中里",
+   "primary": "tokyosharehouse:2662",
+   "members": [
+    "hituji:kita/k-and-k-urban-kami-nakazato"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "北区|オークハウス赤羽",
+   "primary": "hituji:kita/oak-house-akabane",
+   "members": [
+    "tokyosharehouse:1541"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "北区|シェアハウスjoy赤羽12",
+   "primary": "tokyosharehouse:4310",
+   "members": [
+    "hituji:kita/sharehousejoy-akabanejuni"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "台東区|couri006新御徒町",
+   "primary": "tokyosharehouse:406",
+   "members": [
+    "hituji:taito/couri-006-shin-okachimachi"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "台東区|ウェスタ入谷",
+   "primary": "hituji:taito/share-house-iriya",
+   "members": [
+    "tokyosharehouse:4036"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "台東区|クレイノコナヴィレッジii",
+   "primary": "leopalace21:56009",
+   "members": [
+    "suumo:sc_taito/76d49d69f219"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "台東区|クレイノ根岸セレッソ",
+   "primary": "leopalace21:57331",
+   "members": [
+    "suumo:sc_taito/ec2b819a93fa"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "台東区|メルカート新おかち街",
+   "primary": "hituji:taito/mercato-shin-okachimachi",
+   "members": [
+    "tokyosharehouse:881"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "台東区|レオパレスkiyokawa",
+   "primary": "leopalace21:40605",
+   "members": [
+    "suumo:sc_taito/ce15ca316867"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "台東区|レオパレスキュービクル浅草橋",
+   "primary": "leopalace21:06837",
+   "members": [
+    "suumo:sc_taito/6b8a1a7a73b7"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "台東区|上野プレジール",
+   "primary": "hituji:taito/ueno-plaisir",
+   "members": [
+    "tokyosharehouse:342"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|アルク西小山",
+   "primary": "suumo:sc_shinagawa/1436d83eda84",
+   "members": [
+    "leopalace21:60410"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|クランテラス品川",
+   "primary": "hituji:shinagawa/crann-terrace-shinagawa",
+   "members": [
+    "suumo:sc_shinagawa/6923d980c627",
+    "tokyosharehouse:2195"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+suumo+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 3 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|クレイノ南品川ハイツiii",
+   "primary": "leopalace21:55699",
+   "members": [
+    "suumo:sc_shinagawa/1b61e16a2131"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオネクストかず",
+   "primary": "leopalace21:47426",
+   "members": [
+    "suumo:sc_shinagawa/2e71edf74d6e"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオネクストサニー秋桜",
+   "primary": "suumo:sc_shinagawa/0cc9421ff958",
+   "members": [
+    "leopalace21:45768"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオネクスト貞和",
+   "primary": "leopalace21:55519",
+   "members": [
+    "suumo:sc_shinagawa/cae5fd961bfe"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオパレス5&5",
+   "primary": "leopalace21:04910",
+   "members": [
+    "suumo:sc_shinagawa/de13dc26bc73"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオパレスkurata",
+   "primary": "leopalace21:01875",
+   "members": [
+    "suumo:sc_shinagawa/e382398b8c3b"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオパレスsensuiii",
+   "primary": "leopalace21:32604",
+   "members": [
+    "suumo:sc_shinagawa/185f4e87cc88"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオパレスオブリカーサ",
+   "primary": "leopalace21:40388",
+   "members": [
+    "suumo:sc_shinagawa/c1e1daf3d0d1"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオパレス品川",
+   "primary": "leopalace21:20656",
+   "members": [
+    "suumo:sc_shinagawa/f373cbdf7487"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオパレス大井",
+   "primary": "leopalace21:41840",
+   "members": [
+    "suumo:sc_shinagawa/e49f27ddb819"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオパレス宮前",
+   "primary": "leopalace21:45540",
+   "members": [
+    "suumo:sc_shinagawa/90067e15fd88"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオパレス時田楓館",
+   "primary": "leopalace21:45828",
+   "members": [
+    "suumo:sc_shinagawa/45cef46f7aeb"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオパレス東大井",
+   "primary": "leopalace21:35846",
+   "members": [
+    "suumo:sc_shinagawa/8d8780ce96ed"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|レオパレス長者丸",
+   "primary": "suumo:sc_shinagawa/7c1b99179b32",
+   "members": [
+    "leopalace21:43742"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "品川区|大井machiya",
+   "primary": "hituji:shinagawa/oi-machiya",
+   "members": [
+    "tokyosharehouse:146"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "多摩市|シェアプレイス聖蹟桜ヶ丘",
+   "primary": "hituji:tama/share-place-seiseki-sakuragaoka",
+   "members": [
+    "tokyosharehouse:1943"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "大田区|エチュード多摩川",
+   "primary": "hituji:ota/etude-tamagawa",
+   "members": [
+    "tokyosharehouse:3462"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "大田区|クランテラス久が原",
+   "primary": "tokyosharehouse:1032",
+   "members": [
+    "hituji:ota/crann-terrace-kugahara"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "大田区|プライムコネクトkamata北",
+   "primary": "hituji:ota/prime-connect-kamata-kita",
+   "members": [
+    "tokyosharehouse:3812"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "大田区|ローズガーデン雪谷",
+   "primary": "hituji:ota/rose-garden-yukigaya",
+   "members": [
+    "tokyosharehouse:2830"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "小平市|dormys+花小金井",
+   "primary": "tokyosharehouse:3198",
+   "members": [
+    "hituji:kodaira/dormys-hana-koganei"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "小平市|lykke小平",
+   "primary": "tokyosharehouse:2853",
+   "members": [
+    "hituji:kodaira/lykke-kodaira"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "小金井市|武蔵小金井machiya",
+   "primary": "hituji:koganei/musashi-koganei-machiya",
+   "members": [
+    "tokyosharehouse:1935"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "府中市|will府中",
+   "primary": "hituji:fuchu/will-fuchu",
+   "members": [
+    "tokyosharehouse:1748"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "府中市|西国分寺machiya",
+   "primary": "hituji:fuchu/nishi-kokubunji-machiya",
+   "members": [
+    "tokyosharehouse:2181"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "文京区|lovie文京音羽",
+   "primary": "suumo:sc_bunkyo/11658dff1309",
+   "members": [
+    "leopalace21:57490"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 7 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "文京区|クレイノクラウドiii本郷",
+   "primary": "suumo:sc_bunkyo/da708ee71a74",
+   "members": [
+    "leopalace21:57267"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "文京区|クレイノニューセイワハイツ",
+   "primary": "leopalace21:57886",
+   "members": [
+    "suumo:sc_bunkyo/021879282ff6"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "文京区|レオネクストプラナス白山",
+   "primary": "leopalace21:54286",
+   "members": [
+    "suumo:sc_bunkyo/aae1f3caafed"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "文京区|レオパレスso小石川",
+   "primary": "leopalace21:28057",
+   "members": [
+    "suumo:sc_bunkyo/9c44449106ec"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "文京区|レオパレスクロスウィステリア",
+   "primary": "leopalace21:37226",
+   "members": [
+    "suumo:sc_bunkyo/625e01e7c210"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "文京区|レオパレスファラオ後楽安藤坂",
+   "primary": "leopalace21:47749",
+   "members": [
+    "suumo:sc_bunkyo/834d66418796"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "文京区|レオパレス小日向",
+   "primary": "leopalace21:47785",
+   "members": [
+    "suumo:sc_bunkyo/766c4313299e"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "文京区|レオパレス白山第4",
+   "primary": "leopalace21:05481",
+   "members": [
+    "suumo:sc_bunkyo/1bbf703ec41d"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "文京区|レオパレス豊藤",
+   "primary": "suumo:sc_bunkyo/ae2e11b0f186",
+   "members": [
+    "leopalace21:19185"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "新宿区|四谷terrace",
+   "primary": "hituji:shinjuku/yotsuya-terrace",
+   "members": [
+    "tokyosharehouse:1740"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "杉並区|greenshare西荻窪",
+   "primary": "tokyosharehouse:4392",
+   "members": [
+    "hituji:suginami/greenshare-nishi-ogikubo"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "杉並区|voyage荻窪",
+   "primary": "hituji:suginami/voyage-ogikubo",
+   "members": [
+    "tokyosharehouse:2574"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "杉並区|ファーストハウス高井戸杉並",
+   "primary": "tokyosharehouse:3565",
+   "members": [
+    "hituji:suginami/first-house-takaido-suginami"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "板橋区|ナチュレ成増",
+   "primary": "hituji:itabashi/nature-narimasu",
+   "members": [
+    "tokyosharehouse:732"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "板橋区|ハローライフ中板橋",
+   "primary": "hituji:itabashi/hello-life-naka-itabashi",
+   "members": [
+    "tokyosharehouse:2024"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "板橋区|息吹noie",
+   "primary": "hituji:itabashi/ibuki-no-ie",
+   "members": [
+    "tokyosharehouse:483"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "武蔵野市|comeonup吉祥寺",
+   "primary": "tokyosharehouse:43",
+   "members": [
+    "hituji:musashino/come-on-up-kichijoji"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "江戸川区|comeonup北小岩",
+   "primary": "tokyosharehouse:4332",
+   "members": [
+    "hituji:edogawa/come-on-up-kitakoiwa"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "江戸川区|freshroom新小岩",
+   "primary": "hituji:edogawa/freshroom-shin-koiwa",
+   "members": [
+    "tokyosharehouse:3369"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "江戸川区|絆家シェアハウスcanvas葛西",
+   "primary": "hituji:edogawa/kizuna-ya-share-house-canvas-kasai",
+   "members": [
+    "tokyosharehouse:2622"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "江戸川区|絆家シェアハウスcentoanni葛西",
+   "primary": "hituji:edogawa/kizunaya-sharehouse-cento-anni-kasai",
+   "members": [
+    "tokyosharehouse:4409"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "江東区|レオネクストkikushi",
+   "primary": "suumo:sc_koto/73be7791bc05",
+   "members": [
+    "leopalace21:44630"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "江東区|レオパレスエスト砂町",
+   "primary": "leopalace21:45801",
+   "members": [
+    "suumo:sc_koto/0781770158be"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "江東区|レオパレスセイント東砂",
+   "primary": "suumo:sc_koto/6b9acbd5702c",
+   "members": [
+    "leopalace21:37156"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "江東区|レオパレスベレオm",
+   "primary": "suumo:sc_koto/296dcc8aaebc",
+   "members": [
+    "leopalace21:38701"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 5 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "江東区|住吉錦糸町fine",
+   "primary": "hituji:koto/sumiyoshi-kinshicho-fine",
+   "members": [
+    "tokyosharehouse:1933"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "江東区|絆家シェアハウスsumika住吉",
+   "primary": "hituji:koto/kizunaya-sharehouse-sumika-sumiyoshi",
+   "members": [
+    "tokyosharehouse:4362"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "渋谷区|couverture代々木公園",
+   "primary": "hituji:shibuya/couverture-yoyogi-koen",
+   "members": [
+    "tokyosharehouse:3991"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "渋谷区|freshsharejingumae",
+   "primary": "hituji:shibuya/fresh-share-jingumae",
+   "members": [
+    "tokyosharehouse:1333"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "渋谷区|クレイノkeyakiii",
+   "primary": "leopalace21:57177",
+   "members": [
+    "suumo:sc_shibuya/bb7ccf39a097"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "渋谷区|クレイノビューテラス恵比寿",
+   "primary": "leopalace21:55663",
+   "members": [
+    "suumo:sc_shibuya/de9b32547418",
+    "suumo:sc_shibuya/34628ea30249"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "渋谷区|クレイノ笹塚南山",
+   "primary": "suumo:sc_shibuya/d71a666d22ec",
+   "members": [
+    "leopalace21:56441"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "渋谷区|レオネクスト代官山",
+   "primary": "suumo:sc_shibuya/01132bbdeddf",
+   "members": [
+    "leopalace21:54686"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "渋谷区|レオネクスト南新宿",
+   "primary": "suumo:sc_shibuya/f8a4d4f65a9c",
+   "members": [
+    "leopalace21:54282"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "渋谷区|レオパレスウエスト",
+   "primary": "leopalace21:42666",
+   "members": [
+    "suumo:sc_shibuya/e1b0af8f92ef"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "渋谷区|レオパレスクレスト笹塚",
+   "primary": "suumo:sc_shibuya/2e29cf558ecb",
+   "members": [
+    "leopalace21:24375"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "渋谷区|レオパレス宇田川町マンション",
+   "primary": "suumo:sc_shibuya/91c4c54a27b5",
+   "members": [
+    "leopalace21:15938"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 3 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "港区|lovie麻布十番",
+   "primary": "suumo:sc_minato/da0d5ff3e8f5",
+   "members": [
+    "leopalace21:57371"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 5 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "港区|サンテ南青山",
+   "primary": "hituji:minato/sante-minami-aoyama",
+   "members": [
+    "tokyosharehouse:4436"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "港区|レオネクストシルビー赤坂",
+   "primary": "suumo:sc_minato/bd7a795a63dd",
+   "members": [
+    "leopalace21:55430"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "港区|レオパレスflat浜松町",
+   "primary": "suumo:sc_minato/fb03c114b1cc",
+   "members": [
+    "leopalace21:21625"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 6 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "港区|レオパレス三ヶ田",
+   "primary": "suumo:sc_minato/c4efd2bc2684",
+   "members": [
+    "leopalace21:46558"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "目黒区|オーパス渋谷池尻",
+   "primary": "hituji:meguro/opus-shibuya-ikejiri",
+   "members": [
+    "tokyosharehouse:1533"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "目黒区|クレイノアオキハイツ",
+   "primary": "suumo:sc_meguro/a2d8f34cba0f",
+   "members": [
+    "leopalace21:58864"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "目黒区|フリープラン武蔵小山",
+   "primary": "hituji:meguro/free-plan-musashi-koyama",
+   "members": [
+    "tokyosharehouse:1823"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "目黒区|モエ都立大学",
+   "primary": "hituji:meguro/moe-toritsu-daigaku",
+   "members": [
+    "tokyosharehouse:3950"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "目黒区|リバーサイドテラス青葉代官山",
+   "primary": "hituji:meguro/river-side-terrace-aoba-daikan-yama",
+   "members": [
+    "tokyosharehouse:1045"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "目黒区|レオネクストアメニティー清水",
+   "primary": "suumo:sc_meguro/6ff44dc07a4e",
+   "members": [
+    "leopalace21:51903"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "目黒区|レオネクストマリオン目黒",
+   "primary": "leopalace21:54390",
+   "members": [
+    "suumo:sc_meguro/f23c4c60e33b"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "目黒区|レオパレス桜",
+   "primary": "suumo:sc_meguro/d5770d00a42c",
+   "members": [
+    "leopalace21:39771"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "目黒区|レオパレス祐天寺",
+   "primary": "leopalace21:00216",
+   "members": [
+    "suumo:sc_meguro/dd74d2295f3c"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "目黒区|レオパレス駒場東大前",
+   "primary": "suumo:sc_meguro/d4f7832a2342",
+   "members": [
+    "leopalace21:14625"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "目黒区|都立大学tipetta",
+   "primary": "hituji:meguro/toritsu-daigaku-tipetta",
+   "members": [
+    "tokyosharehouse:1893"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "荒川区|&ガレージ日比谷line南千住",
+   "primary": "hituji:arakawa/and-garage-hibiya-line-minamisenjyu",
+   "members": [
+    "tokyosharehouse:4226"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "荒川区|シェアハウスひだまり南千住",
+   "primary": "hituji:arakawa/share-house-hidamari-minami-senju",
+   "members": [
+    "tokyosharehouse:4262"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "荒川区|東京コミュ+",
+   "primary": "hituji:arakawa/tokyo-commu",
+   "members": [
+    "tokyosharehouse:318"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "葛飾区|casadekei亀有",
+   "primary": "hituji:katsushika/casa-de-kei-kameari",
+   "members": [
+    "tokyosharehouse:98"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "葛飾区|cozyhouse高砂",
+   "primary": "tokyosharehouse:4414",
+   "members": [
+    "hituji:katsushika/cozy-house-takasago"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "葛飾区|クノール葛飾堀切綾瀬",
+   "primary": "hituji:katsushika/kunoru-katushikahorikiriayase",
+   "members": [
+    "tokyosharehouse:4510"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "葛飾区|ドミンゴ綾瀬",
+   "primary": "hituji:katsushika/do-min-go-ayase",
+   "members": [
+    "tokyosharehouse:695"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "調布市|arden調布",
+   "primary": "hituji:chofu/arden-chofu",
+   "members": [
+    "tokyosharehouse:2272"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "調布市|greenshare調布+garden",
+   "primary": "tokyosharehouse:4240",
+   "members": [
+    "hituji:chofu/green-share-chofu-garden"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|couverture巣鴨",
+   "primary": "tokyosharehouse:1821",
+   "members": [
+    "hituji:toshima/couverture-sugamo"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|オークハウス北大塚2",
+   "primary": "hituji:toshima/oak-house-kita-otsuka-2",
+   "members": [
+    "tokyosharehouse:1551"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|クレイノルーチェ",
+   "primary": "leopalace21:56414",
+   "members": [
+    "suumo:sc_toshima/7407524a392c"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|メイト池袋",
+   "primary": "tokyosharehouse:700",
+   "members": [
+    "hituji:toshima/mate-ikebukuro"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオネクストトゥネソール",
+   "primary": "leopalace21:53151",
+   "members": [
+    "suumo:sc_toshima/7aaf1dd13f03"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオネクスト要町iii",
+   "primary": "leopalace21:45408",
+   "members": [
+    "suumo:sc_toshima/24ccc64e4a43"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオパレスjizo",
+   "primary": "leopalace21:39281",
+   "members": [
+    "suumo:sc_toshima/40e919f429b3"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオパレスm",
+   "primary": "suumo:sc_toshima/0ab1b33b3000",
+   "members": [
+    "leopalace21:41638"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオパレスtosa",
+   "primary": "suumo:sc_toshima/9809e3bdcf3f",
+   "members": [
+    "leopalace21:01379"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 2 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオパレスオーロラ",
+   "primary": "leopalace21:22426",
+   "members": [
+    "suumo:sc_toshima/f448a636fb80"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオパレススペーシア東池袋",
+   "primary": "suumo:sc_toshima/7c90cddc898d",
+   "members": [
+    "leopalace21:41891"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオパレスリヴェールパーク",
+   "primary": "suumo:sc_toshima/cbbfd611b3e8",
+   "members": [
+    "leopalace21:08162"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオパレスレインボー",
+   "primary": "leopalace21:32374",
+   "members": [
+    "suumo:sc_toshima/93fd2eff183a"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオパレス千早",
+   "primary": "leopalace21:31538",
+   "members": [
+    "suumo:sc_toshima/f7a9a40a835c"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオパレス悠和",
+   "primary": "leopalace21:46059",
+   "members": [
+    "suumo:sc_toshima/9f8972bd5f06"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "豊島区|レオパレス翔",
+   "primary": "leopalace21:46840",
+   "members": [
+    "suumo:sc_toshima/441a1f3605d8"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "leopalace21+suumo；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 4 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "足立区|ソーシャルプレイスaoi",
+   "primary": "tokyosharehouse:3477",
+   "members": [
+    "hituji:adachi/social-place-aoi"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  },
+  {
+   "key": "足立区|北千住parkview",
+   "primary": "hituji:adachi/kita-senju-park-view",
+   "members": [
+    "tokyosharehouse:2239"
+   ],
+   "reviewedAt": "2026-08-23",
+   "note": "hituji+tokyosharehouse；正規化名完全相同＋同区＋共站＋跨來源 (賃料,面積) 相同房 1 間；2026-08-23 主線逐組人審（名稱／区／車站）通過"
+  }
+ ]
+}

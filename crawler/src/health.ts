@@ -64,6 +64,14 @@ export function collectHealth(
     st.applicable += 1;
     if (building.stations.length > 0 && building.stations[0]?.walkMinutes.known === true) st.measured += 1;
     else st.notListed += 1;
+    const sl = get('stationLine');
+    for (const s of building.stations) {
+      sl.applicable += 1;
+      if (s.line !== '') sl.measured += 1; else sl.notListed += 1;
+    }
+    const w = get('ward');
+    w.applicable += 1;
+    if (building.ward === '') w.notListed += 1; else w.measured += 1;
 
     for (const u of us) {
       units += 1;
@@ -93,6 +101,7 @@ export function collectHealth(
       tally(get('residenceCardRequired'), u.foreigner.residenceCardRequired);
       tally(get('japaneseRequired'), u.foreigner.japaneseRequired);
       tally(get('guarantorCompanyRequired'), u.foreigner.guarantorCompanyRequired);
+      tally(get('guarantorPersonRequired'), u.foreigner.guarantorPersonRequired);
 
       const g = get('genderRestriction');
       g.applicable += 1;
@@ -190,15 +199,26 @@ const ZH_LABEL: Partial<Record<AnyFieldId | string, string>> = {
   genderRestriction: '性別限制', ageLimitRaw: '年齡限制', petsAllowed: '可養寵物',
   foreignerWelcomed: '外國人可租', residenceCardRequired: '需在留卡',
   japaneseRequired: '需日語能力', guarantorCompanyRequired: '需保證公司',
-  stations: '車站與步行', yearBuilt: '築年', structure: '構造', totalUnits: '總戶數',
+  guarantorPersonRequired: '需連帶保證人',
+  stations: '車站與步行', stationLine: '車站路線名', ward: '行政區',
+  yearBuilt: '築年', structure: '構造', totalUnits: '總戶數',
   sourceUpdatedAt: '來源更新日',
 };
 
-export function renderMarkdown(healths: readonly SourceHealth[], alerts: Record<string, readonly Alert[]>): string {
+/** 合併報告用：每來源最後執行時間（已格式化）與是否陳舊。 */
+export type SourceNote = { readonly lastRunAt: string; readonly stale: boolean };
+
+export function renderMarkdown(
+  healths: readonly SourceHealth[],
+  alerts: Record<string, readonly Alert[]>,
+  notes: Record<string, SourceNote> = {},
+): string {
   const lines: string[] = ['# 資料健康報告', ''];
   for (const h of healths) {
-    lines.push(`## ${h.sourceId}`, '');
+    const n = notes[h.sourceId];
+    lines.push(`## ${h.sourceId}${n?.stale === true ? ' ⚠️ 陳舊' : ''}`, '');
     lines.push(`- 執行時間：${h.runAt}`);
+    if (n !== undefined) lines.push(`- 此來源最後執行於 ${n.lastRunAt}`);
     lines.push(`- 建物 ${h.buildings} 棟 / 房間 ${h.units} 間`);
     lines.push(`- robots.txt sha256：\`${h.robotsSha256.slice(0, 16)}…\`${h.robotsChanged ? ' **⚠️ 已變動**' : ''}`);
     if (h.buildIds.length > 0) lines.push(`- 來源 buildId：${h.buildIds.map((b) => `\`${b}\``).join(', ')}`);

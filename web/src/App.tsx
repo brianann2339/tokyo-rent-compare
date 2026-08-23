@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   loadWire, loadProv, query, queryToFilters, filtersToQuery, yen,
-  GENDER, type Wire, type Filters, type Prov,
+  buildingStations, lineBuildingCounts, kindGroup, monthlyWithAssumption,
+  GENDER, type Wire, type Filters, type Prov, type MyProperty,
 } from './data.ts';
+import { summary, percentileRank, sortedAsc } from './stats.ts';
+import { rowsToCsv, csvFileName, downloadCsv } from './csv.ts';
+import { Histogram } from './Histogram.tsx';
+import { layoutSizeRank } from '../../packages/jp-parse/src/layout.ts';
 
 const GENDER_ZH: Record<string, string> = {
   unknown: '未提供', mixed: '男女皆可', female_only: '女性專用', male_only: '男性專用',
 };
 const UTIL_ZH = ['未提供', '含水電', '水電另計'];
+const KIND_ZH: Record<string, string> = {
+  unknown: '種類未知', apartment: '一般賃貸', sharehouse: '共居・個室', social: '共居・Social', dormitory: '共居・多人房',
+};
 /**
  * 來源顯示名直接從資料的 dict.sourceMeta 讀（由各來源的 manifest.nameZh 產生），
  * 不在 UI 維護硬編碼對照表——否則每加一個來源就要記得改這裡，漏改會顯示成 id。
@@ -27,6 +35,8 @@ const WHY_ZH: Record<string, string> = {
   unparsed: '解析失敗（有文字但讀不出來）',
   conflicting: '多處資料互相矛盾，不予採用',
 };
+/** 路線下拉：前 40 條常用線直接列，其餘收進「更多」 */
+const TOP_LINES = 40;
 
 function srcName(dict: Wire['dict'], srcIdx: number): string {
   const id = dict.sources[srcIdx] ?? '';
@@ -45,6 +55,24 @@ function useHashFilters(): [Filters, (f: Filters) => void] {
 
 function Chip({ tone, children }: { tone?: 'good' | 'warn' | 'flat'; children: React.ReactNode }) {
   return <span className={`chip ${tone ?? 'flat'}`}>{children}</span>;
+}
+
+/** 稀疏屬性標籤：只顯示來源「有寫」的，沒寫的不顯示也不暗示沒有。 */
+function flagChips(w: Wire, flags: number): React.ReactNode[] {
+  const fb = w.meta.flagBits;
+  const has = (k: string): boolean => fb[k] !== undefined && (flags & (fb[k] as number)) !== 0;
+  const out: React.ReactNode[] = [];
+  if (has('petsYes')) out.push(<Chip key="pet" tone="good">可養寵物</Chip>);
+  if (has('petsNo')) out.push(<Chip key="pet">不可養寵物</Chip>);
+  if (has('furnishedYes')) out.push(<Chip key="fur" tone="good">附傢俱</Chip>);
+  if (has('furnishedNo')) out.push(<Chip key="fur">無傢俱</Chip>);
+  if (has('fixedTerm')) out.push(<Chip key="ct" tone="warn">定期借家（不可續約）</Chip>);
+  if (has('ordinary')) out.push(<Chip key="ct">普通借家</Chip>);
+  if (has('minStayKnown')) out.push(<Chip key="ms" tone="warn">有最短居住期間</Chip>);
+  if (has('ageLimitKnown')) out.push(<Chip key="age" tone="warn">有年齡限制</Chip>);
+  if (has('guarantorPersonYes')) out.push(<Chip key="gp" tone="warn">需連帶保證人</Chip>);
+  if (has('guarantorPersonNo')) out.push(<Chip key="gp" tone="good">免連帶保證人</Chip>);
+  return out;
 }
 
 function Detail({ wire, unitIdx, onClose }: { wire: Wire; unitIdx: number; onClose: () => void }) {
@@ -84,6 +112,43 @@ function Detail({ wire, unitIdx, onClose }: { wire: Wire; unitIdx: number; onClo
               ))}
             </tbody>
           </table>
+          {(p.layoutRaw !== undefined || p.minStayMonths !== undefined || p.ageLimitRaw !== undefined) && (
+            <>
+              <h3>其他條件（原文）</h3>
+              <ul>
+                {p.layoutRaw !== undefined && <li>房型原站標示：<code>{p.layoutRaw}</code>（已正規化顯示）</li>}
+                {p.minStayMonths !== undefined && <li>最短居住期間：{p.minStayMonths} 個月</li>}
+                {p.ageLimitRaw !== undefined && <li>年齡限制：<code>{p.ageLimitRaw}</code></li>}
+              </ul>
+            </>
+          )}
+          {p.mergedFrom !== undefined && p.adCount !== undefined && (
+            <>
+              <h3>同一間房的其他刊登（{p.adCount} 家仲介）</h3>
+              <p className="muted">
+                同棟同層、房型・面積・賃料・管理費・敷金・禮金全部相同的刊登視為同一間房，只顯示一次。
+                各家仲介的初期費用可能不同，建議都點開比較。
+              </p>
+              <ul>
+                {p.mergedFrom.map((m) => (
+                  <li key={m.unitKey}><a href={m.url} target="_blank" rel="noreferrer noopener">{m.url} ↗</a></li>
+                ))}
+              </ul>
+            </>
+          )}
+          {p.alsoListed !== undefined && p.alsoListed.length > 0 && (
+            <>
+              <h3>也刊登在其他網站</h3>
+              <ul>
+                {p.alsoListed.map((a) => (
+                  <li key={a.url}>
+                    {wire.dict.sourceMeta[a.src]?.nameZh ?? a.src}：
+                    <a href={a.url} target="_blank" rel="noreferrer noopener">{a.url} ↗</a>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {p.foreignerRaw !== '' && (
             <>
               <h3>外國人承租條件（原文）</h3>
@@ -106,21 +171,141 @@ function Detail({ wire, unitIdx, onClose }: { wire: Wire; unitIdx: number; onClo
   );
 }
 
+/** 「我的房子」面板：出租方把自己的物件放進目前條件的行情裡定位。全部都是使用者輸入。 */
+function MyPropertyPanel(props: {
+  wire: Wire; f: Filters; set: (patch: Partial<Filters>) => void;
+  monthlies: number[]; perM2s: number[];
+}) {
+  const { wire, f, set, monthlies, perM2s } = props;
+  const my: MyProperty = f.my ?? { rent: null, area: null, layout: '', ward: '' };
+  const setMy = (patch: Partial<MyProperty>): void => set({ my: { ...my, ...patch } });
+  const sm = useMemo(() => summary(monthlies), [monthlies]);
+  const sp = useMemo(() => summary(perM2s), [perM2s]);
+  const sortedM = useMemo(() => sortedAsc(monthlies), [monthlies]);
+  const sortedP = useMemo(() => sortedAsc(perM2s), [perM2s]);
+  const myPerM2 = my.rent !== null && my.area !== null && my.area > 0 ? my.rent / my.area : null;
+  const rankM = my.rent !== null ? percentileRank(sortedM, my.rent) : null;
+  const rankP = myPerM2 !== null ? percentileRank(sortedP, myPerM2) : null;
+  const enough = sm.n >= 5;
+  const layouts = wire.dict.layouts;
+
+  return (
+    <section className="my">
+      <h2>我的房子在行情的哪裡？</h2>
+      <p className="muted">
+        輸入你要出租的物件，對照<b>目前篩選條件下</b>的完整可比房源（A 區，n={sm.n}）。
+        這些數字只存在網址裡，不會寫進資料。
+      </p>
+      <div className="my-inputs">
+        <label>預計月額（賃料＋管理費）
+          <input type="number" step={1000} value={my.rent ?? ''} placeholder="例：120000"
+            onChange={(e) => setMy({ rent: e.target.value === '' ? null : Number(e.target.value) })} />
+        </label>
+        <label>面積 ㎡
+          <input type="number" step={0.5} value={my.area ?? ''} placeholder="例：25"
+            onChange={(e) => setMy({ area: e.target.value === '' ? null : Number(e.target.value) })} />
+        </label>
+        <label>房型
+          <select value={my.layout} onChange={(e) => setMy({ layout: e.target.value })}>
+            <option value="">不指定</option>
+            {layouts.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </label>
+        <label>区
+          <select value={my.ward} onChange={(e) => setMy({ ward: e.target.value })}>
+            <option value="">不指定</option>
+            {wire.dict.wards.filter((w) => w !== '').map((w) => <option key={w} value={w}>{w}</option>)}
+          </select>
+        </label>
+        <button type="button" className="apply" disabled={my.ward === '' && my.layout === '' && my.area === null}
+          onClick={() => set({
+            wards: my.ward === '' ? f.wards : [my.ward],
+            layouts: my.layout === '' ? f.layouts : [my.layout],
+            minArea: my.area === null ? f.minArea : Math.round(my.area * 0.8),
+            maxArea: my.area === null ? f.maxArea : Math.round(my.area * 1.2),
+          })}>
+          套用為篩選條件（区・房型・面積 ±20%）
+        </button>
+      </div>
+      {!enough && <p className="muted">樣本不足（完整可比者少於 5 筆），無法定位。放寬條件再試。</p>}
+      {enough && (
+        <div className="my-out">
+          <table className="quart">
+            <thead><tr><th></th><th>p25</th><th>中位數</th><th>p75</th><th>你的房子</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>月額</td>
+                <td>{yen(Math.round(sm.p25 as number))}</td><td>{yen(Math.round(sm.p50 as number))}</td><td>{yen(Math.round(sm.p75 as number))}</td>
+                <td>{my.rent === null ? '—' : <>{yen(my.rent)}（第 <b>{Math.round(rankM as number)}</b> 百分位）</>}</td>
+              </tr>
+              {sp.n >= 5 && (
+                <tr>
+                  <td>每㎡單價</td>
+                  <td>{yen(Math.round(sp.p25 as number))}</td><td>{yen(Math.round(sp.p50 as number))}</td><td>{yen(Math.round(sp.p75 as number))}</td>
+                  <td>{myPerM2 === null ? '—' : <>{yen(Math.round(myPerM2))}（第 <b>{Math.round(rankP as number)}</b> 百分位）</>}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <div className="hists">
+            <figure>
+              <Histogram values={monthlies} marker={my.rent} formatX={(v) => yen(Math.round(v))} title={`月額分佈（n=${sm.n}）`} />
+              <figcaption>月額分佈（n={sm.n}）· 帶＝p10–p90 · 線＝中位數{my.rent !== null && ' · 橘色＝你的房子'}</figcaption>
+            </figure>
+            {sp.n >= 5 && (
+              <figure>
+                <Histogram values={perM2s} marker={myPerM2} formatX={(v) => `${yen(Math.round(v))}/㎡`} title={`每㎡單價分佈（n=${sp.n}）`} />
+                <figcaption>每㎡單價分佈（面積已知 n={sp.n}）</figcaption>
+              </figure>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function App() {
   const [wire, setWire] = useState<Wire | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [f, setF] = useHashFilters();
   const [open, setOpen] = useState<number | null>(null);
   const [limit, setLimit] = useState(60);
+  const [showMy, setShowMy] = useState(false);
+  const [moreLines, setMoreLines] = useState(false);
 
   useEffect(() => {
     void loadWire().then(setWire).catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(() => setLimit(60), [f]);
+  useEffect(() => { if (f.my !== null) setShowMy(true); }, [f.my]);
 
   const result = useMemo(() => (wire === null ? null : query(wire, f)), [wire, f]);
 
-  // 出租方比較競品用：目前條件下的行情中位數。
+  // 路線依棟數排序；車站清單依所選路線過濾
+  const lineOrder = useMemo(() => {
+    if (wire === null) return [];
+    const c = lineBuildingCounts(wire);
+    return wire.dict.lines.map((name, i) => ({ name, n: c[i] as number })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name, 'ja'));
+  }, [wire]);
+  const stationChoices = useMemo(() => {
+    if (wire === null) return [];
+    const li = f.line === '' ? -1 : wire.dict.lines.indexOf(f.line);
+    if (li < 0) return [...wire.dict.stations].filter((s) => s !== '').sort((a, b) => a.localeCompare(b, 'ja'));
+    return wire.dict.pairs.filter(([l]) => l === li).map(([, s]) => wire.dict.stations[s] ?? '').sort((a, b) => a.localeCompare(b, 'ja'));
+  }, [wire, f.line]);
+  const layoutChoices = useMemo(() => {
+    if (wire === null) return [];
+    return [...wire.dict.layouts].sort((a, b) => {
+      const ra = layoutSizeRank(a); const rb = layoutSizeRank(b);
+      if (ra !== null && rb !== null) return ra - rb;
+      if (ra !== null) return -1;
+      if (rb !== null) return 1;
+      return a.localeCompare(b, 'ja');
+    });
+  }, [wire]);
+
+  // 出租方比較競品用：目前條件下的行情。
   // 只計「完整可比」者——把下限值混進統計會把中位數往下拉，
   // 得到一個看似真實其實偏低的行情。
   const stats = useMemo(() => {
@@ -131,27 +316,24 @@ export default function App() {
     for (const r of result.rows) {
       const i = r.i;
       if ((u.monthlyTier[i] as number) !== 0) continue;
-      let m = u.monthlyLower[i] as number;
-      if (f.assumeUtil !== null && u.utilBasis[i] !== 1 && u.util[i] === null) m += f.assumeUtil;
+      const m = monthlyWithAssumption(wire, i, f.assumeUtil);
       monthlies.push(m);
       const a = u.area[i];
       if (a !== null && a !== undefined && a > 0) perM2.push(m / a);
     }
-    const median = (arr: number[]): number | null => {
-      if (arr.length === 0) return null;
-      const s = [...arr].sort((x, y) => x - y);
-      const mid = Math.floor(s.length / 2);
-      return s.length % 2 === 0 ? ((s[mid - 1] as number) + (s[mid] as number)) / 2 : (s[mid] as number);
-    };
-    return { n: monthlies.length, medMonthly: median(monthlies), nArea: perM2.length, medPerM2: median(perM2) };
+    const sm = summary(monthlies);
+    const sp = summary(perM2);
+    return { monthlies, perM2, n: sm.n, medMonthly: sm.p50, nArea: sp.n, medPerM2: sp.p50 };
   }, [wire, result, f.assumeUtil]);
 
   if (err !== null) return <main className="wrap"><h1>東京租屋比價</h1><p className="error">{err}</p></main>;
-  if (wire === null || result === null) return <main className="wrap"><h1>東京租屋比價</h1><p>載入中…</p></main>;
+  if (wire === null || result === null || stats === null) return <main className="wrap"><h1>東京租屋比價</h1><p>載入中…</p></main>;
 
-  const { rows, counts } = result;
+  const { rows, counts, excluded } = result;
   const { b, u, dict, meta } = wire;
   const set = (patch: Partial<Filters>): void => setF({ ...f, ...patch });
+  const thisYear = new Date().getFullYear();
+  const stIdxSel = f.st === '' ? -1 : dict.stations.indexOf(f.st);
 
   // 篩選器在左側欄，捲下去就看不見，但結果數可能已經被砍掉九成——
   // 沒有生效條件的指示，使用者只會覺得「明明有 7,900 間卻只剩幾十筆」。
@@ -160,13 +342,19 @@ export default function App() {
     activeFilters.push({ key, label, clear: () => set(patch) });
   };
   if (f.q !== '') addF('q', `關鍵字「${f.q}」`, { q: '' });
+  if (f.kind !== '') addF('kind', f.kind === 'apt' ? '一般賃貸' : '共居', { kind: '' });
   if (f.wards.length > 0) addF('ward', `區域 ${f.wards.length} 個`, { wards: [] });
   if (f.sources.length > 0) addF('src', `來源 ${f.sources.length} 個`, { sources: [] });
+  if (f.layouts.length > 0) addF('lay', `房型 ${f.layouts.join('・')}`, { layouts: [] });
+  if (f.line !== '') addF('line', `路線 ${f.line}`, { line: '', st: '' });
+  if (f.st !== '') addF('st', `車站 ${f.st}`, { st: '' });
   if (f.maxMonthly !== null) addF('mm', `月額 ≤ ${yen(f.maxMonthly)}`, { maxMonthly: null });
   if (f.maxInitCash !== null) addF('mi', `初期現金 ≤ ${yen(f.maxInitCash)}`, { maxInitCash: null });
   if (f.minArea !== null) addF('ma', `面積 ≥ ${f.minArea}㎡`, { minArea: null });
   if (f.maxArea !== null) addF('mxa', `面積 ≤ ${f.maxArea}㎡`, { maxArea: null });
-  if (f.maxWalk !== null) addF('mw', `步行 ≤ ${f.maxWalk} 分`, { maxWalk: null });
+  if (f.maxWalk !== null) addF('mw', `${f.st !== '' ? `到${f.st}` : '任一站'}步行 ≤ ${f.maxWalk} 分`, { maxWalk: null });
+  if (f.minFloor !== null) addF('fl', `${f.minFloor} 樓以上`, { minFloor: null });
+  if (f.maxAge !== null) addF('age', `屋齡 ≤ ${f.maxAge} 年`, { maxAge: null });
   if (f.gender !== '') addF('g', GENDER_ZH[f.gender] ?? f.gender, { gender: '' });
   if (f.foreignerOnly) addF('fgn', '只看外國人可租', { foreignerOnly: false });
   if (f.noKeyMoney) addF('nk', '零禮金', { noKeyMoney: false });
@@ -176,6 +364,12 @@ export default function App() {
 
   // 結果同時含「含水電」與「水電另計」時要警示——直接比會低估後者
   const mixedBasis = new Set(rows.slice(0, 400).map((r) => u.utilBasis[r.i])).size > 1;
+  const toggleLayout = (l: string): void => {
+    set({ layouts: f.layouts.includes(l) ? f.layouts.filter((x) => x !== l) : [...f.layouts, l] });
+  };
+  const exportCsv = (): void => {
+    downloadCsv(rowsToCsv(wire, rows, { assumeUtil: f.assumeUtil }), csvFileName(rows.length));
+  };
 
   return (
     <div className="app">
@@ -183,7 +377,8 @@ export default function App() {
         <h1>東京租屋比價</h1>
         <p className="sub">
           把分散在各家網站的房源放到同一把尺上比較。資料更新於 {meta.generatedAt.slice(0, 10)}，
-          共 {meta.buildings.toLocaleString()} 棟 / {meta.units.toLocaleString()} 間房。
+          共 {meta.buildings.toLocaleString()} 棟 / {meta.units.toLocaleString()} 間房
+          （已合併 SUUMO 多家仲介重複刊登 {meta.dedup.suumoWithin.removed.toLocaleString()} 筆、跨站重複 {meta.dedup.crossSource.removedUnits} 筆）。
         </p>
       </header>
 
@@ -192,6 +387,15 @@ export default function App() {
           <label>關鍵字
             <input value={f.q} onChange={(e) => set({ q: e.target.value })} placeholder="物件名、車站、區" />
           </label>
+
+          <fieldset className="kind">
+            <legend>種類</legend>
+            {([['', '不限'], ['apt', '一般賃貸'], ['share', '共居（share house）']] as const).map(([v, label]) => (
+              <label key={v} className="cb">
+                <input type="radio" name="kind" checked={f.kind === v} onChange={() => set({ kind: v })} /> {label}
+              </label>
+            ))}
+          </fieldset>
 
           <label>排序依據
             <select value={f.sort} onChange={(e) => set({ sort: e.target.value as Filters['sort'] })}>
@@ -204,6 +408,42 @@ export default function App() {
             </select>
           </label>
 
+          <fieldset>
+            <legend>房型（可複選）</legend>
+            <div className="layout-chips">
+              {layoutChoices.map((l) => (
+                <button key={l} type="button" className={`lchip ${f.layouts.includes(l) ? 'on' : ''}`} onClick={() => toggleLayout(l)}>{l}</button>
+              ))}
+            </div>
+          </fieldset>
+
+          <label>路線
+            <select value={f.line} onChange={(e) => set({ line: e.target.value, st: '' })}>
+              <option value="">不限</option>
+              {lineOrder.slice(0, TOP_LINES).map((l) => <option key={l.name} value={l.name}>{l.name}（{l.n}）</option>)}
+              {(moreLines || (f.line !== '' && lineOrder.slice(0, TOP_LINES).every((l) => l.name !== f.line))) && (
+                <optgroup label="其他路線">
+                  {lineOrder.slice(TOP_LINES).map((l) => <option key={l.name} value={l.name}>{l.name}（{l.n}）</option>)}
+                </optgroup>
+              )}
+            </select>
+            {!moreLines && lineOrder.length > TOP_LINES && (
+              <button type="button" className="link" onClick={() => setMoreLines(true)}>顯示全部 {lineOrder.length} 條路線</button>
+            )}
+          </label>
+          <label>車站
+            <input list="station-list" value={f.st} placeholder={f.line === '' ? '輸入站名' : `${f.line} 上的站`}
+              onChange={(e) => set({ st: e.target.value })} />
+            <datalist id="station-list">
+              {stationChoices.map((s) => <option key={s} value={s} />)}
+            </datalist>
+            {f.st !== '' && stIdxSel < 0 && <small className="warn">資料裡沒有「{f.st}」這個站名</small>}
+          </label>
+          <label>步行分鐘上限{f.st !== '' ? `（到 ${f.st}）` : '（任一站）'}
+            <input type="number" step={1} value={f.maxWalk ?? ''} placeholder="不限"
+              onChange={(e) => set({ maxWalk: e.target.value === '' ? null : Number(e.target.value) })} />
+          </label>
+
           <label>月額上限
             <input type="number" step={5000} value={f.maxMonthly ?? ''} placeholder="不限"
               onChange={(e) => set({ maxMonthly: e.target.value === '' ? null : Number(e.target.value) })} />
@@ -212,18 +452,26 @@ export default function App() {
             <input type="number" step={10000} value={f.maxInitCash ?? ''} placeholder="不限"
               onChange={(e) => set({ maxInitCash: e.target.value === '' ? null : Number(e.target.value) })} />
           </label>
-          <label>面積下限 ㎡
-            <input type="number" step={1} value={f.minArea ?? ''} placeholder="不限"
-              onChange={(e) => set({ minArea: e.target.value === '' ? null : Number(e.target.value) })} />
-          </label>
-          <label>面積上限 ㎡
-            <input type="number" step={1} value={f.maxArea ?? ''} placeholder="不限"
-              onChange={(e) => set({ maxArea: e.target.value === '' ? null : Number(e.target.value) })} />
-          </label>
-          <label>步行分鐘上限
-            <input type="number" step={1} value={f.maxWalk ?? ''} placeholder="不限"
-              onChange={(e) => set({ maxWalk: e.target.value === '' ? null : Number(e.target.value) })} />
-          </label>
+          <div className="pair">
+            <label>面積下限 ㎡
+              <input type="number" step={1} value={f.minArea ?? ''} placeholder="不限"
+                onChange={(e) => set({ minArea: e.target.value === '' ? null : Number(e.target.value) })} />
+            </label>
+            <label>面積上限 ㎡
+              <input type="number" step={1} value={f.maxArea ?? ''} placeholder="不限"
+                onChange={(e) => set({ maxArea: e.target.value === '' ? null : Number(e.target.value) })} />
+            </label>
+          </div>
+          <div className="pair">
+            <label>樓層下限
+              <input type="number" step={1} value={f.minFloor ?? ''} placeholder="不限"
+                onChange={(e) => set({ minFloor: e.target.value === '' ? null : Number(e.target.value) })} />
+            </label>
+            <label>屋齡上限（年）
+              <input type="number" step={1} value={f.maxAge ?? ''} placeholder="不限"
+                onChange={(e) => set({ maxAge: e.target.value === '' ? null : Number(e.target.value) })} />
+            </label>
+          </div>
 
           <label>性別條件
             <select value={f.gender} onChange={(e) => set({ gender: e.target.value })}>
@@ -266,7 +514,7 @@ export default function App() {
           <label>區域
             <select multiple size={8} value={f.wards}
               onChange={(e) => set({ wards: [...e.target.selectedOptions].map((o) => o.value) })}>
-              {dict.wards.map((w) => <option key={w} value={w}>{w}</option>)}
+              {dict.wards.map((w) => <option key={w} value={w}>{w === '' ? '（区未提供）' : w}</option>)}
             </select>
           </label>
 
@@ -291,8 +539,19 @@ export default function App() {
             <span><b>{counts[0]}</b> 筆完整可比</span>
             <span><b>{counts[1]}</b> 筆僅有下限</span>
             <span><b>{counts[2]}</b> 筆資料不足</span>
+            <span className="tools">
+              <button type="button" onClick={() => setShowMy(!showMy)}>{showMy ? '收起' : '我的房子定位'}</button>
+              <button type="button" onClick={exportCsv} disabled={rows.length === 0}>匯出 CSV（{rows.length} 筆）</button>
+            </span>
           </div>
-          {stats !== null && stats.medMonthly !== null && stats.n >= 3 && (
+          {(excluded.kindUnknown > 0 || excluded.ageUnknown > 0 || excluded.floorUnknown > 0) && (
+            <p className="notice">
+              {excluded.kindUnknown > 0 && <>另有 {excluded.kindUnknown.toLocaleString()} 間<b>種類未知</b>未計入（來源沒寫，不代表不符）。</>}
+              {excluded.ageUnknown > 0 && <>另有 {excluded.ageUnknown.toLocaleString()} 間<b>築年未提供</b>未計入；屋齡以瀏覽器當年計，可能跨年差 1。</>}
+              {excluded.floorUnknown > 0 && <>另有 {excluded.floorUnknown.toLocaleString()} 間<b>樓層未提供</b>未計入。</>}
+            </p>
+          )}
+          {stats.medMonthly !== null && stats.n >= 3 && (
             <p className="stats">
               目前條件的行情（僅計 {stats.n} 筆完整可比者）：月額中位數 <b>{yen(Math.round(stats.medMonthly))}</b>
               {stats.medPerM2 !== null && (
@@ -300,6 +559,7 @@ export default function App() {
               )}
             </p>
           )}
+          {showMy && <MyPropertyPanel wire={wire} f={f} set={set} monthlies={stats.monthlies} perM2s={stats.perM2} />}
           {mixedBasis && (
             <p className="banner">
               結果同時包含「月額含水電」與「水電另計」的房源，直接比較會低估後者。
@@ -313,26 +573,37 @@ export default function App() {
             {rows.slice(0, limit).map((r) => {
               const i = r.i;
               const bi = u.bid[i] as number;
-              const stIdx = b.station[bi] as number;
-              const walk = b.walk[bi];
+              const sts = buildingStations(wire, bi);
+              // 有選車站就顯示該站；否則顯示第一站
+              const shown = stIdxSel >= 0 ? (sts.find((s) => s.name === f.st) ?? sts[0]) : sts[0];
               const assumed = f.assumeUtil !== null && u.utilBasis[i] !== 1 && u.util[i] === null;
-              const monthly = (u.monthlyLower[i] as number) + (assumed ? (f.assumeUtil as number) : 0);
+              const monthly = monthlyWithAssumption(wire, i, f.assumeUtil);
               const tier = r.tier;
+              const layoutIdx = u.layout[i] as number;
+              const layout = layoutIdx >= 0 ? dict.layouts[layoutIdx] : null;
+              const kindName = dict.kinds[b.kind[bi] as number] ?? 'unknown';
+              const year = b.yearBuilt[bi];
+              const floor = u.floor[i];
+              const ads = u.ads[i] as number;
+              const alsoMask = b.also[bi] as number;
+              const alsoNames = dict.sources.filter((_, k) => (alsoMask & (1 << k)) !== 0).map((sid) => dict.sourceMeta[sid]?.nameZh ?? sid);
               return (
                 <li key={i} className={`card t${tier}`}>
                   <div className="head">
                     <h3>{b.name[bi]}</h3>
                     <span className="ward">
-                      {dict.wards[b.ward[bi] as number]}
+                      {dict.wards[b.ward[bi] as number] || '区未提供'}
                       <span className="src">{srcName(dict, b.src[bi] as number)}</span>
                     </span>
                   </div>
                   <p className="station">
-                    {stIdx >= 0 ? `${dict.stations[stIdx]}站` : '車站未提供'}
-                    {walk !== null ? ` 徒步 ${walk} 分` : ''}
+                    {shown === undefined ? '車站未提供' : `${shown.name}站${shown.walk !== null ? ` 徒步 ${shown.walk} 分` : ''}`}
+                    {sts.length > 1 && <span className="more-st" title={sts.map((s) => `${s.name}${s.walk !== null ? ` ${s.walk}分` : ''}`).join('／')}> +{sts.length - 1} 站</span>}
                     {u.room[i] !== null ? ` · ${u.room[i]} 號室` : ''}
+                    {floor !== null && floor !== undefined ? ` · ${floor}F` : ''}
                     {u.area[i] !== null ? ` · ${u.area[i]}㎡` : ''}
-                    {u.layout[i] !== null ? ` · ${u.layout[i]}` : ''}
+                    {layout !== null && layout !== undefined ? ` · ${layout}` : ''}
+                    {year !== null && year !== undefined ? ` · ${year}年築（${thisYear - year} 年）` : ''}
                   </p>
 
                   <div className="price">
@@ -356,6 +627,7 @@ export default function App() {
                   </div>
 
                   <div className="chips">
+                    <Chip tone={kindGroup(wire, b.kind[bi] as number) === 'share' ? 'warn' : 'flat'}>{KIND_ZH[kindName] ?? kindName}</Chip>
                     <Chip tone={u.key[i] === 0 ? 'good' : 'flat'}>
                       禮金 {u.key[i] === null ? '未提供' : u.key[i] === 0 ? '零' : yen(u.key[i])}
                     </Chip>
@@ -367,6 +639,9 @@ export default function App() {
                     </Chip>
                     {u.foreigner[i] === 1 && <Chip tone="good">外國人可租</Chip>}
                     <Chip>{GENDER_ZH[GENDER[u.gender[i] as number] ?? 'unknown']}</Chip>
+                    {flagChips(wire, u.flags[i] as number)}
+                    {ads > 1 && <Chip>{ads} 家仲介刊登</Chip>}
+                    {alsoNames.length > 0 && <Chip tone="good">也可在 {alsoNames.join('、')} 申請</Chip>}
                     {tier === 1 && <Chip tone="warn">費用資訊不全</Chip>}
                   </div>
 

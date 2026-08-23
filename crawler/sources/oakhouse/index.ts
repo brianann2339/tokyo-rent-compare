@@ -25,6 +25,16 @@ import { parseArea } from '../../../packages/jp-parse/src/area.ts';
 
 const SITE = 'https://www.oakhouse.jp';
 
+/**
+ * Oak House 有兩條產品線、兩種詳情頁 URL：
+ *   `/apartment/{n}` — 一般公寓線（オークアパートメント○○）
+ *   `/house/{n}`     — share house 本體（オークハウス○○）
+ * 首版只取了前者，結果 480 棟只有 33 間房、且「オークハウス 荻窪」這類主力物件零筆
+ * （2026-08-16 跨來源盤點時由 hituji／Tokyo Sharehouse 上的 15–16 筆「オークハウス○○」發現）。
+ * 兩種頁面的徽章區、最寄り駅、房間表完全同構（WebFetch /house/5 實證），extract 不用分支。
+ */
+const URL_PATTERN = /<loc>(https:\/\/www\.oakhouse\.jp\/(?:apartment|house)\/\d+)<\/loc>/g;
+
 export const manifest: SourceManifest = {
   id: 'oakhouse',
   name: 'オークハウス',
@@ -257,7 +267,7 @@ export const adapter: SourceAdapter = {
 
   async *discover(_ctx: ExtractContext, fetcher: Fetcher): AsyncGenerator<TargetRef> {
     const sm = await fetcher.get(`${SITE}/sitemap-pages.xml`);
-    const urls = [...sm.body.matchAll(/<loc>(https:\/\/www\.oakhouse\.jp\/apartment\/\d+)<\/loc>/g)]
+    const urls = [...sm.body.matchAll(URL_PATTERN)]
       .map((m) => m[1])
       .filter((u): u is string => u !== undefined);
     const seen = new Set<string>();
@@ -282,7 +292,10 @@ export const adapter: SourceAdapter = {
     if (addr === null || addr.prefecture !== '東京都') return null;
     const ward = addr.ward;
 
-    const key = /\/apartment\/(\d+)/.exec(ref.url)?.[1] ?? ref.url;
+    const km = /\/(apartment|house)\/(\d+)/.exec(ref.url);
+    // apartment 維持純數字 id（與既有資料連續）；house 加 h 前綴避免兩條線的 id 撞號
+    const key = km?.[2] === undefined ? ref.url : (km[1] === 'house' ? `h${km[2]}` : km[2]);
+    const isShareHouseLine = km?.[1] === 'house';
     const buildingId = `oakhouse:${key}`;
 
     const structM = /建物概要｜\s*([^｜]{2,30}造[^｜]{0,12})/.exec(t);
@@ -294,7 +307,8 @@ export const adapter: SourceAdapter = {
       sourceKey: key,
       sourceUrl: ref.url,
       name,
-      kind: rooms[0]?.kind ?? 'unknown',
+      // 房間列的 data-type 是第一手；滿室時沒有房間列，退而用產品線判定（/house/ 必為 share house）
+      kind: rooms[0]?.kind ?? (isShareHouseLine ? 'sharehouse' : 'unknown'),
       addressRaw: `${addr.prefecture}${addr.ward}${addr.town}`,
       prefecture: addr.prefecture,
       ward,

@@ -17,7 +17,8 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 
 import { HttpFetcher, DATA_ROOT } from '../http.ts';
-import { collectHealth, compareToBaseline, medianBaseline, renderMarkdown, type SourceHealth } from '../health.ts';
+import { collectHealth, compareToBaseline, medianBaseline, type SourceHealth } from '../health.ts';
+import { writeLatestReport } from './health-report.ts';
 import type { Listing } from '../../../packages/schema/src/model.ts';
 import type { SourceAdapter } from '../types.ts';
 
@@ -154,19 +155,16 @@ async function main(): Promise<void> {
   }
 
   const healths: SourceHealth[] = [];
-  const alertMap: Record<string, ReturnType<typeof compareToBaseline>> = {};
   for (const a of sources) {
     const h = await crawlSource(a, args);
-    if (h !== null) {
-      healths.push(h);
-      alertMap[h.sourceId] = compareToBaseline(h, medianBaseline(await loadHistory(h.sourceId)));
-    }
+    if (h !== null) healths.push(h);
   }
 
+  // latest.md 由 runs/ 內每個來源的最新一檔合併而成，
+  // 單跑一個來源不會把其他來源從報告抹掉。
   if (healths.length > 0) {
-    await mkdir(path.join(DATA_ROOT, 'health'), { recursive: true });
-    await writeFile(path.join(DATA_ROOT, 'health', 'latest.md'), renderMarkdown(healths, alertMap), 'utf8');
-    console.log(`\n📋 健康報告：data/health/latest.md`);
+    const included = await writeLatestReport();
+    console.log(`\n📋 健康報告：data/health/latest.md（收錄 ${included.length} 個來源）`);
   }
 }
 

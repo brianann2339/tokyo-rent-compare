@@ -13,7 +13,7 @@
     "node": ">=23.6.0"
   },
   "scripts": {
-    "test": "node --test --experimental-strip-types packages/*/test/*.test.ts crawler/test/*.test.ts",
+    "test": "node --test --experimental-strip-types packages/*/test/*.test.ts crawler/test/*.test.ts web/test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "crawl": "node crawler/src/cli/crawl.ts",
     "reparse": "node crawler/src/cli/crawl.ts --offline",
@@ -21,7 +21,10 @@
     "verify": "node crawler/src/cli/verify.ts",
     "dev": "npm -w web run dev",
     "build": "npm run build:data && npm -w web run build",
-    "preview": "npm -w web run preview"
+    "preview": "npm -w web run preview",
+    "health": "node crawler/src/cli/health-report.ts",
+    "audit:suumo-dups": "node crawler/src/cli/audit-suumo-dups.ts",
+    "alias:candidates": "node crawler/src/cli/alias-candidates.ts"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

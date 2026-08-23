@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "allowImportingTsExtensions": true,
@@ -9,19 +13,29 @@
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "noEmit": true,
-
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
-
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx"
   },
-  "include": ["packages/**/*.ts", "packages/**/*.tsx", "crawler/**/*.ts", "web/src/**/*.ts", "web/src/**/*.tsx"],
-  "exclude": ["node_modules", "**/node_modules", "web/dist", "data"]
+  "include": [
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "crawler/**/*.ts",
+    "web/src/**/*.ts",
+    "web/src/**/*.tsx",
+    "web/test/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/node_modules",
+    "web/dist",
+    "data"
+  ]
 }
