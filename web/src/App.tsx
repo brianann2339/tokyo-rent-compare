@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   loadWire, loadProv, query, queryToFilters, filtersToQuery, yen,
-  buildingStations, lineBuildingCounts, kindGroup, monthlyWithAssumption,
+  buildingStations, lineBuildingCounts, kindGroup, monthlyWithAssumption, perM2Comparable,
   GENDER, type Wire, type Filters, type Prov, type MyProperty,
 } from './data.ts';
 import { summary, percentileRank, sortedAsc } from './stats.ts';
@@ -37,6 +37,15 @@ const WHY_ZH: Record<string, string> = {
 };
 /** 路線下拉：前 40 條常用線直接列，其餘收進「更多」 */
 const TOP_LINES = 40;
+/** A/B/C 三區的標籤：說的是「目前排序鍵」的完整度，所以文字跟著排序走。 */
+const TIER_LABEL: Record<Filters['sort'], [string, string, string]> = {
+  eff12: ['月額完整可比', '月額僅有下限', '月額資料不足'],
+  monthly: ['月額完整可比', '月額僅有下限', '月額資料不足'],
+  area: ['月額完整可比', '月額僅有下限', '月額資料不足'],
+  initCash: ['初期費用完整', '初期費用僅有下限', '初期費用資料不足'],
+  initSunk: ['初期費用完整', '初期費用僅有下限', '初期費用資料不足'],
+  perM2: ['可算每㎡單價', '單價僅有下限', '算不出單價'],
+};
 
 function srcName(dict: Wire['dict'], srcIdx: number): string {
   const id = dict.sources[srcIdx] ?? '';
@@ -55,6 +64,13 @@ function useHashFilters(): [Filters, (f: Filters) => void] {
 
 function Chip({ tone, children }: { tone?: 'good' | 'warn' | 'flat'; children: React.ReactNode }) {
   return <span className={`chip ${tone ?? 'flat'}`}>{children}</span>;
+}
+
+/** 多人房（床位）——面積是整間共用房，與單人賃料不同基準，所以不算每㎡單價。 */
+function isDorm(w: Wire, i: number): boolean {
+  const li = w.u.layout[i] as number;
+  return (li >= 0 && w.dict.layouts[li] === 'ドミトリー')
+    || w.dict.kinds[w.b.kind[w.u.bid[i] as number] as number] === 'dormitory';
 }
 
 /** 稀疏屬性標籤：只顯示來源「有寫」的，沒寫的不顯示也不暗示沒有。 */
@@ -193,7 +209,7 @@ function MyPropertyPanel(props: {
     <section className="my">
       <h2>我的房子在行情的哪裡？</h2>
       <p className="muted">
-        輸入你要出租的物件，對照<b>目前篩選條件下</b>的完整可比房源（A 區，n={sm.n}）。
+        輸入你要出租的物件，對照<b>目前篩選條件下</b>月額完整可比的房源（n={sm.n}）。
         這些數字只存在網址裡，不會寫進資料。
       </p>
       <div className="my-inputs">
@@ -318,8 +334,7 @@ export default function App() {
       if ((u.monthlyTier[i] as number) !== 0) continue;
       const m = monthlyWithAssumption(wire, i, f.assumeUtil);
       monthlies.push(m);
-      const a = u.area[i];
-      if (a !== null && a !== undefined && a > 0) perM2.push(m / a);
+      if (perM2Comparable(wire, i)) perM2.push(m / (u.area[i] as number));
     }
     const sm = summary(monthlies);
     const sp = summary(perM2);
@@ -536,9 +551,12 @@ export default function App() {
             </div>
           )}
           <div className="tiers">
-            <span><b>{counts[0]}</b> 筆完整可比</span>
-            <span><b>{counts[1]}</b> 筆僅有下限</span>
-            <span><b>{counts[2]}</b> 筆資料不足</span>
+            {/* 三區是「目前排序鍵」的完整度，不是月額的——按每㎡單價排序時，
+                月額已知但算不出單價的房也會落在資料不足區。標籤要講清楚是哪個指標，
+                否則會和下面「行情（僅計 N 筆完整可比者）」的月額口徑對不起來。 */}
+            <span><b>{counts[0]}</b> 筆{TIER_LABEL[f.sort][0]}</span>
+            <span><b>{counts[1]}</b> 筆{TIER_LABEL[f.sort][1]}</span>
+            <span><b>{counts[2]}</b> 筆{TIER_LABEL[f.sort][2]}</span>
             <span className="tools">
               <button type="button" onClick={() => setShowMy(!showMy)}>{showMy ? '收起' : '我的房子定位'}</button>
               <button type="button" onClick={exportCsv} disabled={rows.length === 0}>匯出 CSV（{rows.length} 筆）</button>
@@ -553,9 +571,10 @@ export default function App() {
           )}
           {stats.medMonthly !== null && stats.n >= 3 && (
             <p className="stats">
-              目前條件的行情（僅計 {stats.n} 筆完整可比者）：月額中位數 <b>{yen(Math.round(stats.medMonthly))}</b>
+              目前條件的行情（僅計 {stats.n} 筆月額完整可比者）：月額中位數 <b>{yen(Math.round(stats.medMonthly))}</b>
               {stats.medPerM2 !== null && (
-                <>　·　每㎡單價中位數 <b>{yen(Math.round(stats.medPerM2))}／㎡</b>（面積已知 {stats.nArea} 筆）</>
+                <>　·　每㎡單價中位數 <b>{yen(Math.round(stats.medPerM2))}／㎡</b>（可算單價 {stats.nArea} 筆，
+                  不含面積未知與多人房）</>
               )}
             </p>
           )}
@@ -579,6 +598,10 @@ export default function App() {
               const assumed = f.assumeUtil !== null && u.utilBasis[i] !== 1 && u.util[i] === null;
               const monthly = monthlyWithAssumption(wire, i, f.assumeUtil);
               const tier = r.tier;
+              // 價格顯示看**月額自己的區**，不是排序用的區。
+              // 按「每㎡單價」排序時，算不出單價的房會被歸到排序的資料不足區——
+              // 但它的月額可能是知道的，拿排序的區去決定要不要顯示金額會把已知的月額藏起來。
+              const mTier = u.monthlyTier[i] as number;
               const layoutIdx = u.layout[i] as number;
               const layout = layoutIdx >= 0 ? dict.layouts[layoutIdx] : null;
               const kindName = dict.kinds[b.kind[bi] as number] ?? 'unknown';
@@ -610,9 +633,9 @@ export default function App() {
                     {/* 賃料未知時（tier C）絕不顯示金額——只有管理費的合計會變成
                         一個看起來合理但完全錯誤的「月額」，那比留白危險得多。 */}
                     <div className="big">
-                      {tier === 2
+                      {mTier === 2
                         ? <span className="nodata">月額未提供</span>
-                        : <>{tier === 1 && <span className="ge">≥</span>}{yen(monthly)}<small>／月</small></>}
+                        : <>{mTier === 1 && <span className="ge">≥</span>}{yen(monthly)}<small>／月</small></>}
                     </div>
                     <div className="parts">
                       賃料 {u.rent[i] === null ? <b className="nodata">未提供</b> : yen(u.rent[i])} ＋ 管理費 {yen(u.admin[i])}
@@ -620,9 +643,9 @@ export default function App() {
                     </div>
                     <div className="parts">
                       初期現金 {yen(u.initCash[i])} · 拿不回來的 {yen(u.initSunk[i])}
-                      {u.area[i] !== null && (u.monthlyTier[i] as number) === 0 && (
-                        <> · 單價 {yen(Math.round(monthly / (u.area[i] as number)))}／㎡</>
-                      )}
+                      {mTier === 0 && (perM2Comparable(wire, i)
+                        ? <> · 單價 {yen(Math.round(monthly / (u.area[i] as number)))}／㎡</>
+                        : isDorm(wire, i) && <> · <span className="muted">多人房不計每㎡單價（面積是整間共用）</span></>)}
                     </div>
                   </div>
 
@@ -642,7 +665,7 @@ export default function App() {
                     {flagChips(wire, u.flags[i] as number)}
                     {ads > 1 && <Chip>{ads} 家仲介刊登</Chip>}
                     {alsoNames.length > 0 && <Chip tone="good">也可在 {alsoNames.join('、')} 申請</Chip>}
-                    {tier === 1 && <Chip tone="warn">費用資訊不全</Chip>}
+                    {mTier === 1 && <Chip tone="warn">費用資訊不全</Chip>}
                   </div>
 
                   <div className="actions">

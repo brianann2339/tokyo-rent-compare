@@ -258,6 +258,22 @@ export function kindGroup(w: Wire, kindIdx: number): 'apt' | 'share' | 'unknown'
   return 'unknown';
 }
 
+/**
+ * 每㎡單價算不算得出來。
+ *
+ * 多人房（ドミトリー／棟層 kind=dormitory）的「面積」是整間共用房、「賃料」是一個床位——
+ * 兩者不是同一個基準，相除得到的數字沒有意義。2026-08-23 實測 39 間多人房的每㎡單價
+ * 中位數 ¥2,788，個室是 ¥7,767；混在一起排序會讓多人房佔滿「單價最低」的前幾頁，
+ * 出租方看到的行情會被系統性拉低。與「面積未知就算不出單價」是同一種處置：不算，不是算成 0。
+ */
+export function perM2Comparable(w: Wire, i: number): boolean {
+  const area = w.u.area[i];
+  if (area === null || area === undefined || area <= 0) return false;
+  const li = w.u.layout[i] as number;
+  if (li >= 0 && w.dict.layouts[li] === 'ドミトリー') return false;
+  return w.dict.kinds[w.b.kind[w.u.bid[i] as number] as number] !== 'dormitory';
+}
+
 /** 月額（含使用者的水電假設）。假設只在「水電另計或未知、且原站沒給金額」時才加。 */
 export function monthlyWithAssumption(w: Wire, i: number, assumeUtil: number | null): number {
   const { u } = w;
@@ -388,9 +404,10 @@ export function query(w: Wire, f: Filters, now: Date = new Date()): QueryResult 
       case 'area': key = -(area ?? -1); break;
       case 'perM2':
         // 每㎡單價：比較競品的核心指標——直接比月額會被面積差異騙。
-        // 面積未知就算不出單價 → 落入資料不足區，缺值不給排序位置。
-        if (area === null || area === undefined || area <= 0) { tier = 2; key = 0; }
-        else key = monthly / area;
+        // 算不出單價的（面積未知、或多人房的面積與賃料基準不同）落入資料不足區，
+        // 缺值不給排序位置。
+        if (!perM2Comparable(w, i)) { tier = 2; key = 0; }
+        else key = monthly / (area as number);
         break;
       default: key = (u.effMonthly12[i] as number) + (monthly - (u.monthlyLower[i] as number));
     }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   query, queryToFilters, filtersToQuery, DEFAULT_FILTERS, buildingStations, lineBuildingCounts,
-  type Wire, type Filters,
+  perM2Comparable, type Wire, type Filters,
 } from '../src/data.ts';
 
 /**
@@ -110,5 +110,60 @@ describe('URL 往返', () => {
     assert.deepEqual(back.my, { rent: null, area: 25, layout: '', ward: '新宿区' });
     assert.equal(back.kind, '');
     assert.equal(back.sort, 'eff12');
+  });
+});
+
+describe('每㎡單價的可比性（多人房不計）', () => {
+  /** 一棟共居三間：個室 20㎡、ドミトリー 25㎡、面積未知的個室 */
+  function dormWire(): Wire {
+    const w = makeWire();
+    w.dict.layouts = ['個室', 'ドミトリー'];
+    w.b.kind = [2, 2];               // sharehouse
+    w.u.bid = [0, 0, 0];
+    w.u.layout = [0, 1, 0];
+    w.u.area = [20, 25, null];
+    w.u.floor = [1, 1, 1];
+    w.u.rent = [70000, 33000, 70000];
+    w.u.admin = [0, 0, 0];
+    w.u.monthlyLower = [70000, 33000, 70000];
+    w.u.monthlyTier = [0, 0, 0];
+    w.u.room = [null, null, null];
+    w.u.util = [null, null, null]; w.u.utilBasis = [1, 1, 1];
+    w.u.key = [0, 0, 0]; w.u.dep = [0, 0, 0]; w.u.depNR = [null, null, null];
+    w.u.gender = [1, 1, 1]; w.u.foreigner = [-1, -1, -1]; w.u.vacant = [1, 1, 1];
+    w.u.initCash = [0, 0, 0]; w.u.initCashTier = [0, 0, 0];
+    w.u.initSunk = [0, 0, 0]; w.u.effMonthly12 = [70000, 33000, 70000];
+    w.u.missing = [0, 0, 0]; w.u.flags = [0, 0, 0]; w.u.ads = [1, 1, 1];
+    return w;
+  }
+
+  test('ドミトリー 與面積未知者算不出單價', () => {
+    const w = dormWire();
+    assert.equal(perM2Comparable(w, 0), true);
+    assert.equal(perM2Comparable(w, 1), false, 'ドミトリー 的面積是整間共用房，與單人賃料不同基準');
+    assert.equal(perM2Comparable(w, 2), false, '面積未知');
+  });
+
+  test('棟層 kind=dormitory 一律不計，即使房型寫個室', () => {
+    const w = dormWire();
+    w.b.kind = [4, 4]; // dormitory
+    assert.equal(perM2Comparable(w, 0), false);
+  });
+
+  test('perM2 排序：算不出單價者落到資料不足區，不佔前排', () => {
+    const w = dormWire();
+    const r = query(w, F({ sort: 'perM2' }));
+    assert.deepEqual(r.rows.map((x) => x.i), [0, 1, 2]);
+    assert.deepEqual(r.rows.map((x) => x.tier), [0, 2, 2]);
+    assert.deepEqual(r.counts, [1, 0, 2]);
+    // ¥33,000/25㎡ = ¥1,320 若被算進去會排到第一，這正是要防的
+    assert.equal(r.rows[0]?.key, 70000 / 20);
+  });
+
+  test('其他排序不受影響：多人房照樣參與月額排序', () => {
+    const w = dormWire();
+    const r = query(w, F({ sort: 'monthly' }));
+    assert.deepEqual(r.rows.map((x) => x.i), [1, 0, 2]);
+    assert.deepEqual(r.rows.map((x) => x.tier), [0, 0, 0]);
   });
 });

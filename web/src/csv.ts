@@ -3,7 +3,7 @@
  * 未知值一律空字串——絕不寫 0，0 在這裡是「零円」的意思。
  */
 
-import { buildingStations, monthlyWithAssumption, type Wire, type Row } from './data.ts';
+import { buildingStations, monthlyWithAssumption, perM2Comparable, type Wire, type Row } from './data.ts';
 
 const HEADER = [
   '來源', '物件名', '区', '種類', '房型', '面積㎡', '樓層', '築年',
@@ -44,7 +44,7 @@ export function rowsToCsv(wire: Wire, rows: readonly Row[], opts: { assumeUtil: 
     const monthly = rentKnown ? monthlyWithAssumption(wire, i, opts.assumeUtil) : null;
     const assumed = monthly === null ? 0 : monthly - (u.monthlyLower[i] as number);
     const eff12 = rentKnown ? (u.effMonthly12[i] as number) + assumed : null;
-    const perM2 = monthly !== null && tier === 0 && area !== null && area > 0 ? Math.round(monthly / area) : null;
+    const perM2 = monthly !== null && tier === 0 && perM2Comparable(wire, i) ? Math.round(monthly / (area as number)) : null;
     const sts = buildingStations(wire, bi);
     const st = (k: number): [string, string] => {
       const s = sts[k];
