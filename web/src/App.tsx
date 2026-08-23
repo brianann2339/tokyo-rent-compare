@@ -14,7 +14,7 @@ const GENDER_ZH: Record<string, string> = {
 };
 const UTIL_ZH = ['未提供', '含水電', '水電另計'];
 const KIND_ZH: Record<string, string> = {
-  unknown: '種類未知', apartment: '一般賃貸', sharehouse: '共居・個室', social: '共居・Social', dormitory: '共居・多人房',
+  unknown: '種類未知', apartment: '一般賃貸', sharehouse: '共居 share house', social: '共居 Social Residence', dormitory: '共居 多人房',
 };
 /**
  * 來源顯示名直接從資料的 dict.sourceMeta 讀（由各來源的 manifest.nameZh 產生），

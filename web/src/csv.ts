@@ -17,7 +17,7 @@ const TIER_ZH = ['A', 'B', 'C'];
 const UTIL_ZH = ['', '含', '另計'];
 const GENDER_ZH = ['', '男女皆可', '女性專用', '男性專用'];
 const KIND_ZH: Record<string, string> = {
-  unknown: '', apartment: '一般賃貸', sharehouse: '共居（個室）', social: '共居（Social）', dormitory: '共居（多人房）',
+  unknown: '', apartment: '一般賃貸', sharehouse: '共居 share house', social: '共居 Social Residence', dormitory: '共居 多人房',
 };
 const MISSING_ZH: Record<string, string> = {
   rent: '賃料', adminFee: '管理費', utilities: '水電', keyMoney: '禮金', deposit: '敷金',
