@@ -307,8 +307,13 @@ export const adapter: SourceAdapter = {
       sourceKey: key,
       sourceUrl: ref.url,
       name,
-      // 房間列的 data-type 是第一手；滿室時沒有房間列，退而用產品線判定（/house/ 必為 share house）
-      kind: rooms[0]?.kind ?? (isShareHouseLine ? 'sharehouse' : 'unknown'),
+      // 產品線是第一手事實（`/house/` 全是 share house、`/apartment/` 全是一般賃貸），
+      // 房間列的 data-type 只用來把 share house 再細分成 dormitory。
+      // 反過來以房間為主會出事：data-type 認不得就回 unknown，整棟跟著變 unknown
+      // ——2026-08-23 實測 565 棟裡有 495 棟被這樣標成 unknown。
+      kind: isShareHouseLine
+        ? (rooms.some((r) => r.kind === 'dormitory') ? 'dormitory' : 'sharehouse')
+        : 'apartment',
       addressRaw: `${addr.prefecture}${addr.ward}${addr.town}`,
       prefecture: addr.prefecture,
       ward,

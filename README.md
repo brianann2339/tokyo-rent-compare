@@ -105,20 +105,26 @@ web/                  Vite + React，欄式 JSON + 瀏覽器端掃描
 
 ## 目前收錄（12 個來源）
 
+去重後 **30,863 棟 / 70,531 間**（SUUMO 同棟多家仲介重複刊登合併 4,232 列、跨站同房合併 204 間）。
+「東京空房」是去重後、實際進索引的房間數。
+
 | 來源 | 東京空房 | 取得方式 | 備註 |
 |---|---:|---|---|
-| Leopalace21 | 2,881 | JSON-LD（sitemap 枚舉） | 與站方自報「2,881件」完全吻合 |
-| SUUMO | ~2,600+ | 一覧頁 SSR | 收都心 10 区（使用者指定）；礼金「-」＝未載明不是零 |
-| Tokyo Sharehouse | 897 | SSR 路徑分頁 | 聚合站；`データ更新日` 進鮮度欄位 |
+| SUUMO | 65,326 | 一覧頁 SSR | 收都心 10 区（使用者指定）；同棟 7 元組相同視為同一間房，50 組稽核親自核對 |
+| Leopalace21 | 2,825 | JSON-LD（sitemap 枚舉） | 與 SUUMO 重複的 66 組已人審合併 |
+| Tokyo Sharehouse | 833 | SSR 路徑分頁 | 聚合站；`データ更新日` 進鮮度欄位 |
 | Sakura House | 666 | 真實有頭 Chrome + CDP | Cloudflare 對真瀏覽器透明放行；無任何繞過 |
-| ひつじ不動産 | 545 | RSC payload（`RSC: 1`） | 累積式分頁，一次取最後一頁 |
+| ひつじ不動産 | 516 | RSC payload（`RSC: 1`） | 累積式分頁，一次取最後一頁 |
 | UR 賃貸住宅 | 150 | 官方站自用 JSON API | 礼金・仲介・更新料・保証人全免；rent 空時讀 rent_normal |
+| Oak House | 95 | SSR | `/apartment/` 與 `/house/`（share house）兩條線；敷金礼金保証金仲介全零 |
 | Borderless House | 56 | SSR | 水電網路費有明確金額（少見） |
-| Oak House | 33 | SSR | 敷金礼金保証金仲介全零（明文徽章） |
 | Social Apartment | 22 | SSR | 物件頁不列初期費用金額 → notOffered |
 | Couverture | 19 | 靜態 HTML（map.html） | 全站無礼金/敷金欄位 |
 | Village House | 16 | SSR（sitemap） | 反向成本（違約金/退去清掃/火險）有抓 |
 | JKK 東京 | 7 | session+token POST（Shift_JIS） | 全物件礼金/仲介/更新料なし；庫存少是真實現況 |
+
+⚠️ Oak House 的數字是**可申請房間**：站方列出 2,365 間，其中滿室的不進索引（棟層 `totalUnits` 仍記全數）。
+share house 空室率本來就低，這個差距是真實現況不是漏抓。
 
 不收錄：XROSS HOUSE（robots.txt 禁止搜尋與分頁，無合規列舉路徑）。
 

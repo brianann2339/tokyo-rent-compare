@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-08-23T05:59:39.183Z",
+ "generatedAt": "2026-08-23T06:35:35.894Z",
  "groups": [
   {
    "key": "文京区|lovie文京音羽",
@@ -144,6 +144,51 @@
    ]
   },
   {
+   "key": "多摩市|多摩永山パークビュー",
+   "roomLevelHits": 4,
+   "primary": "oakhouse:h414",
+   "members": [
+    "hituji:tama/tama-nagayama-park-view",
+    "tokyosharehouse:1214"
+   ],
+   "detail": [
+    {
+     "id": "hituji:tama/tama-nagayama-park-view",
+     "source": "hituji",
+     "name": "多摩永山パークビュー",
+     "ward": "多摩市",
+     "stations": [
+      "京王永山"
+     ],
+     "units": 2,
+     "url": "https://www.hituji.jp/comret/info/tokyo/tama/tama-nagayama-park-view"
+    },
+    {
+     "id": "oakhouse:h414",
+     "source": "oakhouse",
+     "name": "多摩永山パークビュー",
+     "ward": "多摩市",
+     "stations": [
+      "京王永山",
+      "小田急永山"
+     ],
+     "units": 4,
+     "url": "https://www.oakhouse.jp/house/414"
+    },
+    {
+     "id": "tokyosharehouse:1214",
+     "source": "tokyosharehouse",
+     "name": "多摩永山パークビュー",
+     "ward": "多摩市",
+     "stations": [
+      "新宿まで"
+     ],
+     "units": 3,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/1214/"
+    }
+   ]
+  },
+  {
    "key": "豊島区|レオパレス翔",
    "roomLevelHits": 4,
    "primary": "leopalace21:46840",
@@ -223,6 +268,55 @@
      ],
      "units": 2,
      "url": "https://tokyosharehouse.com/jpn/house/detail/2195/"
+    }
+   ]
+  },
+  {
+   "key": "北区|オークハウス赤羽",
+   "roomLevelHits": 3,
+   "primary": "oakhouse:h177",
+   "members": [
+    "hituji:kita/oak-house-akabane",
+    "tokyosharehouse:1541"
+   ],
+   "detail": [
+    {
+     "id": "hituji:kita/oak-house-akabane",
+     "source": "hituji",
+     "name": "オークハウス 赤羽",
+     "ward": "北区",
+     "stations": [
+      "志茂"
+     ],
+     "units": 1,
+     "url": "https://www.hituji.jp/comret/info/tokyo/kita/oak-house-akabane"
+    },
+    {
+     "id": "oakhouse:h177",
+     "source": "oakhouse",
+     "name": "オークハウス赤羽",
+     "ward": "北区",
+     "stations": [
+      "志茂",
+      "赤羽",
+      "赤羽",
+      "赤羽",
+      "赤羽",
+      "赤羽"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/177"
+    },
+    {
+     "id": "tokyosharehouse:1541",
+     "source": "tokyosharehouse",
+     "name": "オークハウス赤羽",
+     "ward": "北区",
+     "stations": [
+      "志茂"
+     ],
+     "units": 1,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/1541/"
     }
    ]
   },
@@ -1362,6 +1456,95 @@
    ]
   },
   {
+   "key": "福生市|ソーシャルレジデンス福生",
+   "roomLevelHits": 1,
+   "primary": "oakhouse:h933",
+   "members": [
+    "hituji:fussa/social-residence-fussa",
+    "tokyosharehouse:3164"
+   ],
+   "detail": [
+    {
+     "id": "hituji:fussa/social-residence-fussa",
+     "source": "hituji",
+     "name": "ソーシャルレジデンス 福生",
+     "ward": "福生市",
+     "stations": [
+      "福生"
+     ],
+     "units": 2,
+     "url": "https://www.hituji.jp/comret/info/tokyo/fussa/social-residence-fussa"
+    },
+    {
+     "id": "oakhouse:h933",
+     "source": "oakhouse",
+     "name": "ソーシャルレジデンス福生",
+     "ward": "福生市",
+     "stations": [
+      "福生"
+     ],
+     "units": 5,
+     "url": "https://www.oakhouse.jp/house/933"
+    },
+    {
+     "id": "tokyosharehouse:3164",
+     "source": "tokyosharehouse",
+     "name": "ソーシャルレジデンス福生",
+     "ward": "福生市",
+     "stations": [
+      "福生",
+      "立川"
+     ],
+     "units": 3,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/3164/"
+    }
+   ]
+  },
+  {
+   "key": "練馬区|ソーシャルレジデンス石神井公園",
+   "roomLevelHits": 1,
+   "primary": "tokyosharehouse:3162",
+   "members": [
+    "hituji:nerima/social-residence-shakujii-koen",
+    "oakhouse:h934"
+   ],
+   "detail": [
+    {
+     "id": "hituji:nerima/social-residence-shakujii-koen",
+     "source": "hituji",
+     "name": "ソーシャルレジデンス 石神井公園",
+     "ward": "練馬区",
+     "stations": [
+      "石神井公園"
+     ],
+     "units": 1,
+     "url": "https://www.hituji.jp/comret/info/tokyo/nerima/social-residence-shakujii-koen"
+    },
+    {
+     "id": "oakhouse:h934",
+     "source": "oakhouse",
+     "name": "ソーシャルレジデンス石神井公園",
+     "ward": "練馬区",
+     "stations": [
+      "石神井公園"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/934"
+    },
+    {
+     "id": "tokyosharehouse:3162",
+     "source": "tokyosharehouse",
+     "name": "ソーシャルレジデンス石神井公園",
+     "ward": "練馬区",
+     "stations": [
+      "石神井公園"
+     ],
+     "units": 3,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/3162/"
+    }
+   ]
+  },
+  {
    "key": "足立区|ソーシャルプレイスaoi",
    "roomLevelHits": 1,
    "primary": "tokyosharehouse:3477",
@@ -1686,6 +1869,101 @@
      ],
      "units": 3,
      "url": "https://tokyosharehouse.com/jpn/house/detail/1748/"
+    }
+   ]
+  },
+  {
+   "key": "昭島市|ソーシャルレジデンス拝島",
+   "roomLevelHits": 1,
+   "primary": "oakhouse:h711",
+   "members": [
+    "hituji:akishima/comfort-fussa-haijima",
+    "tokyosharehouse:2129"
+   ],
+   "detail": [
+    {
+     "id": "hituji:akishima/comfort-fussa-haijima",
+     "source": "hituji",
+     "name": "ソーシャルレジデンス 拝島",
+     "ward": "昭島市",
+     "stations": [
+      "拝島"
+     ],
+     "units": 2,
+     "url": "https://www.hituji.jp/comret/info/tokyo/akishima/comfort-fussa-haijima"
+    },
+    {
+     "id": "oakhouse:h711",
+     "source": "oakhouse",
+     "name": "ソーシャルレジデンス拝島",
+     "ward": "昭島市",
+     "stations": [
+      "拝島",
+      "拝島",
+      "拝島",
+      "拝島"
+     ],
+     "units": 3,
+     "url": "https://www.oakhouse.jp/house/711"
+    },
+    {
+     "id": "tokyosharehouse:2129",
+     "source": "tokyosharehouse",
+     "name": "ソーシャルレジデンス拝島",
+     "ward": "昭島市",
+     "stations": [
+      "拝島",
+      "拝島"
+     ],
+     "units": 3,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/2129/"
+    }
+   ]
+  },
+  {
+   "key": "小平市|ソーシャルレジデンス花小金井",
+   "roomLevelHits": 1,
+   "primary": "oakhouse:h808",
+   "members": [
+    "hituji:kodaira/social-residence-hana-koganei",
+    "tokyosharehouse:2162"
+   ],
+   "detail": [
+    {
+     "id": "hituji:kodaira/social-residence-hana-koganei",
+     "source": "hituji",
+     "name": "ソーシャルレジデンス 花小金井",
+     "ward": "小平市",
+     "stations": [
+      "花小金井"
+     ],
+     "units": 2,
+     "url": "https://www.hituji.jp/comret/info/tokyo/kodaira/social-residence-hana-koganei"
+    },
+    {
+     "id": "oakhouse:h808",
+     "source": "oakhouse",
+     "name": "ソーシャルレジデンス花小金井",
+     "ward": "小平市",
+     "stations": [
+      "花小金井",
+      "小平",
+      "小平"
+     ],
+     "units": 2,
+     "url": "https://www.oakhouse.jp/house/808"
+    },
+    {
+     "id": "tokyosharehouse:2162",
+     "source": "tokyosharehouse",
+     "name": "ソーシャルレジデンス花小金井",
+     "ward": "小平市",
+     "stations": [
+      "花小金井",
+      "高田馬場"
+     ],
+     "units": 1,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/2162/"
     }
    ]
   },
@@ -2574,42 +2852,11 @@
    ]
   },
   {
-   "key": "北区|オークハウス赤羽",
-   "roomLevelHits": 1,
-   "primary": "hituji:kita/oak-house-akabane",
-   "members": [
-    "tokyosharehouse:1541"
-   ],
-   "detail": [
-    {
-     "id": "hituji:kita/oak-house-akabane",
-     "source": "hituji",
-     "name": "オークハウス 赤羽",
-     "ward": "北区",
-     "stations": [
-      "志茂"
-     ],
-     "units": 1,
-     "url": "https://www.hituji.jp/comret/info/tokyo/kita/oak-house-akabane"
-    },
-    {
-     "id": "tokyosharehouse:1541",
-     "source": "tokyosharehouse",
-     "name": "オークハウス赤羽",
-     "ward": "北区",
-     "stations": [
-      "志茂"
-     ],
-     "units": 1,
-     "url": "https://tokyosharehouse.com/jpn/house/detail/1541/"
-    }
-   ]
-  },
-  {
    "key": "豊島区|オークハウス北大塚2",
    "roomLevelHits": 1,
    "primary": "hituji:toshima/oak-house-kita-otsuka-2",
    "members": [
+    "oakhouse:h210",
     "tokyosharehouse:1551"
    ],
    "detail": [
@@ -2625,6 +2872,17 @@
      "url": "https://www.hituji.jp/comret/info/tokyo/toshima/oak-house-kita-otsuka-2"
     },
     {
+     "id": "oakhouse:h210",
+     "source": "oakhouse",
+     "name": "オークハウス北大塚2",
+     "ward": "豊島区",
+     "stations": [
+      "大塚(東京)"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/210"
+    },
+    {
      "id": "tokyosharehouse:1551",
      "source": "tokyosharehouse",
      "name": "オークハウス北大塚2",
@@ -2634,6 +2892,42 @@
      ],
      "units": 2,
      "url": "https://tokyosharehouse.com/jpn/house/detail/1551/"
+    }
+   ]
+  },
+  {
+   "key": "台東区|オークハウスakiba",
+   "roomLevelHits": 1,
+   "primary": "oakhouse:h354",
+   "members": [
+    "hituji:taito/oak-house-akiba"
+   ],
+   "detail": [
+    {
+     "id": "hituji:taito/oak-house-akiba",
+     "source": "hituji",
+     "name": "オークハウス AKIBA",
+     "ward": "台東区",
+     "stations": [
+      "秋葉原"
+     ],
+     "units": 1,
+     "url": "https://www.hituji.jp/comret/info/tokyo/taito/oak-house-akiba"
+    },
+    {
+     "id": "oakhouse:h354",
+     "source": "oakhouse",
+     "name": "オークハウスAKIBA",
+     "ward": "台東区",
+     "stations": [
+      "秋葉原",
+      "秋葉原",
+      "秋葉原",
+      "秋葉原",
+      "秋葉原"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/354"
     }
    ]
   },
@@ -2765,6 +3059,51 @@
      ],
      "units": 2,
      "url": "https://tokyosharehouse.com/jpn/house/detail/1823/"
+    }
+   ]
+  },
+  {
+   "key": "板橋区|オークハウス板橋高島平",
+   "roomLevelHits": 1,
+   "primary": "tokyosharehouse:1629",
+   "members": [
+    "hituji:itabashi/oakhouse-shin-takashimadaira",
+    "oakhouse:h5"
+   ],
+   "detail": [
+    {
+     "id": "hituji:itabashi/oakhouse-shin-takashimadaira",
+     "source": "hituji",
+     "name": "オークハウス 板橋高島平",
+     "ward": "板橋区",
+     "stations": [
+      "新高島平"
+     ],
+     "units": 2,
+     "url": "https://www.hituji.jp/comret/info/tokyo/itabashi/oakhouse-shin-takashimadaira"
+    },
+    {
+     "id": "oakhouse:h5",
+     "source": "oakhouse",
+     "name": "オークハウス板橋高島平",
+     "ward": "板橋区",
+     "stations": [
+      "新高島平"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/5"
+    },
+    {
+     "id": "tokyosharehouse:1629",
+     "source": "tokyosharehouse",
+     "name": "オークハウス板橋高島平",
+     "ward": "板橋区",
+     "stations": [
+      "新高島平",
+      "池袋"
+     ],
+     "units": 3,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/1629/"
     }
    ]
   },
@@ -4466,6 +4805,78 @@
    ]
   },
   {
+   "key": "中野区|オークハウス東中野",
+   "roomLevelHits": 1,
+   "primary": "tokyosharehouse:1495",
+   "members": [
+    "oakhouse:h9"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:h9",
+     "source": "oakhouse",
+     "name": "オークハウス東中野",
+     "ward": "中野区",
+     "stations": [
+      "東中野",
+      "東中野",
+      "東中野",
+      "大久保(東京)",
+      "大久保(東京)"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/9"
+    },
+    {
+     "id": "tokyosharehouse:1495",
+     "source": "tokyosharehouse",
+     "name": "オークハウス東中野",
+     "ward": "中野区",
+     "stations": [
+      "東中野"
+     ],
+     "units": 2,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/1495/"
+    }
+   ]
+  },
+  {
+   "key": "世田谷区|オークテラス三軒茶屋",
+   "roomLevelHits": 1,
+   "primary": "tokyosharehouse:3098",
+   "members": [
+    "oakhouse:h913"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:h913",
+     "source": "oakhouse",
+     "name": "オークテラス三軒茶屋",
+     "ward": "世田谷区",
+     "stations": [
+      "三軒茶屋",
+      "三軒茶屋",
+      "下北沢",
+      "下北沢"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/913"
+    },
+    {
+     "id": "tokyosharehouse:3098",
+     "source": "tokyosharehouse",
+     "name": "オークテラス三軒茶屋",
+     "ward": "世田谷区",
+     "stations": [
+      "三軒茶屋",
+      "下北沢"
+     ],
+     "units": 3,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/3098/"
+    }
+   ]
+  },
+  {
    "key": "台東区|ecoz北上野",
    "roomLevelHits": 0,
    "primary": "tokyosharehouse:2231",
@@ -4600,71 +5011,6 @@
      ],
      "units": 2,
      "url": "https://tokyosharehouse.com/jpn/house/detail/2341/"
-    }
-   ]
-  },
-  {
-   "key": "福生市|ソーシャルレジデンス福生",
-   "roomLevelHits": 0,
-   "primary": "tokyosharehouse:3164",
-   "members": [
-    "hituji:fussa/social-residence-fussa"
-   ],
-   "detail": [
-    {
-     "id": "hituji:fussa/social-residence-fussa",
-     "source": "hituji",
-     "name": "ソーシャルレジデンス 福生",
-     "ward": "福生市",
-     "stations": [
-      "福生"
-     ],
-     "units": 2,
-     "url": "https://www.hituji.jp/comret/info/tokyo/fussa/social-residence-fussa"
-    },
-    {
-     "id": "tokyosharehouse:3164",
-     "source": "tokyosharehouse",
-     "name": "ソーシャルレジデンス福生",
-     "ward": "福生市",
-     "stations": [
-      "福生",
-      "立川"
-     ],
-     "units": 3,
-     "url": "https://tokyosharehouse.com/jpn/house/detail/3164/"
-    }
-   ]
-  },
-  {
-   "key": "練馬区|ソーシャルレジデンス石神井公園",
-   "roomLevelHits": 0,
-   "primary": "tokyosharehouse:3162",
-   "members": [
-    "hituji:nerima/social-residence-shakujii-koen"
-   ],
-   "detail": [
-    {
-     "id": "hituji:nerima/social-residence-shakujii-koen",
-     "source": "hituji",
-     "name": "ソーシャルレジデンス 石神井公園",
-     "ward": "練馬区",
-     "stations": [
-      "石神井公園"
-     ],
-     "units": 1,
-     "url": "https://www.hituji.jp/comret/info/tokyo/nerima/social-residence-shakujii-koen"
-    },
-    {
-     "id": "tokyosharehouse:3162",
-     "source": "tokyosharehouse",
-     "name": "ソーシャルレジデンス石神井公園",
-     "ward": "練馬区",
-     "stations": [
-      "石神井公園"
-     ],
-     "units": 3,
-     "url": "https://tokyosharehouse.com/jpn/house/detail/3162/"
     }
    ]
   },
@@ -4838,6 +5184,7 @@
    "roomLevelHits": 0,
    "primary": "hituji:suginami/gran-nakano",
    "members": [
+    "oakhouse:h862",
     "tokyosharehouse:2372"
    ],
    "detail": [
@@ -4851,6 +5198,17 @@
      ],
      "units": 2,
      "url": "https://www.hituji.jp/comret/info/tokyo/suginami/gran-nakano"
+    },
+    {
+     "id": "oakhouse:h862",
+     "source": "oakhouse",
+     "name": "グラン中野",
+     "ward": "杉並区",
+     "stations": [
+      "中野富士見町"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/862"
     },
     {
      "id": "tokyosharehouse:2372",
@@ -5328,6 +5686,38 @@
    ]
   },
   {
+   "key": "杉並区|foro永福町",
+   "roomLevelHits": 0,
+   "primary": "oakhouse:h979",
+   "members": [
+    "hituji:suginami/foro-eifukucho"
+   ],
+   "detail": [
+    {
+     "id": "hituji:suginami/foro-eifukucho",
+     "source": "hituji",
+     "name": "FORO 永福町",
+     "ward": "杉並区",
+     "stations": [
+      "西永福"
+     ],
+     "units": 2,
+     "url": "https://www.hituji.jp/comret/info/tokyo/suginami/foro-eifukucho"
+    },
+    {
+     "id": "oakhouse:h979",
+     "source": "oakhouse",
+     "name": "FORO永福町",
+     "ward": "杉並区",
+     "stations": [
+      "西永福"
+     ],
+     "units": 3,
+     "url": "https://www.oakhouse.jp/house/979"
+    }
+   ]
+  },
+  {
    "key": "調布市|shift調布",
    "roomLevelHits": 0,
    "primary": "tokyosharehouse:3235",
@@ -5524,39 +5914,6 @@
    ]
   },
   {
-   "key": "昭島市|ソーシャルレジデンス拝島",
-   "roomLevelHits": 0,
-   "primary": "tokyosharehouse:2129",
-   "members": [
-    "hituji:akishima/comfort-fussa-haijima"
-   ],
-   "detail": [
-    {
-     "id": "hituji:akishima/comfort-fussa-haijima",
-     "source": "hituji",
-     "name": "ソーシャルレジデンス 拝島",
-     "ward": "昭島市",
-     "stations": [
-      "拝島"
-     ],
-     "units": 2,
-     "url": "https://www.hituji.jp/comret/info/tokyo/akishima/comfort-fussa-haijima"
-    },
-    {
-     "id": "tokyosharehouse:2129",
-     "source": "tokyosharehouse",
-     "name": "ソーシャルレジデンス拝島",
-     "ward": "昭島市",
-     "stations": [
-      "拝島",
-      "拝島"
-     ],
-     "units": 3,
-     "url": "https://tokyosharehouse.com/jpn/house/detail/2129/"
-    }
-   ]
-  },
-  {
    "key": "世田谷区|bellacasa成城",
    "roomLevelHits": 0,
    "primary": "hituji:setagaya/bella-casa-seijo",
@@ -5622,39 +5979,6 @@
    ]
   },
   {
-   "key": "小平市|ソーシャルレジデンス花小金井",
-   "roomLevelHits": 0,
-   "primary": "hituji:kodaira/social-residence-hana-koganei",
-   "members": [
-    "tokyosharehouse:2162"
-   ],
-   "detail": [
-    {
-     "id": "hituji:kodaira/social-residence-hana-koganei",
-     "source": "hituji",
-     "name": "ソーシャルレジデンス 花小金井",
-     "ward": "小平市",
-     "stations": [
-      "花小金井"
-     ],
-     "units": 2,
-     "url": "https://www.hituji.jp/comret/info/tokyo/kodaira/social-residence-hana-koganei"
-    },
-    {
-     "id": "tokyosharehouse:2162",
-     "source": "tokyosharehouse",
-     "name": "ソーシャルレジデンス花小金井",
-     "ward": "小平市",
-     "stations": [
-      "花小金井",
-      "高田馬場"
-     ],
-     "units": 1,
-     "url": "https://tokyosharehouse.com/jpn/house/detail/2162/"
-    }
-   ]
-  },
-  {
    "key": "小平市|アーバンテラス花小金井pedal",
    "roomLevelHits": 0,
    "primary": "tokyosharehouse:2903",
@@ -5689,8 +6013,9 @@
   {
    "key": "大田区|グラン多摩川",
    "roomLevelHits": 0,
-   "primary": "hituji:ota/gran-tamagawa",
+   "primary": "oakhouse:h1029",
    "members": [
+    "hituji:ota/gran-tamagawa",
     "tokyosharehouse:3568"
    ],
    "detail": [
@@ -5704,6 +6029,17 @@
      ],
      "units": 1,
      "url": "https://www.hituji.jp/comret/info/tokyo/ota/gran-tamagawa"
+    },
+    {
+     "id": "oakhouse:h1029",
+     "source": "oakhouse",
+     "name": "グラン多摩川",
+     "ward": "大田区",
+     "stations": [
+      "武蔵新田"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/1029"
     },
     {
      "id": "tokyosharehouse:3568",
@@ -5822,8 +6158,9 @@
   {
    "key": "大田区|カフェrosetokyo",
    "roomLevelHits": 0,
-   "primary": "hituji:ota/cafe-rose-ontakesan",
+   "primary": "oakhouse:h381",
    "members": [
+    "hituji:ota/cafe-rose-ontakesan",
     "tokyosharehouse:3222"
    ],
    "detail": [
@@ -5837,6 +6174,17 @@
      ],
      "units": 1,
      "url": "https://www.hituji.jp/comret/info/tokyo/ota/cafe-rose-ontakesan"
+    },
+    {
+     "id": "oakhouse:h381",
+     "source": "oakhouse",
+     "name": "カフェROSE TOKYO",
+     "ward": "大田区",
+     "stations": [
+      "御嶽山"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/381"
     },
     {
      "id": "tokyosharehouse:3222",
@@ -5885,11 +6233,45 @@
    ]
   },
   {
+   "key": "新宿区|コンパルティア新宿",
+   "roomLevelHits": 0,
+   "primary": "oakhouse:h455",
+   "members": [
+    "hituji:shinjuku/compartir-shinjuku"
+   ],
+   "detail": [
+    {
+     "id": "hituji:shinjuku/compartir-shinjuku",
+     "source": "hituji",
+     "name": "コンパルティア 新宿",
+     "ward": "新宿区",
+     "stations": [
+      "曙橋"
+     ],
+     "units": 2,
+     "url": "https://www.hituji.jp/comret/info/tokyo/shinjuku/compartir-shinjuku"
+    },
+    {
+     "id": "oakhouse:h455",
+     "source": "oakhouse",
+     "name": "コンパルティア新宿",
+     "ward": "新宿区",
+     "stations": [
+      "曙橋",
+      "四谷三丁目"
+     ],
+     "units": 3,
+     "url": "https://www.oakhouse.jp/house/455"
+    }
+   ]
+  },
+  {
    "key": "足立区|プレミア綾瀬",
    "roomLevelHits": 0,
    "primary": "tokyosharehouse:1504",
    "members": [
-    "hituji:adachi/premier-ayase"
+    "hituji:adachi/premier-ayase",
+    "oakhouse:h647"
    ],
    "detail": [
     {
@@ -5902,6 +6284,18 @@
      ],
      "units": 1,
      "url": "https://www.hituji.jp/comret/info/tokyo/adachi/premier-ayase"
+    },
+    {
+     "id": "oakhouse:h647",
+     "source": "oakhouse",
+     "name": "プレミア綾瀬",
+     "ward": "足立区",
+     "stations": [
+      "綾瀬",
+      "綾瀬"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/647"
     },
     {
      "id": "tokyosharehouse:1504",
@@ -6670,6 +7064,50 @@
    ]
   },
   {
+   "key": "新宿区|オークハウス新宿シティビュー",
+   "roomLevelHits": 0,
+   "primary": "tokyosharehouse:1493",
+   "members": [
+    "hituji:shinjuku/sinjuku-city-view",
+    "oakhouse:h384"
+   ],
+   "detail": [
+    {
+     "id": "hituji:shinjuku/sinjuku-city-view",
+     "source": "hituji",
+     "name": "オークハウス 新宿シティビュー",
+     "ward": "新宿区",
+     "stations": [
+      "西新宿五丁目"
+     ],
+     "units": 2,
+     "url": "https://www.hituji.jp/comret/info/tokyo/shinjuku/sinjuku-city-view"
+    },
+    {
+     "id": "oakhouse:h384",
+     "source": "oakhouse",
+     "name": "オークハウス新宿シティビュー",
+     "ward": "新宿区",
+     "stations": [
+      "西新宿五丁目"
+     ],
+     "units": 2,
+     "url": "https://www.oakhouse.jp/house/384"
+    },
+    {
+     "id": "tokyosharehouse:1493",
+     "source": "tokyosharehouse",
+     "name": "オークハウス新宿シティビュー",
+     "ward": "新宿区",
+     "stations": [
+      "西新宿5丁目"
+     ],
+     "units": 3,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/1493/"
+    }
+   ]
+  },
+  {
    "key": "渋谷区|パークショア参宮橋",
    "roomLevelHits": 0,
    "primary": "hituji:shibuya/park-shore-sangubashi",
@@ -6772,7 +7210,8 @@
    "roomLevelHits": 0,
    "primary": "tokyosharehouse:1623",
    "members": [
-    "hituji:minato/flora-garden-azabu"
+    "hituji:minato/flora-garden-azabu",
+    "oakhouse:h692"
    ],
    "detail": [
     {
@@ -6785,6 +7224,20 @@
      ],
      "units": 1,
      "url": "https://www.hituji.jp/comret/info/tokyo/minato/flora-garden-azabu"
+    },
+    {
+     "id": "oakhouse:h692",
+     "source": "oakhouse",
+     "name": "フローラガーデン麻布",
+     "ward": "港区",
+     "stations": [
+      "麻布十番",
+      "麻布十番",
+      "白金高輪",
+      "白金高輪"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/692"
     },
     {
      "id": "tokyosharehouse:1623",
@@ -7229,6 +7682,7 @@
    "roomLevelHits": 0,
    "primary": "hituji:adachi/flora-nishiarai",
    "members": [
+    "oakhouse:h806",
     "tokyosharehouse:2123"
    ],
    "detail": [
@@ -7242,6 +7696,18 @@
      ],
      "units": 1,
      "url": "https://www.hituji.jp/comret/info/tokyo/adachi/flora-nishiarai"
+    },
+    {
+     "id": "oakhouse:h806",
+     "source": "oakhouse",
+     "name": "フローラ西新井",
+     "ward": "足立区",
+     "stations": [
+      "西新井",
+      "西新井"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/806"
     },
     {
      "id": "tokyosharehouse:2123",
@@ -7554,8 +8020,9 @@
   {
    "key": "港区|フローラ白金台",
    "roomLevelHits": 0,
-   "primary": "hituji:minato/flora-shirokanedai",
+   "primary": "oakhouse:h624",
    "members": [
+    "hituji:minato/flora-shirokanedai",
     "tokyosharehouse:1486"
    ],
    "detail": [
@@ -7569,6 +8036,22 @@
      ],
      "units": 2,
      "url": "https://www.hituji.jp/comret/info/tokyo/minato/flora-shirokanedai"
+    },
+    {
+     "id": "oakhouse:h624",
+     "source": "oakhouse",
+     "name": "フローラ白金台",
+     "ward": "港区",
+     "stations": [
+      "白金台",
+      "白金台",
+      "目黒",
+      "目黒",
+      "目黒",
+      "目黒"
+     ],
+     "units": 2,
+     "url": "https://www.oakhouse.jp/house/624"
     },
     {
      "id": "tokyosharehouse:1486",
@@ -7588,6 +8071,7 @@
    "roomLevelHits": 0,
    "primary": "hituji:suginami/oak-house-ogikubo",
    "members": [
+    "oakhouse:h72",
     "tokyosharehouse:1487"
    ],
    "detail": [
@@ -7601,6 +8085,19 @@
      ],
      "units": 1,
      "url": "https://www.hituji.jp/comret/info/tokyo/suginami/oak-house-ogikubo"
+    },
+    {
+     "id": "oakhouse:h72",
+     "source": "oakhouse",
+     "name": "オークハウス荻窪",
+     "ward": "杉並区",
+     "stations": [
+      "荻窪",
+      "荻窪",
+      "荻窪"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/72"
     },
     {
      "id": "tokyosharehouse:1487",
@@ -7645,6 +8142,39 @@
      ],
      "units": 1,
      "url": "https://tokyosharehouse.com/jpn/house/detail/3280/"
+    }
+   ]
+  },
+  {
+   "key": "荒川区|プレミア町屋",
+   "roomLevelHits": 0,
+   "primary": "hituji:arakawa/premier-machiya",
+   "members": [
+    "oakhouse:h900"
+   ],
+   "detail": [
+    {
+     "id": "hituji:arakawa/premier-machiya",
+     "source": "hituji",
+     "name": "プレミア 町屋",
+     "ward": "荒川区",
+     "stations": [
+      "町屋"
+     ],
+     "units": 1,
+     "url": "https://www.hituji.jp/comret/info/tokyo/arakawa/premier-machiya"
+    },
+    {
+     "id": "oakhouse:h900",
+     "source": "oakhouse",
+     "name": "プレミア町屋",
+     "ward": "荒川区",
+     "stations": [
+      "町屋",
+      "町屋"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/900"
     }
    ]
   },
@@ -7845,39 +8375,6 @@
    ]
   },
   {
-   "key": "板橋区|オークハウス板橋高島平",
-   "roomLevelHits": 0,
-   "primary": "tokyosharehouse:1629",
-   "members": [
-    "hituji:itabashi/oakhouse-shin-takashimadaira"
-   ],
-   "detail": [
-    {
-     "id": "hituji:itabashi/oakhouse-shin-takashimadaira",
-     "source": "hituji",
-     "name": "オークハウス 板橋高島平",
-     "ward": "板橋区",
-     "stations": [
-      "新高島平"
-     ],
-     "units": 2,
-     "url": "https://www.hituji.jp/comret/info/tokyo/itabashi/oakhouse-shin-takashimadaira"
-    },
-    {
-     "id": "tokyosharehouse:1629",
-     "source": "tokyosharehouse",
-     "name": "オークハウス板橋高島平",
-     "ward": "板橋区",
-     "stations": [
-      "新高島平",
-      "池袋"
-     ],
-     "units": 3,
-     "url": "https://tokyosharehouse.com/jpn/house/detail/1629/"
-    }
-   ]
-  },
-  {
    "key": "豊島区|オレンジハウス",
    "roomLevelHits": 0,
    "primary": "hituji:toshima/orange-house",
@@ -8047,7 +8544,8 @@
    "roomLevelHits": 0,
    "primary": "tokyosharehouse:2591",
    "members": [
-    "hituji:meguro/gran-gakugei-daigaku"
+    "hituji:meguro/gran-gakugei-daigaku",
+    "oakhouse:h894"
    ],
    "detail": [
     {
@@ -8060,6 +8558,18 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/meguro/gran-gakugei-daigaku"
+    },
+    {
+     "id": "oakhouse:h894",
+     "source": "oakhouse",
+     "name": "グラン学芸大学",
+     "ward": "目黒区",
+     "stations": [
+      "学芸大学",
+      "西小山"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/894"
     },
     {
      "id": "tokyosharehouse:2591",
@@ -8848,8 +9358,9 @@
   {
    "key": "大田区|カフェsakuratokyo",
    "roomLevelHits": 0,
-   "primary": "hituji:ota/cafe-sakura-tokyo",
+   "primary": "oakhouse:h433",
    "members": [
+    "hituji:ota/cafe-sakura-tokyo",
     "tokyosharehouse:3223"
    ],
    "detail": [
@@ -8865,6 +9376,18 @@
      "url": "https://www.hituji.jp/comret/info/tokyo/ota/cafe-sakura-tokyo"
     },
     {
+     "id": "oakhouse:h433",
+     "source": "oakhouse",
+     "name": "カフェSAKURA TOKYO (田園調布 / 沼部)",
+     "ward": "大田区",
+     "stations": [
+      "沼部",
+      "御嶽山"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/433"
+    },
+    {
      "id": "tokyosharehouse:3223",
      "source": "tokyosharehouse",
      "name": "カフェSAKURA TOKYO",
@@ -8875,6 +9398,38 @@
      ],
      "units": 0,
      "url": "https://tokyosharehouse.com/jpn/house/detail/3223/"
+    }
+   ]
+  },
+  {
+   "key": "練馬区|akariya東武練馬",
+   "roomLevelHits": 0,
+   "primary": "oakhouse:h1040",
+   "members": [
+    "hituji:nerima/akari-ya-tobu-nerima"
+   ],
+   "detail": [
+    {
+     "id": "hituji:nerima/akari-ya-tobu-nerima",
+     "source": "hituji",
+     "name": "akari-ya 東武練馬",
+     "ward": "練馬区",
+     "stations": [
+      "東武練馬"
+     ],
+     "units": 0,
+     "url": "https://www.hituji.jp/comret/info/tokyo/nerima/akari-ya-tobu-nerima"
+    },
+    {
+     "id": "oakhouse:h1040",
+     "source": "oakhouse",
+     "name": "Akari-ya東武練馬",
+     "ward": "練馬区",
+     "stations": [
+      "東武練馬"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/1040"
     }
    ]
   },
@@ -10046,7 +10601,8 @@
    "roomLevelHits": 0,
    "primary": "tokyosharehouse:3205",
    "members": [
-    "hituji:suginami/gran-kugayama"
+    "hituji:suginami/gran-kugayama",
+    "oakhouse:h968"
    ],
    "detail": [
     {
@@ -10059,6 +10615,17 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/suginami/gran-kugayama"
+    },
+    {
+     "id": "oakhouse:h968",
+     "source": "oakhouse",
+     "name": "グラン久我山",
+     "ward": "杉並区",
+     "stations": [
+      "久我山"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/968"
     },
     {
      "id": "tokyosharehouse:3205",
@@ -10274,7 +10841,8 @@
    "roomLevelHits": 0,
    "primary": "tokyosharehouse:1469",
    "members": [
-    "hituji:mitaka/premiere-kichijoji"
+    "hituji:mitaka/premiere-kichijoji",
+    "oakhouse:h217"
    ],
    "detail": [
     {
@@ -10287,6 +10855,20 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/mitaka/premiere-kichijoji"
+    },
+    {
+     "id": "oakhouse:h217",
+     "source": "oakhouse",
+     "name": "プレミア吉祥寺",
+     "ward": "三鷹市",
+     "stations": [
+      "井の頭公園",
+      "吉祥寺",
+      "吉祥寺",
+      "吉祥寺"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/217"
     },
     {
      "id": "tokyosharehouse:1469",
@@ -10629,6 +11211,40 @@
      ],
      "units": 0,
      "url": "https://tokyosharehouse.com/jpn/house/detail/2739/"
+    }
+   ]
+  },
+  {
+   "key": "立川市|オークハウス立川駅前",
+   "roomLevelHits": 0,
+   "primary": "oakhouse:h975",
+   "members": [
+    "hituji:tachikawa/oak-house-tachikawa-eki-mae"
+   ],
+   "detail": [
+    {
+     "id": "hituji:tachikawa/oak-house-tachikawa-eki-mae",
+     "source": "hituji",
+     "name": "オークハウス 立川駅前",
+     "ward": "立川市",
+     "stations": [
+      "立川"
+     ],
+     "units": 0,
+     "url": "https://www.hituji.jp/comret/info/tokyo/tachikawa/oak-house-tachikawa-eki-mae"
+    },
+    {
+     "id": "oakhouse:h975",
+     "source": "oakhouse",
+     "name": "オークハウス立川駅前",
+     "ward": "立川市",
+     "stations": [
+      "立川",
+      "立川",
+      "立川"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/975"
     }
    ]
   },
@@ -11684,8 +12300,9 @@
   {
    "key": "大田区|plainsharetokyo",
    "roomLevelHits": 0,
-   "primary": "hituji:ota/plain-share-tokyo",
+   "primary": "oakhouse:h827",
    "members": [
+    "hituji:ota/plain-share-tokyo",
     "tokyosharehouse:3224"
    ],
    "detail": [
@@ -11699,6 +12316,17 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/ota/plain-share-tokyo"
+    },
+    {
+     "id": "oakhouse:h827",
+     "source": "oakhouse",
+     "name": "PLAIN Share TOKYO (田園調布 / 鵜の木）",
+     "ward": "大田区",
+     "stations": [
+      "鵜の木"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/827"
     },
     {
      "id": "tokyosharehouse:3224",
@@ -11978,8 +12606,9 @@
   {
    "key": "江東区|ジアス南砂",
    "roomLevelHits": 0,
-   "primary": "hituji:koto/the-earth-minami-suna",
+   "primary": "oakhouse:h992",
    "members": [
+    "hituji:koto/the-earth-minami-suna",
     "tokyosharehouse:3366"
    ],
    "detail": [
@@ -11993,6 +12622,18 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/koto/the-earth-minami-suna"
+    },
+    {
+     "id": "oakhouse:h992",
+     "source": "oakhouse",
+     "name": "ジアス南砂",
+     "ward": "江東区",
+     "stations": [
+      "南砂町",
+      "西大島"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/992"
     },
     {
      "id": "tokyosharehouse:3366",
@@ -12076,8 +12717,9 @@
   {
    "key": "中野区|オークハウス中野ガーデン",
    "roomLevelHits": 0,
-   "primary": "hituji:nakano/oakhouse-nakano-garden",
+   "primary": "oakhouse:h1045",
    "members": [
+    "hituji:nakano/oakhouse-nakano-garden",
     "tokyosharehouse:3608"
    ],
    "detail": [
@@ -12091,6 +12733,19 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/nakano/oakhouse-nakano-garden"
+    },
+    {
+     "id": "oakhouse:h1045",
+     "source": "oakhouse",
+     "name": "オークハウス中野ガーデン",
+     "ward": "中野区",
+     "stations": [
+      "中野(東京)",
+      "中野(東京)",
+      "中野(東京)"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/1045"
     },
     {
      "id": "tokyosharehouse:3608",
@@ -12761,6 +13416,42 @@
      ],
      "units": 0,
      "url": "https://tokyosharehouse.com/jpn/house/detail/264/"
+    }
+   ]
+  },
+  {
+   "key": "品川区|プレミア品川西大井",
+   "roomLevelHits": 0,
+   "primary": "oakhouse:h394",
+   "members": [
+    "hituji:shinagawa/premiere-shinagawa-nishi-oi"
+   ],
+   "detail": [
+    {
+     "id": "hituji:shinagawa/premiere-shinagawa-nishi-oi",
+     "source": "hituji",
+     "name": "プレミア 品川西大井",
+     "ward": "品川区",
+     "stations": [
+      "西大井"
+     ],
+     "units": 0,
+     "url": "https://www.hituji.jp/comret/info/tokyo/shinagawa/premiere-shinagawa-nishi-oi"
+    },
+    {
+     "id": "oakhouse:h394",
+     "source": "oakhouse",
+     "name": "プレミア品川西大井",
+     "ward": "品川区",
+     "stations": [
+      "西大井",
+      "西大井",
+      "西大井",
+      "中延",
+      "中延"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/394"
     }
    ]
   },
@@ -13653,8 +14344,9 @@
   {
    "key": "三鷹市|オークハウス吉祥寺3",
    "roomLevelHits": 0,
-   "primary": "hituji:mitaka/oakhouse-kichijoji3",
+   "primary": "oakhouse:h317",
    "members": [
+    "hituji:mitaka/oakhouse-kichijoji3",
     "tokyosharehouse:1479"
    ],
    "detail": [
@@ -13668,6 +14360,20 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/mitaka/oakhouse-kichijoji3"
+    },
+    {
+     "id": "oakhouse:h317",
+     "source": "oakhouse",
+     "name": "オークハウス吉祥寺3",
+     "ward": "三鷹市",
+     "stations": [
+      "井の頭公園",
+      "吉祥寺",
+      "吉祥寺",
+      "吉祥寺"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/317"
     },
     {
      "id": "tokyosharehouse:1479",
@@ -14567,9 +15273,10 @@
   {
    "key": "日野市|プレミア日野",
    "roomLevelHits": 0,
-   "primary": "tokyosharehouse:2104",
+   "primary": "oakhouse:h828",
    "members": [
-    "hituji:hino/premier-hino"
+    "hituji:hino/premier-hino",
+    "tokyosharehouse:2104"
    ],
    "detail": [
     {
@@ -14582,6 +15289,17 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/hino/premier-hino"
+    },
+    {
+     "id": "oakhouse:h828",
+     "source": "oakhouse",
+     "name": "プレミア日野",
+     "ward": "日野市",
+     "stations": [
+      "豊田"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/828"
     },
     {
      "id": "tokyosharehouse:2104",
@@ -15991,8 +16709,9 @@
   {
    "key": "三鷹市|グラン三鷹台",
    "roomLevelHits": 0,
-   "primary": "hituji:mitaka/gran-mitakadai",
+   "primary": "oakhouse:h920",
    "members": [
+    "hituji:mitaka/gran-mitakadai",
     "tokyosharehouse:3039"
    ],
    "detail": [
@@ -16006,6 +16725,17 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/mitaka/gran-mitakadai"
+    },
+    {
+     "id": "oakhouse:h920",
+     "source": "oakhouse",
+     "name": "グラン三鷹台",
+     "ward": "三鷹市",
+     "stations": [
+      "三鷹台"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/920"
     },
     {
      "id": "tokyosharehouse:3039",
@@ -16054,11 +16784,46 @@
    ]
   },
   {
+   "key": "台東区|オークハウス上野北",
+   "roomLevelHits": 0,
+   "primary": "oakhouse:h864",
+   "members": [
+    "hituji:taito/oak-house-ueno-kita"
+   ],
+   "detail": [
+    {
+     "id": "hituji:taito/oak-house-ueno-kita",
+     "source": "hituji",
+     "name": "オークハウス 上野北",
+     "ward": "台東区",
+     "stations": [
+      "鶯谷"
+     ],
+     "units": 0,
+     "url": "https://www.hituji.jp/comret/info/tokyo/taito/oak-house-ueno-kita"
+    },
+    {
+     "id": "oakhouse:h864",
+     "source": "oakhouse",
+     "name": "オークハウス上野北",
+     "ward": "台東区",
+     "stations": [
+      "入谷(東京)",
+      "鶯谷",
+      "鶯谷"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/864"
+    }
+   ]
+  },
+  {
    "key": "渋谷区|フローラ恵比寿",
    "roomLevelHits": 0,
-   "primary": "tokyosharehouse:1483",
+   "primary": "oakhouse:h678",
    "members": [
-    "hituji:shibuya/flora-ebisu"
+    "hituji:shibuya/flora-ebisu",
+    "tokyosharehouse:1483"
    ],
    "detail": [
     {
@@ -16071,6 +16836,21 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/shibuya/flora-ebisu"
+    },
+    {
+     "id": "oakhouse:h678",
+     "source": "oakhouse",
+     "name": "フローラ恵比寿",
+     "ward": "渋谷区",
+     "stations": [
+      "恵比寿",
+      "恵比寿",
+      "恵比寿",
+      "恵比寿",
+      "代官山"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/678"
     },
     {
      "id": "tokyosharehouse:1483",
@@ -16090,7 +16870,8 @@
    "roomLevelHits": 0,
    "primary": "tokyosharehouse:3344",
    "members": [
-    "hituji:ota/oak-house-kugahara-ekimae"
+    "hituji:ota/oak-house-kugahara-ekimae",
+    "oakhouse:h932"
    ],
    "detail": [
     {
@@ -16105,6 +16886,17 @@
      "url": "https://www.hituji.jp/comret/info/tokyo/ota/oak-house-kugahara-ekimae"
     },
     {
+     "id": "oakhouse:h932",
+     "source": "oakhouse",
+     "name": "オークハウス久が原駅前",
+     "ward": "大田区",
+     "stations": [
+      "久が原"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/932"
+    },
+    {
      "id": "tokyosharehouse:3344",
      "source": "tokyosharehouse",
      "name": "オークハウス久が原駅前",
@@ -16114,6 +16906,51 @@
      ],
      "units": 1,
      "url": "https://tokyosharehouse.com/jpn/house/detail/3344/"
+    }
+   ]
+  },
+  {
+   "key": "板橋区|オークハウス板橋区役所前",
+   "roomLevelHits": 0,
+   "primary": "oakhouse:h264",
+   "members": [
+    "hituji:itabashi/oak-house-itabashikuyakushomae",
+    "tokyosharehouse:1543"
+   ],
+   "detail": [
+    {
+     "id": "hituji:itabashi/oak-house-itabashikuyakushomae",
+     "source": "hituji",
+     "name": "オークハウス 板橋区役所前",
+     "ward": "板橋区",
+     "stations": [
+      "板橋本町"
+     ],
+     "units": 0,
+     "url": "https://www.hituji.jp/comret/info/tokyo/itabashi/oak-house-itabashikuyakushomae"
+    },
+    {
+     "id": "oakhouse:h264",
+     "source": "oakhouse",
+     "name": "オークハウス板橋区役所前",
+     "ward": "板橋区",
+     "stations": [
+      "板橋区役所前",
+      "板橋本町"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/264"
+    },
+    {
+     "id": "tokyosharehouse:1543",
+     "source": "tokyosharehouse",
+     "name": "オークハウス板橋区役所前",
+     "ward": "板橋区",
+     "stations": [
+      "板橋区役所前"
+     ],
+     "units": 0,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/1543/"
     }
    ]
   },
@@ -16153,8 +16990,9 @@
   {
    "key": "豊島区|オークハウス池袋",
    "roomLevelHits": 0,
-   "primary": "hituji:toshima/oak-house-ikebukuro",
+   "primary": "oakhouse:h16",
    "members": [
+    "hituji:toshima/oak-house-ikebukuro",
     "tokyosharehouse:1538"
    ],
    "detail": [
@@ -16168,6 +17006,25 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/toshima/oak-house-ikebukuro"
+    },
+    {
+     "id": "oakhouse:h16",
+     "source": "oakhouse",
+     "name": "オークハウス池袋",
+     "ward": "豊島区",
+     "stations": [
+      "北池袋",
+      "池袋",
+      "池袋",
+      "池袋",
+      "池袋",
+      "池袋",
+      "池袋",
+      "池袋",
+      "池袋"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/16"
     },
     {
      "id": "tokyosharehouse:1538",
@@ -16185,8 +17042,9 @@
   {
    "key": "豊島区|オークハウス北大塚",
    "roomLevelHits": 0,
-   "primary": "hituji:toshima/oak-house-kita-otsuka",
+   "primary": "oakhouse:h15",
    "members": [
+    "hituji:toshima/oak-house-kita-otsuka",
     "tokyosharehouse:1550"
    ],
    "detail": [
@@ -16200,6 +17058,18 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/toshima/oak-house-kita-otsuka"
+    },
+    {
+     "id": "oakhouse:h15",
+     "source": "oakhouse",
+     "name": "オークハウス北大塚",
+     "ward": "豊島区",
+     "stations": [
+      "大塚(東京)",
+      "大塚駅前"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/15"
     },
     {
      "id": "tokyosharehouse:1550",
@@ -16676,8 +17546,9 @@
   {
    "key": "台東区|上野ryotei福井",
    "roomLevelHits": 0,
-   "primary": "hituji:taito/ueno-ryotei-fukui",
+   "primary": "oakhouse:h353",
    "members": [
+    "hituji:taito/ueno-ryotei-fukui",
     "tokyosharehouse:3499"
    ],
    "detail": [
@@ -16691,6 +17562,19 @@
      ],
      "units": 0,
      "url": "https://www.hituji.jp/comret/info/tokyo/taito/ueno-ryotei-fukui"
+    },
+    {
+     "id": "oakhouse:h353",
+     "source": "oakhouse",
+     "name": "上野RYOTEI福井",
+     "ward": "台東区",
+     "stations": [
+      "鶯谷",
+      "鶯谷",
+      "入谷(東京)"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/353"
     },
     {
      "id": "tokyosharehouse:3499",
@@ -17397,6 +18281,172 @@
    ]
   },
   {
+   "key": "渋谷区|オークハウス笹塚",
+   "roomLevelHits": 0,
+   "primary": "oakhouse:h21",
+   "members": [
+    "tokyosharehouse:1481"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:h21",
+     "source": "oakhouse",
+     "name": "オークハウス笹塚",
+     "ward": "渋谷区",
+     "stations": [
+      "笹塚",
+      "笹塚",
+      "下北沢",
+      "下北沢"
+     ],
+     "units": 2,
+     "url": "https://www.oakhouse.jp/house/21"
+    },
+    {
+     "id": "tokyosharehouse:1481",
+     "source": "tokyosharehouse",
+     "name": "オークハウス笹塚",
+     "ward": "渋谷区",
+     "stations": [
+      "笹塚"
+     ],
+     "units": 0,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/1481/"
+    }
+   ]
+  },
+  {
+   "key": "杉並区|オークハウス荻窪annex",
+   "roomLevelHits": 0,
+   "primary": "oakhouse:h155",
+   "members": [
+    "tokyosharehouse:1488"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:h155",
+     "source": "oakhouse",
+     "name": "オークハウス荻窪annex",
+     "ward": "杉並区",
+     "stations": [
+      "荻窪",
+      "荻窪",
+      "荻窪"
+     ],
+     "units": 1,
+     "url": "https://www.oakhouse.jp/house/155"
+    },
+    {
+     "id": "tokyosharehouse:1488",
+     "source": "tokyosharehouse",
+     "name": "オークハウス荻窪annex",
+     "ward": "杉並区",
+     "stations": [
+      "荻窪"
+     ],
+     "units": 0,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/1488/"
+    }
+   ]
+  },
+  {
+   "key": "大田区|プレミア多摩川",
+   "roomLevelHits": 0,
+   "primary": "tokyosharehouse:3587",
+   "members": [
+    "oakhouse:h238"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:h238",
+     "source": "oakhouse",
+     "name": "プレミア多摩川",
+     "ward": "大田区",
+     "stations": [
+      "鵜の木"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/238"
+    },
+    {
+     "id": "tokyosharehouse:3587",
+     "source": "tokyosharehouse",
+     "name": "プレミア多摩川",
+     "ward": "大田区",
+     "stations": [
+      "鵜の木"
+     ],
+     "units": 2,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/3587/"
+    }
+   ]
+  },
+  {
+   "key": "板橋区|プレミア上板橋",
+   "roomLevelHits": 0,
+   "primary": "oakhouse:h666",
+   "members": [
+    "tokyosharehouse:1545"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:h666",
+     "source": "oakhouse",
+     "name": "プレミア上板橋",
+     "ward": "板橋区",
+     "stations": [
+      "上板橋"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/house/666"
+    },
+    {
+     "id": "tokyosharehouse:1545",
+     "source": "tokyosharehouse",
+     "name": "プレミア上板橋",
+     "ward": "板橋区",
+     "stations": [
+      "上板橋"
+     ],
+     "units": 0,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/1545/"
+    }
+   ]
+  },
+  {
+   "key": "港区|グラン西麻布",
+   "roomLevelHits": 0,
+   "primary": "oakhouse:h839",
+   "members": [
+    "tokyosharehouse:2199"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:h839",
+     "source": "oakhouse",
+     "name": "グラン西麻布",
+     "ward": "港区",
+     "stations": [
+      "広尾"
+     ],
+     "units": 3,
+     "url": "https://www.oakhouse.jp/house/839"
+    },
+    {
+     "id": "tokyosharehouse:2199",
+     "source": "tokyosharehouse",
+     "name": "グラン西麻布",
+     "ward": "港区",
+     "stations": [
+      "広尾",
+      "渋谷"
+     ],
+     "units": 3,
+     "url": "https://tokyosharehouse.com/jpn/house/detail/2199/"
+    }
+   ]
+  },
+  {
    "key": "豊島区|スカイコートパレス池袋",
    "roomLevelHits": 0,
    "primary": "suumo:sc_toshima/f53bca714ade",
@@ -17857,41 +18907,6 @@
    ]
   },
   {
-   "key": "渋谷区|zoom渋谷富ヶ谷",
-   "roomLevelHits": 0,
-   "primary": "suumo:sc_shibuya/c46a1d191c86",
-   "members": [
-    "oakhouse:12715"
-   ],
-   "detail": [
-    {
-     "id": "oakhouse:12715",
-     "source": "oakhouse",
-     "name": "ZOOM渋谷富ヶ谷",
-     "ward": "渋谷区",
-     "stations": [
-      "代々木八幡",
-      "代々木公園"
-     ],
-     "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/12715"
-    },
-    {
-     "id": "suumo:sc_shibuya/c46a1d191c86",
-     "source": "suumo",
-     "name": "ZOOM渋谷富ヶ谷",
-     "ward": "渋谷区",
-     "stations": [
-      "代々木公園",
-      "代々木八幡",
-      "駒場東大前"
-     ],
-     "units": 4,
-     "url": "https://suumo.jp/chintai/jnc_000108449374/"
-    }
-   ]
-  },
-  {
    "key": "港区|メゾンドヴィレ高輪",
    "roomLevelHits": 0,
    "primary": "suumo:sc_minato/8eaa21570ee2",
@@ -18143,44 +19158,6 @@
    ]
   },
   {
-   "key": "港区|パークコート浜離宮ザタワー",
-   "roomLevelHits": 0,
-   "primary": "suumo:sc_minato/4e3fad5be4a0",
-   "members": [
-    "oakhouse:13542"
-   ],
-   "detail": [
-    {
-     "id": "oakhouse:13542",
-     "source": "oakhouse",
-     "name": "パークコート浜離宮ザ・タワー",
-     "ward": "港区",
-     "stations": [
-      "浜松町",
-      "浜松町",
-      "浜松町",
-      "大門(東京)",
-      "大門(東京)"
-     ],
-     "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/13542"
-    },
-    {
-     "id": "suumo:sc_minato/4e3fad5be4a0",
-     "source": "suumo",
-     "name": "パークコート浜離宮ザタワー",
-     "ward": "港区",
-     "stations": [
-      "浜松町",
-      "大門",
-      "汐留"
-     ],
-     "units": 20,
-     "url": "https://suumo.jp/chintai/jnc_000106508008/"
-    }
-   ]
-  },
-  {
    "key": "品川区|アジールコート東大井",
    "roomLevelHits": 0,
    "primary": "suumo:sc_shinagawa/6c9603aee4ad",
@@ -18408,41 +19385,6 @@
      ],
      "units": 2,
      "url": "https://suumo.jp/chintai/jnc_000107068826/"
-    }
-   ]
-  },
-  {
-   "key": "豊島区|アーベインテラス大塚",
-   "roomLevelHits": 0,
-   "primary": "suumo:sc_toshima/3af27404248e",
-   "members": [
-    "oakhouse:14307"
-   ],
-   "detail": [
-    {
-     "id": "oakhouse:14307",
-     "source": "oakhouse",
-     "name": "アーベインテラス大塚",
-     "ward": "豊島区",
-     "stations": [
-      "新大塚",
-      "大塚駅前"
-     ],
-     "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/14307"
-    },
-    {
-     "id": "suumo:sc_toshima/3af27404248e",
-     "source": "suumo",
-     "name": "アーベインテラス大塚",
-     "ward": "豊島区",
-     "stations": [
-      "新大塚",
-      "大塚駅前",
-      "大塚"
-     ],
-     "units": 1,
-     "url": "https://suumo.jp/chintai/jnc_000107833582/"
     }
    ]
   },
@@ -18732,42 +19674,6 @@
      ],
      "units": 29,
      "url": "https://suumo.jp/chintai/jnc_000108570388/"
-    }
-   ]
-  },
-  {
-   "key": "中央区|ブレシア日本橋蛎殻町",
-   "roomLevelHits": 0,
-   "primary": "suumo:sc_chuo/b4375ffb9746",
-   "members": [
-    "oakhouse:14557"
-   ],
-   "detail": [
-    {
-     "id": "oakhouse:14557",
-     "source": "oakhouse",
-     "name": "ブレシア日本橋蛎殻町",
-     "ward": "中央区",
-     "stations": [
-      "水天宮前",
-      "人形町",
-      "人形町"
-     ],
-     "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/14557"
-    },
-    {
-     "id": "suumo:sc_chuo/b4375ffb9746",
-     "source": "suumo",
-     "name": "ブレシア日本橋蛎殻町",
-     "ward": "中央区",
-     "stations": [
-      "水天宮前",
-      "人形町",
-      "茅場町"
-     ],
-     "units": 1,
-     "url": "https://suumo.jp/chintai/jnc_000106013961/"
     }
    ]
   },
@@ -19315,6 +20221,115 @@
    ]
   },
   {
+   "key": "渋谷区|アレーロ幡ヶ谷ii",
+   "roomLevelHits": 0,
+   "primary": "suumo:sc_shibuya/70ae02af2a7e",
+   "members": [
+    "oakhouse:14810"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:14810",
+     "source": "oakhouse",
+     "name": "アレーロ幡ヶ谷Ⅱ",
+     "ward": "渋谷区",
+     "stations": [
+      "幡ケ谷",
+      "代々木上原",
+      "代々木上原"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/apartment/14810"
+    },
+    {
+     "id": "suumo:sc_shibuya/70ae02af2a7e",
+     "source": "suumo",
+     "name": "アレーロ幡ヶ谷II",
+     "ward": "渋谷区",
+     "stations": [
+      "幡ヶ谷",
+      "笹塚",
+      "代々木上原"
+     ],
+     "units": 1,
+     "url": "https://suumo.jp/chintai/jnc_000109049389/"
+    }
+   ]
+  },
+  {
+   "key": "目黒区|グランパセオ目黒大塚山",
+   "roomLevelHits": 0,
+   "primary": "suumo:sc_meguro/99b7a122ab1c",
+   "members": [
+    "oakhouse:14811"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:14811",
+     "source": "oakhouse",
+     "name": "グランパセオ目黒大塚山",
+     "ward": "目黒区",
+     "stations": [
+      "目黒",
+      "目黒",
+      "目黒",
+      "目黒",
+      "祐天寺"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/apartment/14811"
+    },
+    {
+     "id": "suumo:sc_meguro/99b7a122ab1c",
+     "source": "suumo",
+     "name": "グランパセオ目黒大塚山",
+     "ward": "目黒区",
+     "stations": [
+      "目黒",
+      "祐天寺",
+      "中目黒"
+     ],
+     "units": 4,
+     "url": "https://suumo.jp/chintai/jnc_000109105219/"
+    }
+   ]
+  },
+  {
+   "key": "渋谷区|エクサム初台",
+   "roomLevelHits": 0,
+   "primary": "suumo:sc_shibuya/ffe541c7f504",
+   "members": [
+    "oakhouse:14885"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:14885",
+     "source": "oakhouse",
+     "name": "エクサム初台",
+     "ward": "渋谷区",
+     "stations": [
+      "幡ケ谷",
+      "初台"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/apartment/14885"
+    },
+    {
+     "id": "suumo:sc_shibuya/ffe541c7f504",
+     "source": "suumo",
+     "name": "エクサム初台",
+     "ward": "渋谷区",
+     "stations": [
+      "幡ヶ谷",
+      "初台",
+      "西新宿五丁目"
+     ],
+     "units": 3,
+     "url": "https://suumo.jp/chintai/jnc_000106028048/"
+    }
+   ]
+  },
+  {
    "key": "台東区|lumeed南千住",
    "roomLevelHits": 0,
    "primary": "suumo:sc_taito/04ffb08baf68",
@@ -19347,6 +20362,41 @@
      ],
      "units": 6,
      "url": "https://suumo.jp/chintai/jnc_000101548828/"
+    }
+   ]
+  },
+  {
+   "key": "港区|デコズキャッスル赤坂",
+   "roomLevelHits": 0,
+   "primary": "suumo:sc_minato/a577c7a398da",
+   "members": [
+    "oakhouse:15060"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:15060",
+     "source": "oakhouse",
+     "name": "デコズキャッスル赤坂",
+     "ward": "港区",
+     "stations": [
+      "赤坂(東京)",
+      "乃木坂"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/apartment/15060"
+    },
+    {
+     "id": "suumo:sc_minato/a577c7a398da",
+     "source": "suumo",
+     "name": "デコズキャッスル赤坂",
+     "ward": "港区",
+     "stations": [
+      "赤坂",
+      "乃木坂",
+      "六本木"
+     ],
+     "units": 1,
+     "url": "https://suumo.jp/chintai/jnc_000108333142/"
     }
    ]
   },
@@ -19709,6 +20759,45 @@
      ],
      "units": 4,
      "url": "https://suumo.jp/chintai/jnc_000108055120/"
+    }
+   ]
+  },
+  {
+   "key": "品川区|アグレシオ品川大井",
+   "roomLevelHits": 0,
+   "primary": "suumo:sc_shinagawa/c4f78c2590f1",
+   "members": [
+    "oakhouse:15957"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:15957",
+     "source": "oakhouse",
+     "name": "アグレシオ品川大井",
+     "ward": "品川区",
+     "stations": [
+      "大井町",
+      "大井町",
+      "大井町",
+      "西大井",
+      "西大井",
+      "西大井"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/apartment/15957"
+    },
+    {
+     "id": "suumo:sc_shinagawa/c4f78c2590f1",
+     "source": "suumo",
+     "name": "アグレシオ品川大井",
+     "ward": "品川区",
+     "stations": [
+      "西大井",
+      "西大井",
+      "西大井"
+     ],
+     "units": 3,
+     "url": "https://suumo.jp/chintai/jnc_000107304920/"
     }
    ]
   },
@@ -20251,6 +21340,43 @@
      ],
      "units": 6,
      "url": "https://suumo.jp/chintai/jnc_000104997185/"
+    }
+   ]
+  },
+  {
+   "key": "千代田区|bwall神保町",
+   "roomLevelHits": 0,
+   "primary": "suumo:sc_chiyoda/ec28bc600ac6",
+   "members": [
+    "oakhouse:16839"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:16839",
+     "source": "oakhouse",
+     "name": "B-WALL神保町",
+     "ward": "千代田区",
+     "stations": [
+      "神保町",
+      "神保町",
+      "神保町",
+      "新御茶ノ水"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/apartment/16839"
+    },
+    {
+     "id": "suumo:sc_chiyoda/ec28bc600ac6",
+     "source": "suumo",
+     "name": "B-WALL神保町",
+     "ward": "千代田区",
+     "stations": [
+      "神保町",
+      "竹橋",
+      "新御茶ノ水"
+     ],
+     "units": 2,
+     "url": "https://suumo.jp/chintai/jnc_000108088728/"
     }
    ]
   },
@@ -21573,44 +22699,6 @@
    ]
   },
   {
-   "key": "文京区|アーバンコア本郷",
-   "roomLevelHits": 0,
-   "primary": "suumo:sc_bunkyo/ab0aeae868af",
-   "members": [
-    "oakhouse:17805"
-   ],
-   "detail": [
-    {
-     "id": "oakhouse:17805",
-     "source": "oakhouse",
-     "name": "アーバンコア本郷",
-     "ward": "文京区",
-     "stations": [
-      "本郷三丁目",
-      "本郷三丁目",
-      "水道橋",
-      "水道橋",
-      "水道橋"
-     ],
-     "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/17805"
-    },
-    {
-     "id": "suumo:sc_bunkyo/ab0aeae868af",
-     "source": "suumo",
-     "name": "アーバンコア本郷",
-     "ward": "文京区",
-     "stations": [
-      "本郷三丁目",
-      "水道橋",
-      "御茶ノ水"
-     ],
-     "units": 2,
-     "url": "https://suumo.jp/chintai/jnc_000107588088/"
-    }
-   ]
-  },
-  {
    "key": "豊島区|プライムアーバン池袋",
    "roomLevelHits": 0,
    "primary": "suumo:sc_toshima/d4053ed3f4ed",
@@ -21687,55 +22775,6 @@
      ],
      "units": 2,
      "url": "https://suumo.jp/chintai/jnc_000106182753/"
-    }
-   ]
-  },
-  {
-   "key": "中央区|プライムアーバン日本橋横山町",
-   "roomLevelHits": 0,
-   "primary": "suumo:sc_chuo/864544e5ee0a",
-   "members": [
-    "oakhouse:17856",
-    "suumo:sc_chuo/864544e5ee0a"
-   ],
-   "detail": [
-    {
-     "id": "oakhouse:17856",
-     "source": "oakhouse",
-     "name": "プライムアーバン日本橋横山町",
-     "ward": "中央区",
-     "stations": [
-      "馬喰横山",
-      "馬喰町"
-     ],
-     "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/17856"
-    },
-    {
-     "id": "suumo:sc_chuo/864544e5ee0a",
-     "source": "suumo",
-     "name": "プライムアーバン日本橋横山町",
-     "ward": "中央区",
-     "stations": [
-      "馬喰横山",
-      "馬喰町",
-      "小伝馬町"
-     ],
-     "units": 5,
-     "url": "https://suumo.jp/chintai/jnc_000108817115/"
-    },
-    {
-     "id": "suumo:sc_chuo/864544e5ee0a",
-     "source": "suumo",
-     "name": "プライムアーバン日本橋横山町",
-     "ward": "中央区",
-     "stations": [
-      "馬喰横山",
-      "馬喰町",
-      "東日本橋"
-     ],
-     "units": 1,
-     "url": "https://suumo.jp/chintai/jnc_000108530582/"
     }
    ]
   },
@@ -22235,39 +23274,6 @@
    ]
   },
   {
-   "key": "目黒区|プラウドフラット学芸大学ii",
-   "roomLevelHits": 0,
-   "primary": "suumo:sc_meguro/c560201c0407",
-   "members": [
-    "oakhouse:18034"
-   ],
-   "detail": [
-    {
-     "id": "oakhouse:18034",
-     "source": "oakhouse",
-     "name": "プラウドフラット学芸大学Ⅱ",
-     "ward": "目黒区",
-     "stations": [
-      "学芸大学"
-     ],
-     "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/18034"
-    },
-    {
-     "id": "suumo:sc_meguro/c560201c0407",
-     "source": "suumo",
-     "name": "プラウドフラット学芸大学II",
-     "ward": "目黒区",
-     "stations": [
-      "学芸大学",
-      "武蔵小山"
-     ],
-     "units": 3,
-     "url": "https://suumo.jp/chintai/jnc_000109125727/"
-    }
-   ]
-  },
-  {
    "key": "中央区|プラウドフラット三越前",
    "roomLevelHits": 0,
    "primary": "suumo:sc_chuo/a70b93585fad",
@@ -22377,43 +23383,6 @@
    ]
   },
   {
-   "key": "目黒区|フェニックス下目黒",
-   "roomLevelHits": 0,
-   "primary": "suumo:sc_meguro/101b4f2d3d00",
-   "members": [
-    "oakhouse:18053"
-   ],
-   "detail": [
-    {
-     "id": "oakhouse:18053",
-     "source": "oakhouse",
-     "name": "フェニックス下目黒",
-     "ward": "目黒区",
-     "stations": [
-      "目黒",
-      "目黒",
-      "目黒",
-      "目黒"
-     ],
-     "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/18053"
-    },
-    {
-     "id": "suumo:sc_meguro/101b4f2d3d00",
-     "source": "suumo",
-     "name": "フェニックス下目黒",
-     "ward": "目黒区",
-     "stations": [
-      "目黒",
-      "不動前",
-      "中目黒"
-     ],
-     "units": 4,
-     "url": "https://suumo.jp/chintai/jnc_000108949083/"
-    }
-   ]
-  },
-  {
    "key": "目黒区|プライムアーバン目黒大橋ヒルズ",
    "roomLevelHits": 0,
    "primary": "suumo:sc_meguro/b1031b1d9d84",
@@ -22479,6 +23448,40 @@
      ],
      "units": 1,
      "url": "https://suumo.jp/chintai/jnc_000108094432/"
+    }
+   ]
+  },
+  {
+   "key": "中央区|プライムアーバン勝どき",
+   "roomLevelHits": 0,
+   "primary": "suumo:sc_chuo/dcb9ffa4b9f8",
+   "members": [
+    "oakhouse:18065"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:18065",
+     "source": "oakhouse",
+     "name": "プライムアーバン勝どき",
+     "ward": "中央区",
+     "stations": [
+      "勝どき"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/apartment/18065"
+    },
+    {
+     "id": "suumo:sc_chuo/dcb9ffa4b9f8",
+     "source": "suumo",
+     "name": "プライムアーバン勝どき",
+     "ward": "中央区",
+     "stations": [
+      "勝どき",
+      "築地市場",
+      "竹芝"
+     ],
+     "units": 4,
+     "url": "https://suumo.jp/chintai/jnc_000108811113/"
     }
    ]
   },
@@ -22738,42 +23741,6 @@
    ]
   },
   {
-   "key": "目黒区|ラティエラ都立大学",
-   "roomLevelHits": 0,
-   "primary": "suumo:sc_meguro/c4e5e111d01d",
-   "members": [
-    "oakhouse:18137"
-   ],
-   "detail": [
-    {
-     "id": "oakhouse:18137",
-     "source": "oakhouse",
-     "name": "ラティエラ都立大学",
-     "ward": "目黒区",
-     "stations": [
-      "都立大学",
-      "自由が丘(東京)",
-      "自由が丘(東京)"
-     ],
-     "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/18137"
-    },
-    {
-     "id": "suumo:sc_meguro/c4e5e111d01d",
-     "source": "suumo",
-     "name": "ラティエラ都立大学",
-     "ward": "目黒区",
-     "stations": [
-      "都立大学",
-      "自由が丘",
-      "緑が丘"
-     ],
-     "units": 4,
-     "url": "https://suumo.jp/chintai/jnc_000108895265/"
-    }
-   ]
-  },
-  {
    "key": "目黒区|プライムアーバン学芸大学ii",
    "roomLevelHits": 0,
    "primary": "suumo:sc_meguro/5c5df078015e",
@@ -23015,41 +23982,6 @@
      ],
      "units": 3,
      "url": "https://suumo.jp/chintai/jnc_000108371977/"
-    }
-   ]
-  },
-  {
-   "key": "文京区|ブランズ文京本駒込",
-   "roomLevelHits": 0,
-   "primary": "suumo:sc_bunkyo/f0bd98fca76a",
-   "members": [
-    "oakhouse:18156"
-   ],
-   "detail": [
-    {
-     "id": "oakhouse:18156",
-     "source": "oakhouse",
-     "name": "ブランズ文京本駒込",
-     "ward": "文京区",
-     "stations": [
-      "駒込",
-      "駒込"
-     ],
-     "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/18156"
-    },
-    {
-     "id": "suumo:sc_bunkyo/f0bd98fca76a",
-     "source": "suumo",
-     "name": "ブランズ文京本駒込",
-     "ward": "文京区",
-     "stations": [
-      "駒込",
-      "駒込",
-      "千石"
-     ],
-     "units": 3,
-     "url": "https://suumo.jp/chintai/jnc_000108797364/"
     }
    ]
   },
@@ -23412,43 +24344,6 @@
    ]
   },
   {
-   "key": "目黒区|プライムアーバン恵比寿",
-   "roomLevelHits": 0,
-   "primary": "suumo:sc_meguro/28c94f5bb51b",
-   "members": [
-    "oakhouse:18219"
-   ],
-   "detail": [
-    {
-     "id": "oakhouse:18219",
-     "source": "oakhouse",
-     "name": "プライムアーバン恵比寿",
-     "ward": "目黒区",
-     "stations": [
-      "恵比寿",
-      "恵比寿",
-      "恵比寿",
-      "恵比寿"
-     ],
-     "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/18219"
-    },
-    {
-     "id": "suumo:sc_meguro/28c94f5bb51b",
-     "source": "suumo",
-     "name": "プライムアーバン恵比寿",
-     "ward": "目黒区",
-     "stations": [
-      "恵比寿",
-      "目黒",
-      "代官山"
-     ],
-     "units": 1,
-     "url": "https://suumo.jp/chintai/jnc_000108942589/"
-    }
-   ]
-  },
-  {
    "key": "台東区|フィース蔵前",
    "roomLevelHits": 0,
    "primary": "suumo:sc_taito/4a0bcf6d4eb9",
@@ -23486,41 +24381,187 @@
    ]
   },
   {
-   "key": "港区|ベイクレストタワー",
+   "key": "品川区|ストーク武蔵小山",
    "roomLevelHits": 0,
-   "primary": "suumo:sc_minato/fa6520804eb9",
+   "primary": "suumo:sc_shinagawa/91d418e1a43b",
    "members": [
-    "oakhouse:18233"
+    "oakhouse:18235"
    ],
    "detail": [
     {
-     "id": "oakhouse:18233",
+     "id": "oakhouse:18235",
      "source": "oakhouse",
-     "name": "ベイクレストタワー",
-     "ward": "港区",
+     "name": "ストーク武蔵小山",
+     "ward": "品川区",
      "stations": [
-      "品川",
-      "品川",
-      "品川",
-      "品川",
-      "品川",
-      "品川"
+      "武蔵小山",
+      "戸越銀座"
      ],
      "units": 0,
-     "url": "https://www.oakhouse.jp/apartment/18233"
+     "url": "https://www.oakhouse.jp/apartment/18235"
     },
     {
-     "id": "suumo:sc_minato/fa6520804eb9",
+     "id": "suumo:sc_shinagawa/91d418e1a43b",
      "source": "suumo",
-     "name": "ベイクレストタワー",
-     "ward": "港区",
+     "name": "ストーク武蔵小山",
+     "ward": "品川区",
      "stations": [
-      "品川",
-      "天王洲アイル",
-      "芝浦ふ頭"
+      "武蔵小山",
+      "戸越銀座",
+      "荏原中延"
      ],
-     "units": 9,
-     "url": "https://suumo.jp/chintai/jnc_000108521673/"
+     "units": 2,
+     "url": "https://suumo.jp/chintai/jnc_000109159022/"
+    }
+   ]
+  },
+  {
+   "key": "千代田区|プロフ九段",
+   "roomLevelHits": 0,
+   "primary": "suumo:sc_chiyoda/0382e80d1af6",
+   "members": [
+    "oakhouse:18236"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:18236",
+     "source": "oakhouse",
+     "name": "プロフ九段",
+     "ward": "千代田区",
+     "stations": [
+      "九段下",
+      "九段下",
+      "九段下",
+      "飯田橋",
+      "飯田橋",
+      "飯田橋",
+      "飯田橋",
+      "飯田橋",
+      "飯田橋"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/apartment/18236"
+    },
+    {
+     "id": "suumo:sc_chiyoda/0382e80d1af6",
+     "source": "suumo",
+     "name": "プロフ九段",
+     "ward": "千代田区",
+     "stations": [
+      "九段下",
+      "飯田橋",
+      "水道橋"
+     ],
+     "units": 3,
+     "url": "https://suumo.jp/chintai/jnc_000109165951/"
+    }
+   ]
+  },
+  {
+   "key": "渋谷区|ルーブル渋谷初台弐番館",
+   "roomLevelHits": 0,
+   "primary": "suumo:sc_shibuya/0da34bc17069",
+   "members": [
+    "oakhouse:18237"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:18237",
+     "source": "oakhouse",
+     "name": "ルーブル渋谷初台弐番館",
+     "ward": "渋谷区",
+     "stations": [
+      "初台",
+      "幡ケ谷"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/apartment/18237"
+    },
+    {
+     "id": "suumo:sc_shibuya/0da34bc17069",
+     "source": "suumo",
+     "name": "ルーブル渋谷初台弐番館",
+     "ward": "渋谷区",
+     "stations": [
+      "初台",
+      "幡ヶ谷",
+      "西新宿五丁目"
+     ],
+     "units": 1,
+     "url": "https://suumo.jp/chintai/jnc_000109166252/"
+    }
+   ]
+  },
+  {
+   "key": "渋谷区|アトラス代々木上原",
+   "roomLevelHits": 0,
+   "primary": "suumo:sc_shibuya/346419cd5d16",
+   "members": [
+    "oakhouse:18240"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:18240",
+     "source": "oakhouse",
+     "name": "アトラス代々木上原",
+     "ward": "渋谷区",
+     "stations": [
+      "代々木上原",
+      "代々木上原"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/apartment/18240"
+    },
+    {
+     "id": "suumo:sc_shibuya/346419cd5d16",
+     "source": "suumo",
+     "name": "アトラス代々木上原",
+     "ward": "渋谷区",
+     "stations": [
+      "駒場東大前",
+      "代々木上原",
+      "東北沢"
+     ],
+     "units": 2,
+     "url": "https://suumo.jp/chintai/jnc_000109149103/"
+    }
+   ]
+  },
+  {
+   "key": "江東区|クレヴィスタ押上",
+   "roomLevelHits": 0,
+   "primary": "suumo:sc_koto/53fb7aa9b9b0",
+   "members": [
+    "oakhouse:18245"
+   ],
+   "detail": [
+    {
+     "id": "oakhouse:18245",
+     "source": "oakhouse",
+     "name": "クレヴィスタ押上",
+     "ward": "江東区",
+     "stations": [
+      "押上",
+      "押上",
+      "押上",
+      "押上",
+      "小村井"
+     ],
+     "units": 0,
+     "url": "https://www.oakhouse.jp/apartment/18245"
+    },
+    {
+     "id": "suumo:sc_koto/53fb7aa9b9b0",
+     "source": "suumo",
+     "name": "クレヴィスタ押上",
+     "ward": "江東区",
+     "stations": [
+      "亀戸",
+      "押上",
+      "小村井"
+     ],
+     "units": 5,
+     "url": "https://suumo.jp/chintai/jnc_000106321771/"
     }
    ]
   },
