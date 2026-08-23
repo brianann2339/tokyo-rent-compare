@@ -33,10 +33,13 @@ import {
   checkMonthlyAtLeastRent, checkDepositNonRefundable, type Violation,
 } from '../../../packages/schema/src/invariants.ts';
 
-const OUT_DIR = path.resolve(import.meta.dirname, '../../../web/public/data');
+// 這兩個路徑可用環境變數覆蓋——閘門的端到端測試要能在臨時目錄跑，
+// 否則「無 alias 必須 exit 非零」只能靠讀程式碼相信，不能實際證明。
+const DATA = process.env['TOKYO_RENT_DATA_ROOT'] ?? DATA_ROOT;
+const OUT_DIR = process.env['TOKYO_RENT_OUT_DIR'] ?? path.resolve(import.meta.dirname, '../../../web/public/data');
 /** provenance 每桶的 unit 數。桶位由序號直算，改這個值要連同舊桶一起重建。 */
 const PROV_BUCKET = 400;
-const ALIAS_FILE = path.join(DATA_ROOT, 'aliases', 'buildings.json');
+const ALIAS_FILE = path.join(DATA, 'aliases', 'buildings.json');
 
 const UTIL_BASIS = { unknown: 0, included: 1, excluded: 2 } as const;
 const GENDER = { unknown: 0, mixed: 1, female_only: 2, male_only: 3 } as const;
@@ -223,7 +226,7 @@ async function main(): Promise<void> {
 
   const SOURCES = await loadSourceIds();
   for (const id of SOURCES) {
-    const p = path.join(DATA_ROOT, 'normalized', `${id}.ndjson.gz`);
+    const p = path.join(DATA, 'normalized', `${id}.ndjson.gz`);
     if (!existsSync(p)) { g.warnings.push(`找不到 ${p}，跳過`); continue; }
     const text = gunzipSync(await readFile(p)).toString('utf8');
     for (const line of text.split('\n')) {
