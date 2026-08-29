@@ -719,6 +719,10 @@ window.__frame = (t) => { const dt = t - prevT; prevT = t; frame(t, Math.max(0.0
     resize();
     $('#loadSt').textContent = '正在解碼影像與深度…';
     const first = Q.get('scene') || 'gate_front';
+    if (!Q.get('density') && matchMedia('(pointer:coarse)').matches) {
+      S.density = 70000;
+      document.querySelectorAll('#dens .btn').forEach(b => b.classList.toggle('on', b.dataset.d === '70000'));
+    }
     setColorMode('laser');
     setMode(Q.get('mode') === 'crystal' ? 'crystal' : 'scan', { instant: true, force: true });
     if (Q.get('density')) S.density = +Q.get('density');
