@@ -1,0 +1,10 @@
+photos/
+work/
+dist/
+scenes_data.js
+labels.json
+*.onnx
+*.mp4
+*.tgz
+package/
+three.min.js

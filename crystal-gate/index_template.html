@@ -1,0 +1,737 @@
+<title>南譙樓水晶點雲</title>
+<style>
+  :root{
+    --ink:#04060a;
+    --mist:#e8eef5;
+    --dim:#77839a;
+    --beam:#7fd4ff;
+    --brass:#c9a86a;
+    --seal:#a33c2b;
+    --glass:rgba(10,15,24,.58);
+    --hair:rgba(220,235,255,.10);
+  }
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--ink); color:var(--mist); overflow:hidden;
+    font-family:'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif;
+    -webkit-font-smoothing:antialiased; user-select:none; -webkit-user-select:none;
+  }
+  body.mode-crystal{
+    background:radial-gradient(1100px 720px at 50% 36%, #0c1626 0%, #060a12 55%, #020308 100%);
+  }
+  #gl,#fx{position:fixed; inset:0; width:100%; height:100%; display:block}
+  #fx{pointer-events:none}
+  .ui{position:fixed; z-index:5}
+
+  /* ── identity ─────────────────────────── */
+  #brand{top:22px; left:22px; display:flex; gap:14px; align-items:flex-start; pointer-events:none}
+  #brand .plaque{
+    writing-mode:vertical-rl; text-orientation:upright;
+    font-family:'Noto Serif TC','Songti TC','PMingLiU',serif; font-weight:900;
+    font-size:30px; letter-spacing:.34em; color:var(--brass);
+    text-shadow:0 0 22px rgba(201,168,106,.25); line-height:1.2;
+  }
+  #brand .seal{width:11px; height:11px; background:var(--seal); margin-top:10px;
+    box-shadow:0 0 10px rgba(163,60,43,.5)}
+  #brand .side{display:flex; flex-direction:column; gap:7px; padding-top:2px}
+  #brand .sub{
+    font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:10px; letter-spacing:.32em; color:var(--dim); text-transform:uppercase;
+  }
+  #brand .scene-name{
+    font-family:'Noto Serif TC','Songti TC',serif; font-weight:700;
+    font-size:15px; letter-spacing:.2em; color:var(--brass); opacity:.92;
+  }
+
+  /* ── HUD ──────────────────────────────── */
+  #hud{top:22px; right:22px; text-align:right; pointer-events:none;
+    font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+    font-size:10px; line-height:1.8; letter-spacing:.14em; color:rgba(158,205,240,.78);
+  }
+  #hud .live{display:inline-block; width:6px; height:6px; background:var(--beam);
+    margin-left:7px; animation:blink 1.6s steps(2) infinite;
+    box-shadow:0 0 8px var(--beam)}
+  @keyframes blink{50%{opacity:.15}}
+
+  /* ── control deck ─────────────────────── */
+  #deck{
+    left:50%; bottom:26px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content:center;
+    max-width:min(94vw,860px); padding:10px 16px;
+    background:var(--glass); border:1px solid var(--hair); border-radius:14px;
+    backdrop-filter:blur(12px) saturate(1.25); -webkit-backdrop-filter:blur(12px) saturate(1.25);
+  }
+  .grp{display:flex; align-items:center; gap:8px}
+  .grp .lb{
+    font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace; font-size:9px;
+    letter-spacing:.28em; color:var(--dim); margin-right:2px;
+  }
+  .vr{width:1px; height:26px; background:var(--hair)}
+
+  .thumb{width:46px; height:34px; padding:0; border-radius:6px; overflow:hidden;
+    border:1px solid var(--hair); background:#000; cursor:pointer; position:relative;
+    transition:border-color .2s, box-shadow .2s; flex:none}
+  .thumb img{width:100%; height:100%; object-fit:cover; display:block; opacity:.55;
+    filter:saturate(.4) brightness(.9); transition:opacity .2s, filter .2s}
+  .thumb.on{border-color:var(--brass); box-shadow:0 0 12px rgba(201,168,106,.28)}
+  .thumb.on img{opacity:1; filter:saturate(.85)}
+
+  .btn{
+    appearance:none; background:transparent; border:1px solid transparent; color:var(--dim);
+    font-family:inherit; font-size:12.5px; letter-spacing:.14em; padding:6px 10px;
+    border-radius:8px; cursor:pointer; transition:color .2s, border-color .2s, background .2s;
+  }
+  .btn:hover{color:var(--mist)}
+  .btn.on{color:var(--beam); border-color:rgba(127,212,255,.4); background:rgba(127,212,255,.07)}
+  .btn:focus-visible,.thumb:focus-visible,.chip:focus-visible{outline:1px solid var(--beam); outline-offset:2px}
+
+  .chip{width:20px; height:20px; border-radius:50%; border:1px solid var(--hair);
+    padding:0; cursor:pointer; flex:none; transition:box-shadow .2s, border-color .2s}
+  .chip.on{border-color:var(--beam); box-shadow:0 0 10px rgba(127,212,255,.45)}
+  .chip.c-laser{background:radial-gradient(circle at 40% 35%, #fff, #b9c6d6 70%)}
+  .chip.c-ice{background:radial-gradient(circle at 40% 35%, #cfeeff, #4fa8d8 75%)}
+  .chip.c-rgb{background:conic-gradient(#e66,#dc5 25%,#5c8 50%,#59c 75%,#e66)}
+
+  #hint{
+    left:50%; bottom:6px; transform:translateX(-50%); pointer-events:none;
+    font-size:10.5px; letter-spacing:.18em; color:rgba(150,165,190,.42); white-space:nowrap;
+  }
+  #ticks{
+    left:0; right:0; bottom:88px; text-align:center; pointer-events:none;
+    font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace; font-size:8.5px;
+    letter-spacing:.35em; color:rgba(190,215,245,.20); white-space:nowrap; overflow:hidden;
+  }
+
+  /* ── veils ────────────────────────────── */
+  #veil{position:fixed; inset:0; background:#010205; opacity:0; pointer-events:none;
+    transition:opacity .32s ease; z-index:8}
+  #veil.on{opacity:1}
+  #load{position:fixed; inset:0; background:var(--ink); z-index:9;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    transition:opacity .7s ease}
+  #load.off{opacity:0; pointer-events:none}
+  #load .seal{width:13px; height:13px; background:var(--seal); box-shadow:0 0 12px rgba(163,60,43,.55)}
+  #load h1{margin:0; font-family:'Noto Serif TC','Songti TC',serif; font-weight:900;
+    font-size:clamp(34px,6vw,52px); letter-spacing:.42em; text-indent:.42em; color:var(--brass);
+    text-shadow:0 0 30px rgba(201,168,106,.3)}
+  #load .st{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace; font-size:10px;
+    letter-spacing:.3em; color:var(--dim)}
+  #load .bar{width:180px; height:1px; background:rgba(255,255,255,.10); overflow:hidden}
+  #load .bar i{display:block; height:100%; width:30%; background:var(--beam);
+    box-shadow:0 0 8px var(--beam); animation:sweep 1.1s ease-in-out infinite}
+  @keyframes sweep{0%{transform:translateX(-120%)}100%{transform:translateX(640%)}}
+
+  #err{position:fixed; inset:0; z-index:10; display:none; align-items:center; justify-content:center;
+    background:var(--ink); color:var(--dim); font-size:14px; letter-spacing:.1em; text-align:center; padding:30px}
+
+  @media (max-width:640px){
+    #brand{top:14px; left:14px}
+    #brand .plaque{font-size:22px}
+    #hud{display:none}
+    #ticks{display:none}
+    #deck{bottom:14px; gap:10px; padding:8px 10px; border-radius:12px}
+    #hint{display:none}
+    .vr{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    #hud .live{animation:none}
+    #load .bar i{animation:none; width:100%}
+  }
+  body.rec .ui, body.rec #hint, body.rec #load{display:none!important}
+</style>
+
+<canvas id="gl"></canvas>
+<canvas id="fx"></canvas>
+<div id="ticks" class="ui"></div>
+
+<header id="brand" class="ui">
+  <div class="plaque">南譙樓</div>
+  <div class="seal"></div>
+  <div class="side">
+    <div class="sub">LASER·POINT·CLOUD</div>
+    <div class="scene-name" id="sceneName">正面全景</div>
+  </div>
+</header>
+
+<div id="hud" class="ui">
+  <div id="hudPts">PTS —</div>
+  <div id="hudMode">MODE SCAN·DRIFT</div>
+  <div>SRC iPHONE 4032×3024<span class="live"></span></div>
+</div>
+
+<div id="deck" class="ui">
+  <div class="grp" id="thumbs"><span class="lb">場景</span></div>
+  <div class="vr"></div>
+  <div class="grp"><span class="lb">模式</span>
+    <button class="btn on" id="mScan">掃描飛行</button>
+    <button class="btn" id="mCrystal">水晶方塊</button>
+  </div>
+  <div class="vr"></div>
+  <div class="grp"><span class="lb">光色</span>
+    <button class="chip c-laser on" data-c="laser" aria-label="雷射白"></button>
+    <button class="chip c-ice" data-c="ice" aria-label="冰藍"></button>
+    <button class="chip c-rgb" data-c="rgb" aria-label="原色"></button>
+  </div>
+  <div class="vr"></div>
+  <div class="grp" id="dens"><span class="lb">密度</span>
+    <button class="btn" data-d="70000">疏</button>
+    <button class="btn on" data-d="150000">中</button>
+    <button class="btn" data-d="300000">密</button>
+  </div>
+</div>
+<div id="hint" class="ui">拖曳旋轉 ・ 滾輪／雙指縮放 ・ 雙擊回自動運鏡</div>
+
+<div id="veil"></div>
+<div id="load">
+  <div class="seal"></div>
+  <h1>南譙樓</h1>
+  <div class="bar"><i></i></div>
+  <div class="st" id="loadSt">正在解析點雲資料…</div>
+</div>
+<div id="err">這個裝置無法啟用 WebGL，點雲無法顯示。請改用支援 WebGL 的瀏覽器。</div>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=Noto+Sans+TC:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<!--THREE_SRC--><script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script><!--/THREE_SRC-->
+<script>/*__SCENES_DATA__*/</script>
+<script>
+'use strict';
+/* ============================================================
+   南譙樓水晶點雲 — photo → depth → laser point cloud
+   modes: scan (LiDAR flythrough) / crystal (engraved glass block)
+   ============================================================ */
+const $ = s => document.querySelector(s);
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const Q = new URLSearchParams(location.search);
+const REC = Q.get('record') === '1';
+if (REC) document.body.classList.add('rec');
+
+const CFG = {
+  zNear: 1.0, zFar: 7.0,
+  vfovPortrait: 66, vfovLandscape: 48,
+  revealDur: RM ? 0.6 : 2.4,
+  crystalFlatten: 0.5,       // relief compression inside the glass block
+  crystalMax: 1.6,           // block max dimension
+  turnSpeed: REC ? 0.55 : 0.28,
+};
+
+/* ---------- state ---------- */
+const S = {
+  mode: 'scan',              // 'scan' | 'crystal'
+  colorMode: 'laser',        // 'laser' | 'ice' | 'rgb'
+  density: 150000,
+  sceneId: null,
+  cloud: null,               // {info, geometry}
+  revealT0: 0,
+  user: { active: false, lastInput: -1e9, th: 0, ph: 0, r: 1, tOfs: new THREE.Vector3() },
+  t: 0,
+};
+const CACHE = {};            // sceneId -> {colorData, depthF, engF, cw, ch, dw, dh}
+
+/* ---------- renderer ---------- */
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas: $('#gl'), antialias: false, alpha: true, powerPreference: 'high-performance' });
+} catch (e) { $('#err').style.display = 'flex'; throw e; }
+renderer.setClearColor(0x000000, 0);
+const scene3 = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(50, 1, 0.05, 60);
+const gScan = new THREE.Group(), gCrystal = new THREE.Group(), gTurn = new THREE.Group();
+scene3.add(gScan, gCrystal); gCrystal.add(gTurn);
+
+/* ---------- point shader ---------- */
+const TINTS = { laser: [1, 1, 1], ice: [0.62, 0.86, 1.0], rgb: [1, 1, 1] };
+function makePointMat(sizeMul, mirror) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 }, uPx: { value: 600 }, uSize: { value: 1 }, uSizeMul: { value: sizeMul },
+      uReveal: { value: 0 }, uYMin: { value: 0 }, uYMax: { value: 1 },
+      uColorMix: { value: 0 }, uTint: { value: new THREE.Vector3(1, 1, 1) },
+      uFogStart: { value: 3.2 }, uFogK: { value: 0.16 },
+      uTwk: { value: RM ? 0 : 1 },
+      uMirror: { value: mirror ? 1 : 0 }, uPlaneY: { value: 0 }, uGlobalA: { value: 1 }, uGain: { value: 1.35 }, uOrtho: { value: 0 },
+    },
+    vertexShader: `
+      attribute vec3 aCol; attribute vec3 aPos2; attribute float aEng; attribute float aRnd; attribute float aSz;
+      uniform float uTime,uPx,uSize,uSizeMul,uReveal,uYMin,uYMax,uTwk,uOrtho;
+      varying vec3 vCol; varying float vEng,vRnd,vBand,vDist,vWy,vVis;
+      void main(){
+        vCol=aCol; vEng=aEng; vRnd=aRnd;
+        vec3 pos=mix(position,aPos2,uOrtho);
+        float yN=(pos.y-uYMin)/max(uYMax-uYMin,1e-5);
+        float edge=(1.04-uReveal*1.08);
+        vVis=step(edge,yN+0.0001);
+        vBand=(1.0-smoothstep(0.0,0.055,abs(yN-edge)))*(1.0-step(1.0,uReveal));
+        vec4 wp=modelMatrix*vec4(pos,1.0); vWy=wp.y;
+        vec4 mv=viewMatrix*wp;
+        vDist=-mv.z;
+        float tw=1.0-uTwk*0.28*(0.5+0.5*sin(uTime*(0.7+aRnd*2.3)+aRnd*43.0));
+        gl_PointSize=clamp(uSize*uSizeMul*aSz*tw*uPx/max(vDist,0.05),0.75,6.0);
+        gl_Position=projectionMatrix*mv;
+      }`,
+    fragmentShader: `
+            uniform float uTime,uColorMix,uFogStart,uFogK,uTwk,uMirror,uPlaneY,uReveal,uGlobalA,uGain;
+      uniform vec3 uTint;
+      varying vec3 vCol; varying float vEng,vRnd,vBand,vDist,vWy,vVis;
+      void main(){
+        if(vVis<0.5) discard;
+        vec2 p=gl_PointCoord*2.0-1.0; float r2=dot(p,p);
+        if(r2>1.0) discard;
+        float disc=smoothstep(1.0,0.18,r2);
+        float tw=1.0-uTwk*0.30*(0.5+0.5*sin(uTime*(0.8+vRnd*2.6)+vRnd*61.0));
+        vec3 mono=uTint*vEng;
+        vec3 col=mix(mono,vCol*(0.35+0.65*vEng),uColorMix);
+        float fog=exp(-max(0.0,vDist-uFogStart)*uFogK);
+        float a=disc*tw*fog;
+        if(uMirror>0.5){ a*=0.22*exp(min(0.0,(vWy-uPlaneY))*2.6); col*=vec3(0.75,0.85,1.0); }
+        col=col*uGain+vBand*vec3(0.55,0.85,1.0)*3.0;
+        gl_FragColor=vec4(col*a*uGlobalA,1.0);
+      }`,
+    blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, transparent: true,
+  });
+}
+const matScan = makePointMat(1, false);
+const matCrystal = makePointMat(1, false);
+const ALL_MATS = [matScan, matCrystal];
+
+let ptsScan = null, ptsCrystal = null;
+
+/* ---------- crystal furniture (built per scene) ---------- */
+let cube = null;  // {front, back, edges, base, glow, floor, dims}
+function glassMat(back) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uA: { value: back ? 0.10 : 1.0 } },
+    vertexShader: `varying vec3 vN,vV; void main(){ vN=normalize(normalMatrix*normal);
+      vec4 mv=modelViewMatrix*vec4(position,1.0); vV=normalize(-mv.xyz);
+      gl_Position=projectionMatrix*mv; }`,
+    fragmentShader: `precision mediump float; uniform float uA; varying vec3 vN,vV;
+      void main(){ float f=pow(1.0-abs(dot(normalize(vN),normalize(vV))),3.0);
+        vec3 col=mix(vec3(0.03,0.05,0.09),vec3(0.55,0.80,1.0),f);
+        float a=uA<0.5? 0.05 : (0.04+0.34*f);
+        gl_FragColor=vec4(col,a); }`,
+    transparent: true, depthWrite: false, side: back ? THREE.BackSide : THREE.FrontSide,
+  });
+}
+function disposeCube() {
+  if (!cube) return;
+  for (const k of ['front', 'back', 'edges', 'base', 'glow', 'floor']) {
+    const o = cube[k]; if (!o) continue;
+    o.parent && o.parent.remove(o);
+    o.geometry && o.geometry.dispose();
+    o.material && o.material.dispose && o.material.dispose();
+  }
+  cube = null;
+}
+function buildCube(dims) {
+  disposeCube();
+  const { w, h, d } = dims;
+  const g = new THREE.BoxGeometry(w, h, d);
+  const back = new THREE.Mesh(g, glassMat(true)); back.renderOrder = 0;
+  const front = new THREE.Mesh(g.clone(), glassMat(false)); front.renderOrder = 4;
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(g),
+    new THREE.LineBasicMaterial({ color: 0xa8d8f8, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending }));
+  edges.renderOrder = 3;
+  back.position.y = front.position.y = edges.position.y = h / 2 + 0.001;
+  gTurn.add(back, front, edges);
+
+  const baseH = 0.16, baseW = w * 1.18, baseD = d * 1.18;
+  const base = new THREE.Mesh(new THREE.BoxGeometry(baseW, baseH, baseD),
+    new THREE.MeshBasicMaterial({ color: 0x0d1420 }));
+  base.position.y = -baseH / 2 - 0.002;
+  // LED glow plane on top of the base
+  const glowTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const x = c.getContext('2d');
+    const gr = x.createRadialGradient(64, 64, 4, 64, 64, 62);
+    gr.addColorStop(0, 'rgba(127,212,255,0.85)'); gr.addColorStop(0.5, 'rgba(80,150,220,0.28)');
+    gr.addColorStop(1, 'rgba(40,90,160,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+    const t = new THREE.CanvasTexture(c); return t;
+  })();
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(baseW * 1.04, baseD * 1.04),
+    new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 }));
+  glow.rotation.x = -Math.PI / 2; glow.position.y = 0.004; glow.renderOrder = 1;
+  // floor disc
+  const floorTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const x = c.getContext('2d');
+    const gr = x.createRadialGradient(128, 128, 10, 128, 128, 126);
+    gr.addColorStop(0, 'rgba(30,48,74,0.55)'); gr.addColorStop(0.6, 'rgba(12,20,34,0.28)');
+    gr.addColorStop(1, 'rgba(4,7,12,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, 256, 256);
+    return new THREE.CanvasTexture(c);
+  })();
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w * 7, d * 7),
+    new THREE.MeshBasicMaterial({ map: floorTex, transparent: true, depthWrite: false }));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = -baseH - 0.001;
+  gCrystal.add(base, floor); gTurn.add(glow);
+  cube = { front, back, edges, base, glow, floor, dims };
+}
+
+/* ---------- scene decoding ---------- */
+function loadImg(src) {
+  return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+}
+async function decodeScene(sc) {
+  if (CACHE[sc.id]) return CACHE[sc.id];
+  const [ci, di] = await Promise.all([loadImg(sc.color), loadImg(sc.depth)]);
+  const cc = document.createElement('canvas'); cc.width = ci.width; cc.height = ci.height;
+  const cx = cc.getContext('2d', { willReadFrequently: true }); cx.drawImage(ci, 0, 0);
+  const colorData = cx.getImageData(0, 0, ci.width, ci.height);
+  const dc = document.createElement('canvas'); dc.width = di.width; dc.height = di.height;
+  const dx = dc.getContext('2d', { willReadFrequently: true }); dx.drawImage(di, 0, 0);
+  const dd = dx.getImageData(0, 0, di.width, di.height).data;
+  const n = di.width * di.height;
+  const depthF = new Float32Array(n), engF = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    depthF[i] = (dd[i * 4] * 256 + dd[i * 4 + 1]) / 65535;
+    engF[i] = dd[i * 4 + 2] / 255;
+  }
+  const entry = { colorData, depthF, engF, cw: ci.width, ch: ci.height, dw: di.width, dh: di.height };
+  CACHE[sc.id] = entry; return entry;
+}
+function bilinear(arr, w, h, u, v) {
+  const x = Math.min(Math.max(u * w - 0.5, 0), w - 1.001), y = Math.min(Math.max(v * h - 0.5, 0), h - 1.001);
+  const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0;
+  const i00 = y0 * w + x0, i10 = i00 + 1, i01 = i00 + w, i11 = i01 + 1;
+  return arr[i00] * (1 - fx) * (1 - fy) + arr[i10] * fx * (1 - fy) + arr[i01] * (1 - fx) * fy + arr[i11] * fx * fy;
+}
+
+/* ---------- cloud build ---------- */
+function buildCloud(sc, data, target) {
+  const { colorData, depthF, engF, cw, ch, dw, dh } = data;
+  const aspect = sc.aspect;
+  const vfov = (aspect < 1 ? CFG.vfovPortrait : CFG.vfovLandscape) * Math.PI / 180;
+  const tanV = Math.tan(vfov / 2);
+  const stride = Math.sqrt((cw * ch) / target);
+  const gw = Math.max(2, Math.floor(cw / stride)), gh = Math.max(2, Math.floor(ch / stride));
+  const n = gw * gh;
+  const OW = aspect >= 1 ? 1 : aspect, OH = aspect >= 1 ? 1 / aspect : 1;  // photo plane, max dim 1
+  const OD = 0.62;                                                          // relief depth
+  const pos = new Float32Array(n * 3), pos2 = new Float32Array(n * 3), col = new Uint8Array(n * 3);
+  const eng = new Uint8Array(n), rnd = new Uint8Array(n), asz = new Uint8Array(n);
+  const cd = colorData.data;
+  let minY = 1e9, maxY = -1e9, minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9;
+  let sx = 0, sy = 0, sz = 0;
+  const iZN = 1 / CFG.zNear, iZF = 1 / CFG.zFar;
+  let k = 0;
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const ju = (Math.random() - 0.5) * 0.9, jv = (Math.random() - 0.5) * 0.9;
+      const u = Math.min(Math.max((gx + 0.5 + ju) / gw, 0), 1);
+      const v = Math.min(Math.max((gy + 0.5 + jv) / gh, 0), 1);
+      const dn = bilinear(depthF, dw, dh, u, v);
+      const z = 1 / (iZF + (iZN - iZF) * dn);
+      const x = (u * 2 - 1) * tanV * aspect * z;
+      const y = (1 - v * 2) * tanV * z;
+      pos[k * 3] = x; pos[k * 3 + 1] = y; pos[k * 3 + 2] = -z;
+      pos2[k * 3] = (u - 0.5) * OW; pos2[k * 3 + 1] = (0.5 - v) * OH; pos2[k * 3 + 2] = (dn - 1) * OD;
+      const px = Math.min(cw - 1, (u * cw) | 0), py = Math.min(ch - 1, (v * ch) | 0);
+      const ci4 = (py * cw + px) * 4;
+      col[k * 3] = cd[ci4]; col[k * 3 + 1] = cd[ci4 + 1]; col[k * 3 + 2] = cd[ci4 + 2];
+      eng[k] = Math.min(255, bilinear(engF, dw, dh, u, v) * 255);
+      rnd[k] = Math.random() * 255;
+      asz[k] = 90 + Math.random() * 165;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (-z < minZ) minZ = -z; if (-z > maxZ) maxZ = -z;
+      sx += x; sy += y; sz -= z;
+      k++;
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aPos2', new THREE.BufferAttribute(pos2, 3));
+  geo.setAttribute('aCol', new THREE.BufferAttribute(col, 3, true));
+  geo.setAttribute('aEng', new THREE.BufferAttribute(eng, 1, true));
+  geo.setAttribute('aRnd', new THREE.BufferAttribute(rnd, 1, true));
+  geo.setAttribute('aSz', new THREE.BufferAttribute(asz, 1, true));
+  const info = {
+    n, minY, maxY, minX, maxX, minZ, maxZ,
+    centroid: new THREE.Vector3(sx / n, sy / n, sz / n),
+    spacing: (maxX - minX) / gw,
+    ortho: { w: OW, h: OH, d: OD, spacing: OW / gw },
+  };
+  return { geometry: geo, info };
+}
+
+function applyCloud(sc, cloud) {
+  // scan points
+  if (ptsScan) { gScan.remove(ptsScan); ptsScan.geometry.dispose(); }
+  ptsScan = new THREE.Points(cloud.geometry, matScan); ptsScan.renderOrder = 2; ptsScan.frustumCulled = false;
+  gScan.add(ptsScan);
+  // crystal: photo-plane relief slab inside the glass block
+  const inf = cloud.info, o = inf.ortho;
+  const s = CFG.crystalMax / Math.max(o.w, o.h, o.d);
+  const dims = { w: o.w * s * 1.08, h: o.h * s * 1.08, d: o.d * s * 1.16 };
+  buildCube(dims);
+  if (ptsCrystal) { gTurn.remove(ptsCrystal); }
+  ptsCrystal = new THREE.Points(cloud.geometry, matCrystal); ptsCrystal.renderOrder = 2; ptsCrystal.frustumCulled = false;
+  ptsCrystal.scale.set(s, s, s);
+  ptsCrystal.position.set(0, dims.h / 2, o.d * 0.5 * s);
+  gTurn.add(ptsCrystal);
+  matScan.uniforms.uYMin.value = inf.minY; matScan.uniforms.uYMax.value = inf.maxY;
+  matCrystal.uniforms.uYMin.value = -o.h / 2; matCrystal.uniforms.uYMax.value = o.h / 2;
+  // point diameter follows sample spacing so density changes stay balanced
+  matScan.uniforms.uSize.value = inf.spacing * 0.62;
+  matCrystal.uniforms.uSize.value = o.spacing * s * 0.85;
+  matCrystal.uniforms.uSizeMul.value = 1;
+  matCrystal.uniforms.uOrtho.value = 1;
+  matCrystal.uniforms.uFogStart.value = 90;
+  setColorMode(S.colorMode);
+  S.cloud = cloud;
+  $('#hudPts').textContent = 'PTS ' + inf.n.toLocaleString('en-US');
+}
+
+/* ---------- camera ---------- */
+const camState = { pos: new THREE.Vector3(0, 0, 1), tgt: new THREE.Vector3(0, 0, -3) };
+function autoParams(t) {
+  const inf = S.cloud.info;
+  if (S.mode === 'scan') {
+    const zMid = Math.min(Math.max(-inf.centroid.z, 1.8), 3.4);
+    const T = new THREE.Vector3(inf.centroid.x * 0.4 + 0.14 * Math.sin(t * 0.05 + 2), inf.centroid.y * 0.75 + 0.09 * Math.sin(t * 0.061), -zMid);
+    const drift = RM ? 0 : 1;
+    const th = 0.40 * Math.sin(t * 0.070) * drift;
+    const ph = Math.PI / 2 - 0.02 + 0.09 * Math.sin(t * 0.045 + 1.7) * drift;
+    const r = zMid * 1.06 * (1 - (0.36 * Math.sin(t * 0.031 + 0.6) + 0.10) * drift);
+    return { T, th, ph, r };
+  } else {
+    const T = new THREE.Vector3(0, cube ? cube.dims.h * 0.46 : 0.7, 0);
+    const th = 0.0;
+    const ph = Math.PI / 2 - 0.30;
+    const r = (cube ? Math.max(cube.dims.w, cube.dims.h) : 1.6) * 1.95;
+    return { T, th, ph, r };
+  }
+}
+function camFromParams(p, thOfs, phOfs, rMul, tOfs) {
+  const th = p.th + thOfs, ph = Math.min(Math.max(p.ph + phOfs, 0.5), 1.95);
+  const r = p.r * rMul;
+  const T = p.T.clone().add(tOfs);
+  camState.tgt.copy(T);
+  camState.pos.set(
+    T.x + r * Math.sin(ph) * Math.sin(th),
+    T.y + r * Math.cos(ph),
+    T.z + r * Math.sin(ph) * Math.cos(th));
+}
+function updateCamera(t, dt) {
+  const p = autoParams(t);
+  const u = S.user;
+  if (!REC && (u.active || t - u.lastInput < 4.5)) {
+    camFromParams(p, u.th, u.ph, u.r, u.tOfs);
+  } else {
+    // ease user offsets back to the auto path
+    const e = Math.min(1, dt * 1.4);
+    u.th += (0 - u.th) * e; u.ph += (0 - u.ph) * e; u.r += (1 - u.r) * e; u.tOfs.multiplyScalar(1 - e);
+    camFromParams(p, u.th, u.ph, u.r, u.tOfs);
+  }
+  cam.position.copy(camState.pos);
+  cam.lookAt(camState.tgt);
+}
+
+/* ---------- fx overlay: vignette + grain + ticks ---------- */
+const fx = $('#fx'), fctx = fx.getContext('2d');
+let vigCache = null;
+const noiseC = document.createElement('canvas'); noiseC.width = 320; noiseC.height = 180;
+const nctx = noiseC.getContext('2d');
+const noiseData = nctx.createImageData(320, 180);
+function regenNoise() {
+  const d = noiseData.data;
+  for (let i = 0; i < d.length; i += 4) { const v = Math.random() * 255 | 0; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+  nctx.putImageData(noiseData, 0, 0);
+}
+regenNoise();
+function buildVignette(w, h) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.42, w / 2, h / 2, Math.max(w, h) * 0.78);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.46)');
+  x.fillStyle = g; x.fillRect(0, 0, w, h);
+  vigCache = c;
+}
+let fxFrame = 0;
+function drawFX() {
+  const w = fx.width, h = fx.height;
+  fctx.clearRect(0, 0, w, h);
+  if (vigCache) fctx.drawImage(vigCache, 0, 0);
+  if (!RM || REC) {
+    if ((fxFrame++ & 1) === 0) regenNoise();
+    fctx.globalAlpha = S.mode === 'scan' ? 0.042 : 0.022;
+    fctx.globalCompositeOperation = 'lighter';
+    fctx.imageSmoothingEnabled = false;
+    fctx.drawImage(noiseC, 0, 0, w, h);
+    fctx.globalCompositeOperation = 'source-over';
+    fctx.globalAlpha = 1;
+  }
+}
+const TICKGLYPH = '▏▎▍▌▖▘▂·';
+function updateTicks() {
+  if (S.mode !== 'scan') { $('#ticks').textContent = ''; return; }
+  let s = '';
+  for (let i = 0; i < 46; i++) {
+    s += Math.random() < 0.6 ? TICKGLYPH[Math.random() * TICKGLYPH.length | 0]
+      : (Math.random() * 4096 | 0).toString(16).padStart(3, '0').toUpperCase();
+    s += ' ';
+  }
+  $('#ticks').textContent = s;
+}
+if (!RM) setInterval(updateTicks, 420);
+
+/* ---------- resize ---------- */
+function resize() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const w = innerWidth, h = innerHeight;
+  renderer.setPixelRatio(dpr); renderer.setSize(w, h);
+  cam.aspect = w / h; cam.updateProjectionMatrix();
+  fx.width = w; fx.height = h; buildVignette(w, h);
+  const px = (h * dpr) / (2 * Math.tan(cam.fov * Math.PI / 360));
+  for (const m of ALL_MATS) m.uniforms.uPx.value = px;
+}
+addEventListener('resize', resize);
+
+/* ---------- input ---------- */
+const ptrs = new Map();
+let pinchD0 = 0, r0 = 1;
+const glc = $('#gl');
+glc.addEventListener('pointerdown', e => {
+  glc.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 2) { const a = [...ptrs.values()]; pinchD0 = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); r0 = S.user.r; }
+  S.user.active = true; S.user.lastInput = S.t;
+});
+glc.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return;
+  const p = ptrs.get(e.pointerId);
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  S.user.lastInput = S.t;
+  if (ptrs.size === 1) {
+    const lim = S.mode === 'scan' ? 0.85 : 0.95;
+    S.user.th = Math.min(Math.max(S.user.th - dx * 0.0042, -lim), lim);
+    S.user.ph = Math.min(Math.max(S.user.ph + dy * 0.0032, -0.5), 0.55);
+  } else if (ptrs.size === 2) {
+    const a = [...ptrs.values()];
+    const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+    if (pinchD0 > 0) S.user.r = Math.min(Math.max(r0 * pinchD0 / d, 0.4), 2.6);
+  }
+});
+function endPtr(e) { ptrs.delete(e.pointerId); if (ptrs.size === 0) S.user.active = false; }
+glc.addEventListener('pointerup', endPtr); glc.addEventListener('pointercancel', endPtr);
+glc.addEventListener('wheel', e => {
+  e.preventDefault();
+  S.user.lastInput = S.t;
+  S.user.r = Math.min(Math.max(S.user.r * Math.exp(e.deltaY * 0.0011), 0.4), 2.6);
+}, { passive: false });
+glc.addEventListener('dblclick', () => {
+  S.user.th = S.user.ph = 0; S.user.r = 1; S.user.tOfs.set(0, 0, 0); S.user.lastInput = -1e9;
+});
+
+/* ---------- ui wiring ---------- */
+function veil(on) { $('#veil').classList.toggle('on', on); }
+async function setScene(id, opts = {}) {
+  const sc = SCENES.find(s => s.id === id); if (!sc || S.sceneId === id && !opts.force) return;
+  if (!opts.instant) { veil(true); await new Promise(r => setTimeout(r, 340)); }
+  const data = await decodeScene(sc);
+  const cloud = buildCloud(sc, data, S.density);
+  const old = S.cloud;
+  applyCloud(sc, cloud);
+  if (old && old.geometry !== cloud.geometry) old.geometry.dispose();
+  S.sceneId = id;
+  S.revealT0 = S.t;
+  $('#sceneName').textContent = sc.label;
+  document.querySelectorAll('.thumb').forEach(el => el.classList.toggle('on', el.dataset.id === id));
+  if (!opts.instant) { await new Promise(r => setTimeout(r, 60)); veil(false); }
+}
+function setMode(m, opts = {}) {
+  if (S.mode === m && !opts.force) return;
+  const apply = () => {
+    S.mode = m;
+    document.body.classList.toggle('mode-crystal', m === 'crystal');
+    gScan.visible = m === 'scan'; gCrystal.visible = m === 'crystal';
+    cam.fov = m === 'scan' ? 50 : 38; cam.updateProjectionMatrix(); resize();
+    $('#mScan').classList.toggle('on', m === 'scan');
+    $('#mCrystal').classList.toggle('on', m === 'crystal');
+    $('#hudMode').textContent = m === 'scan' ? 'MODE SCAN·DRIFT' : 'MODE CRYSTAL·TURNTABLE';
+    $('#ticks').textContent = '';
+    S.user.th = S.user.ph = 0; S.user.r = 1; S.user.tOfs.set(0, 0, 0); S.user.lastInput = -1e9;
+    S.revealT0 = S.t;
+  };
+  if (opts.instant) { apply(); return; }
+  veil(true); setTimeout(() => { apply(); setTimeout(() => veil(false), 60); }, 340);
+}
+function setColorMode(c) {
+  S.colorMode = c;
+  const tint = TINTS[c];
+  for (const m of ALL_MATS) {
+    m.uniforms.uTint.value.set(tint[0], tint[1], tint[2]);
+    m.uniforms.uColorMix.value = c === 'rgb' ? 1 : 0;
+  }
+  matScan.uniforms.uGain.value = c === 'rgb' ? 1.8 : 1.35;
+  matCrystal.uniforms.uGain.value = c === 'rgb' ? 2.1 : 1.55;
+  document.querySelectorAll('.chip').forEach(el => el.classList.toggle('on', el.dataset.c === c));
+}
+$('#mScan').onclick = () => setMode('scan');
+$('#mCrystal').onclick = () => setMode('crystal');
+document.querySelectorAll('.chip').forEach(el => el.onclick = () => setColorMode(el.dataset.c));
+document.querySelectorAll('#dens .btn').forEach(el => el.onclick = async () => {
+  S.density = +el.dataset.d;
+  document.querySelectorAll('#dens .btn').forEach(b => b.classList.toggle('on', b === el));
+  await setScene(S.sceneId, { force: true });
+});
+for (const sc of SCENES) {
+  const b = document.createElement('button');
+  b.className = 'thumb'; b.dataset.id = sc.id; b.setAttribute('aria-label', sc.label);
+  const im = new Image(); im.src = sc.color; im.alt = ''; b.appendChild(im);
+  b.onclick = () => setScene(sc.id);
+  $('#thumbs').appendChild(b);
+}
+
+/* ---------- main loop ---------- */
+const clock = new THREE.Clock();
+let prevT = 0;
+function frame(t, dt) {
+  S.t = t;
+  const rev = Math.min(1, (t - S.revealT0) / CFG.revealDur);
+  for (const m of ALL_MATS) { m.uniforms.uTime.value = t; m.uniforms.uReveal.value = rev; }
+  if (S.mode === 'crystal') gTurn.rotation.y = RM && !REC ? 0 : Math.sin(t * CFG.turnSpeed) * 0.48;
+  updateCamera(t, dt);
+  renderer.render(scene3, cam);
+  drawFX();
+}
+function loop() {
+  const t = clock.getElapsedTime(); const dt = Math.min(0.1, t - prevT); prevT = t;
+  frame(t, dt);
+  requestAnimationFrame(loop);
+}
+
+/* ---------- record hooks ---------- */
+window.__ready = false;
+window.__setup = async (sceneId, mode, colorMode) => {
+  setMode(mode, { instant: true, force: true });
+  setColorMode(colorMode || 'laser');
+  await setScene(sceneId, { instant: true, force: true });
+  S.revealT0 = 0;
+  return true;
+};
+window.__frame = (t) => { const dt = t - prevT; prevT = t; frame(t, Math.max(0.0001, dt)); return true; };
+
+/* ---------- boot ---------- */
+(async function boot() {
+  try {
+    resize();
+    $('#loadSt').textContent = '正在解碼影像與深度…';
+    const first = Q.get('scene') || 'gate_front';
+    setColorMode('laser');
+    setMode(Q.get('mode') === 'crystal' ? 'crystal' : 'scan', { instant: true, force: true });
+    if (Q.get('density')) S.density = +Q.get('density');
+    $('#loadSt').textContent = '正在重建三維點雲…';
+    await setScene(first, { instant: true });
+    updateTicks();
+    $('#load').classList.add('off');
+    S.revealT0 = 0.001; clock.start(); prevT = 0;
+    window.__ready = true;
+    if (!REC) loop(); else frame(0.0001, 0.0001);
+  } catch (e) {
+    $('#loadSt').textContent = '載入失敗：' + e.message;
+    console.error(e);
+  }
+})();
+</script>
