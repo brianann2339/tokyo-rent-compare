@@ -426,18 +426,26 @@ function buildCloud(sc, data, target) {
       const ju = (Math.random() - 0.5) * 0.9, jv = (Math.random() - 0.5) * 0.9;
       const u = Math.min(Math.max((gx + 0.5 + ju) / gw, 0), 1);
       const v = Math.min(Math.max((gy + 0.5 + jv) / gh, 0), 1);
-      const ev = bilinear(engF, dw, dh, u, v);
-      if (sc.sparse && ev < 0.032) continue;
+      const px = Math.min(cw - 1, (u * cw) | 0), py = Math.min(ch - 1, (v * ch) | 0);
+      const ci4 = (py * cw + px) * 4;
+      const evB = bilinear(engF, dw, dh, u, v);
+      // line-art scenes: engrave brightness from the full-res artwork (sharp strokes),
+      // the 518-grid B channel only serves as a soft floor
+      const cl = Math.max(cd[ci4], cd[ci4 + 1], cd[ci4 + 2]) / 255;
+      const ev = sc.sparse ? Math.max(evB, cl) : evB;
+      if (sc.sparse && ev < 0.05) continue;
+      // feather the frustum border so the cloud dissolves instead of ending in a hard cut
+      const bm = Math.min(u, 1 - u, v, 1 - v);
+      const bt = Math.min(bm / 0.05, 1);
+      const fade = bt * bt * (3 - 2 * bt);
       const dn = bilinear(depthF, dw, dh, u, v);
       const z = 1 / (iZF + (iZN - iZF) * dn);
       const x = (u * 2 - 1) * tanV * aspect * z;
       const y = (1 - v * 2) * tanV * z;
       pos[k * 3] = x; pos[k * 3 + 1] = y; pos[k * 3 + 2] = -z;
       pos2[k * 3] = (u - 0.5) * OW; pos2[k * 3 + 1] = (0.5 - v) * OH; pos2[k * 3 + 2] = (dn - 1) * OD;
-      const px = Math.min(cw - 1, (u * cw) | 0), py = Math.min(ch - 1, (v * ch) | 0);
-      const ci4 = (py * cw + px) * 4;
-      col[k * 3] = cd[ci4]; col[k * 3 + 1] = cd[ci4 + 1]; col[k * 3 + 2] = cd[ci4 + 2];
-      eng[k] = Math.min(255, ev * 255);
+      col[k * 3] = cd[ci4] * fade; col[k * 3 + 1] = cd[ci4 + 1] * fade; col[k * 3 + 2] = cd[ci4 + 2] * fade;
+      eng[k] = Math.min(255, ev * fade * 255);
       rnd[k] = Math.random() * 255;
       asz[k] = 90 + Math.random() * 165;
       if (y < minY) minY = y; if (y > maxY) maxY = y;
@@ -460,6 +468,7 @@ function buildCloud(sc, data, target) {
     spacing: (maxX - minX) / gw,
     ortho: { w: OW, h: OH, d: OD, spacing: OW / gw },
     sparse: !!sc.sparse,
+    tanA: tanV, aspectImg: aspect,
   };
   return { geometry: geo, info };
 }
@@ -498,11 +507,15 @@ function autoParams(t) {
   const inf = S.cloud.info;
   if (S.mode === 'scan') {
     const zMid = Math.min(Math.max(-inf.centroid.z, 1.8), 3.4);
-    const T = new THREE.Vector3(inf.centroid.x * 0.4 + 0.14 * Math.sin(t * 0.05 + 2), inf.centroid.y * 0.75 + 0.09 * Math.sin(t * 0.061), -zMid);
+    const T = new THREE.Vector3(inf.centroid.x * 0.4 + 0.14 * Math.sin(t * 0.05 + 2), inf.centroid.y * 0.5 + 0.09 * Math.sin(t * 0.061), -zMid);
     const drift = (RM ? 0 : 1) * (S.cloud.info.sparse ? 0.55 : 1);
     const th = 0.40 * Math.sin(t * 0.070) * drift;
     const ph = Math.PI / 2 - 0.02 + 0.09 * Math.sin(t * 0.045 + 1.7) * drift;
-    const r = zMid * 1.06 * (1 - (0.36 * Math.sin(t * 0.031 + 0.6) + 0.10) * drift);
+    const zFacade = zMid * 0.8;
+    const tanCam = Math.tan(cam.fov * Math.PI / 360);
+    const need = Math.max(inf.tanA, inf.tanA * inf.aspectImg / Math.max(cam.aspect, 0.5));
+    const rFit = (need * zFacade) / tanCam + (zMid - zFacade);
+    const r = rFit * 1.08 * (1.03 + 0.13 * (1 + Math.sin(t * 0.031 + 0.6)) * drift);
     return { T, th, ph, r };
   } else {
     const T = new THREE.Vector3(0, cube ? cube.dims.h * 0.46 : 0.7, 0);

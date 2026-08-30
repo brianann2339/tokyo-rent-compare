@@ -27,7 +27,12 @@ curl -L -o dav2_vits.onnx \
 python3 tools/depth_infer.py photos work dav2_vits.onnx
 #    （work/*_check.jpg 可目視確認深度品質）
 
-# 2) 打包成網頁資料（labels.json 可選，內容 {"檔名去副檔名": "顯示名稱"}）
+# 1.5)（可選）把照片轉成黑底白線刮畫風，沿用同一張深度圖：
+#      輸出 sk_xxx 之後在 labels.json 標 {"lineart": true}
+python3 tools/sketchify.py work gate_front sk_front
+
+# 2) 打包成網頁資料（labels.json 可選；值可為字串或
+#    {"label": "...", "src": "HUD 字樣", "lineart": true}，鍵的順序決定場景順序）
 python3 tools/pack_scenes.py work scenes_data.js labels.json
 
 # 3) 組出單一 HTML
