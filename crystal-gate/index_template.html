@@ -103,6 +103,33 @@
   }
 
   /* ── veils ────────────────────────────── */
+  #sculpt{position:fixed; inset:0; z-index:7; background:var(--ink); display:flex;
+    flex-direction:column; touch-action:none}
+  #sculpt[hidden]{display:none}
+  #scTop{display:flex; align-items:center; gap:12px; padding:12px 16px; flex:none}
+  #scTop .ttl{font-family:'Noto Serif TC','Songti TC',serif; font-weight:700; font-size:16px;
+    letter-spacing:.24em; color:var(--brass)}
+  #scTop .sp{flex:1}
+  #scTop .hint2{font-size:10px; letter-spacing:.12em; color:var(--dim)}
+  #scv{flex:1; min-height:0; display:block; width:100%; cursor:crosshair}
+  #scDeck{flex:none; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    justify-content:center; padding:10px 12px 14px;
+    background:var(--glass); border-top:1px solid var(--hair);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px)}
+  #scDeck input[type=range]{width:86px; accent-color:var(--beam)}
+  #scDeck .rl{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace; font-size:9px;
+    letter-spacing:.2em; color:var(--dim)}
+  #scBack{position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:7;
+    background:var(--glass); border:1px solid rgba(127,212,255,.4); color:var(--beam);
+    border-radius:20px; padding:9px 20px; font-size:13px; letter-spacing:.2em; cursor:pointer;
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px)}
+  #scBack[hidden]{display:none}
+  #toast{position:fixed; left:50%; top:20px; transform:translateX(-50%); z-index:11;
+    background:rgba(12,20,34,.9); border:1px solid var(--hair); color:var(--mist);
+    padding:9px 18px; border-radius:10px; font-size:12.5px; letter-spacing:.08em;
+    opacity:0; transition:opacity .3s; pointer-events:none; max-width:86vw; text-align:center}
+  #toast.on{opacity:1}
+  @media (max-width:640px){ #scTop{padding:10px 12px} #scTop .hint2{display:none} }
   #veil{position:fixed; inset:0; background:#010205; opacity:0; pointer-events:none;
     transition:opacity .32s ease; z-index:8}
   #veil.on{opacity:1}
@@ -173,6 +200,8 @@
     <button class="chip c-rgb" data-c="rgb" aria-label="原色"></button>
   </div>
   <div class="vr"></div>
+  <div class="grp"><button class="btn" id="mSculpt">捏塑</button></div>
+  <div class="vr"></div>
   <div class="grp" id="dens"><span class="lb">密度</span>
     <button class="btn" data-d="70000">疏</button>
     <button class="btn on" data-d="150000">中</button>
@@ -180,6 +209,33 @@
   </div>
 </div>
 <div id="hint" class="ui">拖曳旋轉 ・ 滾輪／雙指縮放 ・ 雙擊回自動運鏡</div>
+
+<div id="sculpt" hidden>
+  <div id="scTop">
+    <span class="ttl">捏塑深度</span>
+    <span class="hint2">單指塗抹 ・ 雙指移動／縮放</span>
+    <span class="sp"></span>
+    <button class="btn" id="scUndo">復原</button>
+    <button class="btn" id="scPrev">3D 預覽</button>
+    <button class="btn on" id="scDone">完成</button>
+  </div>
+  <canvas id="scv"></canvas>
+  <div id="scDeck">
+    <div class="grp"><span class="lb">工具</span>
+      <button class="btn on" data-t="pull">拉近</button>
+      <button class="btn" data-t="push">推遠</button>
+      <button class="btn" data-t="smooth">撫平</button>
+      <button class="btn" data-t="level">齊平</button>
+    </div>
+    <div class="grp"><span class="rl">筆刷</span><input type="range" id="scSize" min="14" max="150" value="55"></div>
+    <div class="grp"><span class="rl">力道</span><input type="range" id="scStr" min="10" max="100" value="55"></div>
+    <div class="grp"><button class="btn on" id="scHeat">深度層</button></div>
+    <div class="grp"><button class="btn" id="scReset">還原原稿</button>
+      <button class="btn" id="scSave">儲存新版本</button></div>
+  </div>
+</div>
+<button id="scBack" hidden>返回捏塑</button>
+<div id="toast"></div>
 
 <div id="veil"></div>
 <div id="load">
@@ -386,7 +442,10 @@ async function decodeScene(sc) {
     depthF[i] = (dd[i * 4] * 256 + dd[i * 4 + 1]) / 65535;
     engF[i] = dd[i * 4 + 2] / 255;
   }
-  const entry = { colorData, depthF, engF, cw: ci.width, ch: ci.height, dw: di.width, dh: di.height };
+  const entry = { colorData, depthF, engF, cw: ci.width, ch: ci.height, dw: di.width, dh: di.height,
+    depth0: depthF.slice(), colorImg: ci };
+  const ov = OVR[sc.id];
+  if (ov && ov.length === depthF.length) entry.depthF.set(ov);
   CACHE[sc.id] = entry; return entry;
 }
 function bilinear(arr, w, h, u, v) {
@@ -716,6 +775,271 @@ for (const sc of SCENES) {
   $('#thumbs').appendChild(b);
 }
 
+/* ---------- sculpt: hand-editing the depth field ---------- */
+const OVR = {};          // sceneId -> Float32Array override applied at decode
+function toast(msg, ms = 2600) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toast._h); toast._h = setTimeout(() => t.classList.remove('on'), ms);
+}
+function f32ToB64(f) {
+  const u = new Uint16Array(f.length);
+  for (let i = 0; i < f.length; i++) u[i] = Math.max(0, Math.min(65535, f[i] * 65535));
+  const b = new Uint8Array(u.buffer); let out = '';
+  for (let i = 0; i < b.length; i += 8192) out += String.fromCharCode.apply(null, b.subarray(i, i + 8192));
+  return btoa(out);
+}
+function b64ToF32(str) {
+  const raw = atob(str); const b = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) b[i] = raw.charCodeAt(i);
+  const u = new Uint16Array(b.buffer); const f = new Float32Array(u.length);
+  for (let i = 0; i < u.length; i++) f[i] = u[i] / 65535;
+  return f;
+}
+async function loadOverrides() {
+  let cloud = null, local = null;
+  try {
+    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 3500);
+    const r = await fetch('data/sculpt.json', { cache: 'no-store', signal: ctl.signal });
+    if (r.ok) cloud = await r.json();
+  } catch (e) {}
+  try { local = JSON.parse(localStorage.getItem('sculpt_v1') || 'null'); } catch (e) {}
+  const cloudTs = cloud && cloud.ts || 0, localTs = local && local.ts || 0;
+  const pick = localTs >= cloudTs ? local || cloud : cloud;
+  if (pick && pick.scenes) {
+    for (const id in pick.scenes) {
+      try { OVR[id] = b64ToF32(pick.scenes[id].d); } catch (e) {}
+    }
+  }
+}
+function saveLocal() {
+  try {
+    const scenes = {};
+    for (const id in CACHE) {
+      const c = CACHE[id];
+      let dirty = false;
+      for (let i = 0; i < c.depthF.length; i += 977) if (c.depthF[i] !== c.depth0[i]) { dirty = true; break; }
+      if (dirty || OVR[id]) scenes[id] = { d: f32ToB64(c.depthF) };
+    }
+    localStorage.setItem('sculpt_v1', JSON.stringify({ v: 1, ts: Date.now(), scenes }));
+  } catch (e) {}
+}
+const SCULPT = {
+  active: false, preview: false, tool: 'pull', size: 55, str: 0.55, heat: true,
+  view: { s: 1, tx: 0, ty: 0 }, undo: [], stroking: false, levelRef: 0.5,
+  dirty3d: false, heatDirty: true, cursor: null,
+};
+const scv = $('#scv'), scx = scv.getContext('2d');
+const heatC = document.createElement('canvas'); heatC.width = heatC.height = 518;
+const heatX = heatC.getContext('2d');
+const heatID = heatX.createImageData(518, 518);
+function sculptData() { return CACHE[S.sceneId]; }
+function rebuildHeat() {
+  const c = sculptData(); if (!c) return;
+  const d = heatID.data, dn = c.depthF, eg = c.engF;
+  for (let i = 0; i < dn.length; i++) {
+    const t = dn[i];
+    d[i * 4] = 30 + 225 * t; d[i * 4 + 1] = 60 + 150 * t; d[i * 4 + 2] = 180 - 90 * t;
+    d[i * 4 + 3] = 255 * Math.min(1, 0.16 + 0.7 * Math.min(1, eg[i] * 2.2));
+  }
+  heatX.putImageData(heatID, 0, 0);
+  SCULPT.heatDirty = false;
+}
+function sculptFit() {
+  const c = sculptData(); if (!c) return;
+  const r = scv.getBoundingClientRect();
+  scv.width = r.width; scv.height = r.height;
+  const s0 = Math.min(r.width / c.cw, r.height / c.ch) * 0.96;
+  SCULPT.view = { s: s0, tx: (r.width - c.cw * s0) / 2, ty: (r.height - c.ch * s0) / 2 };
+}
+function sculptDraw() {
+  const c = sculptData(); if (!c || !SCULPT.active || SCULPT.preview) return;
+  if (SCULPT.heatDirty) rebuildHeat();
+  const v = SCULPT.view;
+  scx.setTransform(1, 0, 0, 1, 0, 0);
+  scx.fillStyle = '#04060a'; scx.fillRect(0, 0, scv.width, scv.height);
+  scx.setTransform(v.s, 0, 0, v.s, v.tx, v.ty);
+  scx.imageSmoothingEnabled = true;
+  scx.drawImage(c.colorImg, 0, 0);
+  if (SCULPT.heat) scx.drawImage(heatC, 0, 0, c.cw, c.ch);
+  scx.setTransform(1, 0, 0, 1, 0, 0);
+  if (SCULPT.cursor) {
+    scx.strokeStyle = 'rgba(127,212,255,.85)'; scx.lineWidth = 1.2;
+    scx.beginPath();
+    scx.arc(SCULPT.cursor.x, SCULPT.cursor.y, SCULPT.size * v.s, 0, Math.PI * 2);
+    scx.stroke();
+  }
+}
+function screenToImg(x, y) {
+  const v = SCULPT.view;
+  return { x: (x - v.tx) / v.s, y: (y - v.ty) / v.s };
+}
+function brushAt(ix, iy) {
+  const c = sculptData(); if (!c) return;
+  const dn = c.depthF, dw = c.dw, dh = c.dh;
+  const gx = ix / c.cw * dw, gy = iy / c.ch * dh;
+  const rg = Math.max(1.5, SCULPT.size / c.cw * dw);
+  const sg = rg / 1.8, str = SCULPT.str;
+  const x0 = Math.max(0, Math.floor(gx - rg)), x1 = Math.min(dw - 1, Math.ceil(gx + rg));
+  const y0 = Math.max(0, Math.floor(gy - rg)), y1 = Math.min(dh - 1, Math.ceil(gy + rg));
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const dx = x - gx, dy = y - gy, d2 = dx * dx + dy * dy;
+      if (d2 > rg * rg) continue;
+      const w = Math.exp(-d2 / (2 * sg * sg));
+      const i = y * dw + x;
+      if (SCULPT.tool === 'pull') dn[i] += 0.03 * str * w;
+      else if (SCULPT.tool === 'push') dn[i] -= 0.03 * str * w;
+      else if (SCULPT.tool === 'level') dn[i] += (SCULPT.levelRef - dn[i]) * 0.32 * str * w;
+      else {
+        const xm = Math.max(1, Math.min(dw - 2, x)), ym = Math.max(1, Math.min(dh - 2, y));
+        const m = (dn[ym * dw + xm - 1] + dn[ym * dw + xm + 1] + dn[(ym - 1) * dw + xm] + dn[(ym + 1) * dw + xm]) / 4;
+        dn[i] += (m - dn[i]) * 0.5 * str * w;
+      }
+      if (dn[i] < 0) dn[i] = 0; else if (dn[i] > 1) dn[i] = 1;
+    }
+  }
+  SCULPT.heatDirty = true; SCULPT.dirty3d = true;
+}
+function sampleDepthAt(ix, iy) {
+  const c = sculptData();
+  const gx = Math.max(0, Math.min(c.dw - 1, Math.round(ix / c.cw * c.dw)));
+  const gy = Math.max(0, Math.min(c.dh - 1, Math.round(iy / c.ch * c.dh)));
+  return c.depthF[gy * c.dw + gx];
+}
+async function sculptRebuild3D() {
+  if (!SCULPT.dirty3d) return;
+  SCULPT.dirty3d = false;
+  await setScene(S.sceneId, { force: true, instant: true });
+}
+function setSculpt(on) {
+  SCULPT.active = on; SCULPT.preview = false;
+  $('#sculpt').hidden = !on; $('#scBack').hidden = true;
+  document.querySelectorAll('#deck,#brand,#hud,#hint,#ticks').forEach(el => el.style.visibility = on ? 'hidden' : '');
+  if (on) {
+    requestAnimationFrame(() => { sculptFit(); SCULPT.heatDirty = true; sculptDraw(); });
+    toast('用手指或滑鼠直接在畫上推拉深度', 3200);
+  } else {
+    saveLocal(); sculptRebuild3D();
+  }
+}
+$('#mSculpt').onclick = () => setSculpt(true);
+$('#scDone').onclick = () => setSculpt(false);
+$('#scPrev').onclick = async () => {
+  SCULPT.preview = true; $('#sculpt').hidden = true; $('#scBack').hidden = false;
+  await sculptRebuild3D();
+};
+$('#scBack').onclick = () => {
+  SCULPT.preview = false; $('#sculpt').hidden = false; $('#scBack').hidden = true;
+  requestAnimationFrame(() => { sculptFit(); sculptDraw(); });
+};
+document.querySelectorAll('#scDeck [data-t]').forEach(el => el.onclick = () => {
+  SCULPT.tool = el.dataset.t;
+  document.querySelectorAll('#scDeck [data-t]').forEach(b => b.classList.toggle('on', b === el));
+});
+$('#scSize').oninput = e => { SCULPT.size = +e.target.value; sculptDraw(); };
+$('#scStr').oninput = e => { SCULPT.str = +e.target.value / 100; };
+$('#scHeat').onclick = e => { SCULPT.heat = !SCULPT.heat; e.target.classList.toggle('on', SCULPT.heat); sculptDraw(); };
+$('#scUndo').onclick = () => {
+  const c = sculptData();
+  const u = SCULPT.undo.pop();
+  if (u && c) { c.depthF.set(u); SCULPT.heatDirty = true; SCULPT.dirty3d = true; sculptDraw(); saveLocal(); }
+  else toast('沒有可復原的步驟');
+};
+$('#scReset').onclick = () => {
+  const c = sculptData(); if (!c) return;
+  SCULPT.undo.push(c.depthF.slice());
+  c.depthF.set(c.depth0); delete OVR[S.sceneId];
+  SCULPT.heatDirty = true; SCULPT.dirty3d = true; sculptDraw(); saveLocal();
+  toast('已還原為原稿深度');
+};
+$('#scSave').onclick = async () => {
+  const btn = $('#scSave');
+  btn.disabled = true; btn.textContent = '儲存中…';
+  try {
+    const art = window.claude && (await claude.use('artifact'));
+    if (!art) { saveLocal(); toast('雲端儲存不可用，已存在此裝置'); return; }
+    const scenes = {};
+    for (const id in CACHE) scenes[id] = { d: f32ToB64(CACHE[id].depthF) };
+    const payload = JSON.stringify({ v: 1, ts: Date.now(), scenes });
+    await art.publish({ 'data/sculpt.json': { content: payload, contentType: 'application/json' } });
+    saveLocal();
+    toast('已儲存！之後打開這頁都是你捏的版本');
+  } catch (e) {
+    const code = e && e.code;
+    if (code === 'conflict') toast('別處剛存了新版本，頁面即將更新');
+    else if (code === 'not_writer' || code === 'not_granted') { saveLocal(); toast('此檢視為唯讀，已改存在此裝置'); }
+    else if (code === 'rate_limited') toast('儲存太頻繁，請稍後再試');
+    else { saveLocal(); toast('暫時無法上傳，已存在此裝置'); }
+  } finally {
+    btn.disabled = false; btn.textContent = '儲存新版本';
+  }
+};
+const scPtrs = new Map();
+let scPinch = null, scLast = null;
+scv.addEventListener('pointerdown', e => {
+  scv.setPointerCapture(e.pointerId);
+  scPtrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+  if (scPtrs.size === 1) {
+    const c = sculptData(); if (!c) return;
+    SCULPT.undo.push(c.depthF.slice());
+    if (SCULPT.undo.length > 15) SCULPT.undo.shift();
+    SCULPT.stroking = true;
+    const p = screenToImg(e.offsetX, e.offsetY);
+    if (SCULPT.tool === 'level') SCULPT.levelRef = sampleDepthAt(p.x, p.y);
+    brushAt(p.x, p.y); scLast = p; sculptDraw();
+  } else if (scPtrs.size === 2) {
+    SCULPT.stroking = false; scLast = null;
+    const a = [...scPtrs.values()];
+    scPinch = { d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y),
+                cx: (a[0].x + a[1].x) / 2, cy: (a[0].y + a[1].y) / 2,
+                v: { ...SCULPT.view } };
+  }
+});
+scv.addEventListener('pointermove', e => {
+  SCULPT.cursor = { x: e.offsetX, y: e.offsetY };
+  if (scPtrs.has(e.pointerId)) scPtrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+  if (scPtrs.size === 1 && SCULPT.stroking) {
+    const p = screenToImg(e.offsetX, e.offsetY);
+    if (scLast) {
+      const dist = Math.hypot(p.x - scLast.x, p.y - scLast.y);
+      const step = Math.max(2, SCULPT.size * 0.3);
+      const n = Math.max(1, Math.ceil(dist / step));
+      for (let i = 1; i <= n; i++) brushAt(scLast.x + (p.x - scLast.x) * i / n, scLast.y + (p.y - scLast.y) * i / n);
+    } else brushAt(p.x, p.y);
+    scLast = p;
+  } else if (scPtrs.size === 2 && scPinch) {
+    const a = [...scPtrs.values()];
+    const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+    const cx = (a[0].x + a[1].x) / 2, cy = (a[0].y + a[1].y) / 2;
+    const k = Math.max(0.2, Math.min(8, d / Math.max(1, scPinch.d)));
+    SCULPT.view.s = scPinch.v.s * k;
+    SCULPT.view.tx = cx - (scPinch.cx - scPinch.v.tx) * k;
+    SCULPT.view.ty = cy - (scPinch.cy - scPinch.v.ty) * k;
+  }
+  sculptDraw();
+});
+function scEnd(e) {
+  scPtrs.delete(e.pointerId);
+  if (scPtrs.size < 2) scPinch = null;
+  if (scPtrs.size === 0 && SCULPT.stroking) {
+    SCULPT.stroking = false; scLast = null;
+    clearTimeout(scEnd._h); scEnd._h = setTimeout(saveLocal, 800);
+  }
+  sculptDraw();
+}
+scv.addEventListener('pointerup', scEnd);
+scv.addEventListener('pointercancel', scEnd);
+scv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const k = Math.exp(-e.deltaY * 0.0012);
+  const v = SCULPT.view;
+  v.tx = e.offsetX - (e.offsetX - v.tx) * k;
+  v.ty = e.offsetY - (e.offsetY - v.ty) * k;
+  v.s *= k;
+  sculptDraw();
+}, { passive: false });
+addEventListener('resize', () => { if (SCULPT.active && !SCULPT.preview) { sculptFit(); sculptDraw(); } });
+
 /* ---------- main loop ---------- */
 const clock = new THREE.Clock();
 let prevT = 0;
@@ -730,7 +1054,7 @@ function frame(t, dt) {
 }
 function loop() {
   const t = clock.getElapsedTime(); const dt = Math.min(0.1, t - prevT); prevT = t;
-  frame(t, dt);
+  if (!(SCULPT.active && !SCULPT.preview)) frame(t, dt);
   requestAnimationFrame(loop);
 }
 
@@ -759,6 +1083,7 @@ window.__frame = (t) => { const dt = t - prevT; prevT = t; frame(t, Math.max(0.0
     setMode(Q.get('mode') === 'crystal' ? 'crystal' : 'scan', { instant: true, force: true });
     if (Q.get('density')) S.density = +Q.get('density');
     $('#loadSt').textContent = '正在重建三維點雲…';
+    await loadOverrides();
     await setScene(first, { instant: true });
     updateTicks();
     $('#load').classList.add('off');
