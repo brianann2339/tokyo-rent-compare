@@ -777,6 +777,7 @@ for (const sc of SCENES) {
 
 /* ---------- sculpt: hand-editing the depth field ---------- */
 const OVR = {};          // sceneId -> Float32Array override applied at decode
+function sceneDv(id) { const sc = SCENES.find(s => s.id === id); return (sc && sc.dv) || 1; }
 function toast(msg, ms = 2600) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('on');
   clearTimeout(toast._h); toast._h = setTimeout(() => t.classList.remove('on'), ms);
@@ -807,6 +808,8 @@ async function loadOverrides() {
   const pick = localTs >= cloudTs ? local || cloud : cloud;
   if (pick && pick.scenes) {
     for (const id in pick.scenes) {
+      // an edit made against an older baked depth no longer applies
+      if (((pick.scenes[id].dv) || 1) !== sceneDv(id)) continue;
       try { OVR[id] = b64ToF32(pick.scenes[id].d); } catch (e) {}
     }
   }
@@ -818,7 +821,7 @@ function saveLocal() {
       const c = CACHE[id];
       let dirty = false;
       for (let i = 0; i < c.depthF.length; i += 977) if (c.depthF[i] !== c.depth0[i]) { dirty = true; break; }
-      if (dirty || OVR[id]) scenes[id] = { d: f32ToB64(c.depthF) };
+      if (dirty || OVR[id]) scenes[id] = { d: f32ToB64(c.depthF), dv: sceneDv(id) };
     }
     localStorage.setItem('sculpt_v1', JSON.stringify({ v: 1, ts: Date.now(), scenes }));
   } catch (e) {}
@@ -959,7 +962,7 @@ $('#scSave').onclick = async () => {
     const art = window.claude && (await claude.use('artifact'));
     if (!art) { saveLocal(); toast('雲端儲存不可用，已存在此裝置'); return; }
     const scenes = {};
-    for (const id in CACHE) scenes[id] = { d: f32ToB64(CACHE[id].depthF) };
+    for (const id in CACHE) scenes[id] = { d: f32ToB64(CACHE[id].depthF), dv: sceneDv(id) };
     const payload = JSON.stringify({ v: 1, ts: Date.now(), scenes });
     await art.publish({ 'data/sculpt.json': { content: payload, contentType: 'application/json' } });
     saveLocal();

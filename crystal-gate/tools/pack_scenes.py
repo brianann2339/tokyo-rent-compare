@@ -84,6 +84,8 @@ def main():
                  "dw": dw, "dh": dh, "color": color_uri, "depth": depth_uri}
         if meta.get("src"):
             entry["src"] = meta["src"]
+        if meta.get("dv"):
+            entry["dv"] = meta["dv"]
         if lineart:
             entry["sparse"] = 1
         out.append(entry)
