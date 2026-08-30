@@ -569,7 +569,7 @@ function autoParams(t) {
     const T = new THREE.Vector3(inf.centroid.x * 0.4 + 0.14 * Math.sin(t * 0.05 + 2), inf.centroid.y * 0.5 + 0.09 * Math.sin(t * 0.061), -zMid);
     const drift = (RM ? 0 : 1) * (S.cloud.info.sparse ? 0.55 : 1);
     const th = 0.40 * Math.sin(t * 0.070) * drift;
-    const ph = Math.PI / 2 - 0.02 + 0.09 * Math.sin(t * 0.045 + 1.7) * drift;
+    const ph = Math.PI / 2 - 0.01 + 0.05 * Math.sin(t * 0.045 + 1.7) * drift;
     const zFacade = zMid * 0.8;
     const tanCam = Math.tan(cam.fov * Math.PI / 360);
     const need = Math.max(inf.tanA, inf.tanA * inf.aspectImg / Math.max(cam.aspect, 0.5));
