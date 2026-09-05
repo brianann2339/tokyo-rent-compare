@@ -120,9 +120,17 @@ describe('robots.txt 合規（凍結 2026-08-16 的真實 robots.txt）', () => 
     }
   });
 
-  test('收錄範圍是使用者指定的都心 10 区，legal 已開啟', () => {
-    assert.deepEqual(WARDS.map((w) => w.nameJa),
-      ['文京区', '中央区', '港区', '渋谷区', '千代田区', '台東区', '豊島区', '目黒区', '品川区', '江東区']);
+  test('收錄範圍是東京 23 区全部（2026-09-06 擴張），legal 已開啟', () => {
+    // 東京 23 区的官方全集。少一個就是漏抓、多一個（或拼錯）就會抓到不存在的頁。
+    const TOKYO_23 = [
+      '千代田区', '中央区', '港区', '新宿区', '文京区', '台東区', '墨田区', '江東区',
+      '品川区', '目黒区', '大田区', '世田谷区', '渋谷区', '中野区', '杉並区', '豊島区',
+      '北区', '荒川区', '板橋区', '練馬区', '足立区', '葛飾区', '江戸川区',
+    ];
+    assert.deepEqual([...WARDS.map((w) => w.nameJa)].sort(), [...TOKYO_23].sort());
+    assert.equal(new Set(WARDS.map((w) => w.slug)).size, 23, 'slug 不可重複');
+    // slug 與区名的對應：每個 slug 都在 2026-09-06 實抓首頁、以 <title> 含該区名驗證過
+    for (const w of WARDS) assert.match(w.slug, /^sc_[a-z]+$/);
     // 使用者已裁決自行承擔（2026-08-16），條文原文仍須留在 notes 存證
     assert.equal(manifest.legal.enabled, true);
     assert.ok(manifest.legal.notes.includes('私的利用の範囲を超える使用をしてはならない'));
