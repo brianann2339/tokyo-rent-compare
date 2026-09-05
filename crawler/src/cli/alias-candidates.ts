@@ -10,12 +10,12 @@
  * build-data 的閘門 4 才會放行。這個腳本本身不寫 buildings.json。
  */
 
-import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
+import { readdir, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { gunzipSync } from 'node:zlib';
 
 import { DATA_ROOT } from '../http.ts';
+import { readNdjsonGz } from '../ndjson.ts';
 import type { Listing } from '../../../packages/schema/src/model.ts';
 import { buildingMatchKey } from '../../../packages/jp-parse/src/name.ts';
 
@@ -70,8 +70,7 @@ export async function loadAllListings(): Promise<Listing[]> {
   const dir = path.join(DATA_ROOT, 'normalized');
   const out: Listing[] = [];
   for (const f of (await readdir(dir)).filter((x) => x.endsWith('.ndjson.gz')).sort()) {
-    const text = gunzipSync(await readFile(path.join(dir, f))).toString('utf8');
-    for (const line of text.split('\n')) if (line.trim() !== '') out.push(JSON.parse(line) as Listing);
+    for await (const l of readNdjsonGz<Listing>(path.join(dir, f))) out.push(l);
   }
   return out;
 }

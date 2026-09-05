@@ -12,11 +12,12 @@
  * 合併只是呈現層的決定，隨時可以改規則重建而不用重抓。
  */
 
-import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { gunzipSync } from 'node:zlib';
 import { gzipSync } from 'node:zlib';
+
+import { readNdjsonGz } from '../ndjson.ts';
 
 import { DATA_ROOT } from '../http.ts';
 import { loadSourceIds } from '../registry.ts';
@@ -228,10 +229,7 @@ async function main(): Promise<void> {
   for (const id of SOURCES) {
     const p = path.join(DATA, 'normalized', `${id}.ndjson.gz`);
     if (!existsSync(p)) { g.warnings.push(`找不到 ${p}，跳過`); continue; }
-    const text = gunzipSync(await readFile(p)).toString('utf8');
-    for (const line of text.split('\n')) {
-      if (line.trim() === '') continue;
-      const l = JSON.parse(line) as Listing;
+    for await (const l of readNdjsonGz<Listing>(p)) {
       work.push({ b: l.building, units: [...l.units] });
     }
     sources.idx(id); // 來源索引依載入順序固定，B.also 位元遮罩才有穩定意義
@@ -362,7 +360,28 @@ async function main(): Promise<void> {
     missing: [] as number[], flags: [] as number[], ads: [] as number[],
   };
 
-  const prov: Record<string, unknown> = {};
+  // provenance 邊產邊寫，不在記憶體裡累積。
+  // 7 萬筆時整份 prov 在記憶體是 2.6 GB（而且 Object.entries 分桶時又複製一份），
+  // 擴到 23 区的 13.5 萬筆會直接撞破 Node 的 4.2 GB heap 上限。
+  // 先寫進 prov.tmp/，等閘門全部通過才 rename 成 prov/——
+  // 「閘門失敗就不產出任何檔案」這條保證不能因為串流寫入而破功。
+  const PROV_TMP = path.join(OUT_DIR, 'prov.tmp');
+  await rm(PROV_TMP, { recursive: true, force: true });
+  await mkdir(PROV_TMP, { recursive: true });
+  let provBucketNo = -1;
+  let provBucket: Record<string, unknown> = {};
+  let provBucketCount = 0;
+  const flushProv = async (): Promise<void> => {
+    if (provBucketNo < 0) return;
+    await writeFile(path.join(PROV_TMP, `p${provBucketNo}.json`), JSON.stringify(provBucket), 'utf8');
+    provBucket = {};
+    provBucketCount += 1;
+  };
+  const putProv = async (unitIdx: number, value: unknown): Promise<void> => {
+    const no = Math.floor(unitIdx / PROV_BUCKET);
+    if (no !== provBucketNo) { await flushProv(); provBucketNo = no; }
+    provBucket[String(unitIdx)] = value;
+  };
   let emptyBuildings = 0;
 
   for (const { b, units } of work) {
@@ -419,7 +438,7 @@ async function main(): Promise<void> {
       // provenance：每欄的原文出處，只在使用者點開房源時才載入。
       // 鍵是 unit 的序號——桶位由序號直算（floor(i / PROV_BUCKET)），
       // 不需要一個 7 萬鍵的 map.json 對照表。
-      prov[String(U.bid.length - 1)] = {
+      await putProv(U.bid.length - 1, {
         id: u.id,
         availFrom: u.availableFrom.known ? u.availableFrom.v : null,
         url: u.sourceUrl,
@@ -438,12 +457,15 @@ async function main(): Promise<void> {
             ? { v: f.v.jpy, basis: f.basis, src: f.srcText.slice(0, 80) }
             : { v: null, why: f.why, basis: f.basis, src: f.srcText.slice(0, 80) }]),
         ),
-      };
+      });
     }
   }
 
+  await flushProv();
+
   // ── 閘門結果 ─────────────────────────────────────────────
   if (g.errors.length > 0) {
+    await rm(PROV_TMP, { recursive: true, force: true }); // 閘門失敗＝不留下任何產出
     console.error(`\n⛔ 建置閘門失敗（${g.errors.length} 項），未產出任何檔案：\n`);
     for (const e of g.errors.slice(0, 20)) console.error('  ' + e);
     if (g.errors.length > 20) console.error(`  …另有 ${g.errors.length - 20} 項`);
@@ -472,9 +494,6 @@ async function main(): Promise<void> {
     },
   };
 
-  // 先清掉舊桶：桶的鍵與數量會隨資料變動，殘留的舊桶會被誤讀
-  await rm(path.join(OUT_DIR, 'prov'), { recursive: true, force: true });
-  await mkdir(path.join(OUT_DIR, 'prov'), { recursive: true });
   const index = {
     meta,
     dict: {
@@ -486,15 +505,9 @@ async function main(): Promise<void> {
   const json = JSON.stringify(index);
   await writeFile(path.join(OUT_DIR, 'index.json'), json, 'utf8');
 
-  // provenance 依 unit 序號分桶，桶位 = floor(序號 / PROV_BUCKET)
-  const buckets: Record<string, Record<string, unknown>> = {};
-  for (const [k, v] of Object.entries(prov)) {
-    const bkt = `p${Math.floor(Number(k) / PROV_BUCKET)}`;
-    (buckets[bkt] ??= {})[k] = v;
-  }
-  for (const [bkt, obj] of Object.entries(buckets)) {
-    await writeFile(path.join(OUT_DIR, 'prov', `${bkt}.json`), JSON.stringify(obj), 'utf8');
-  }
+  // 舊桶整個換掉：桶的鍵與數量會隨資料變動，殘留的舊桶會被誤讀
+  await rm(path.join(OUT_DIR, 'prov'), { recursive: true, force: true });
+  await rename(PROV_TMP, path.join(OUT_DIR, 'prov'));
 
   const gz = gzipSync(Buffer.from(json, 'utf8')).length;
   console.log(`✔ 建置完成`);
@@ -503,7 +516,7 @@ async function main(): Promise<void> {
   console.log(`  跨來源：${crossGroups} 組已審核合併、移除 ${crossRemoved} 間；僅棟層命中 ${crossBuildingOnly} 組（不併）`);
   console.log(`  字典：站 ${stations.list.length}、線 ${lines.list.length}、線站對 ${pairs.length}、間取 ${layouts.list.length}`);
   console.log(`  index.json ${(json.length / 1024).toFixed(0)} KB raw → ${(gz / 1024).toFixed(0)} KB gzip`);
-  console.log(`  provenance ${Object.keys(buckets).length} 桶`);
+  console.log(`  provenance ${provBucketCount} 桶（邊產邊寫，不在記憶體累積）`);
   if (gz > 500 * 1024) console.warn(`  ⚠️ 首屏資料 ${(gz / 1024).toFixed(0)} KB gzip 已超過 500 KB 預算，該啟動分片了`);
   if (g.violations.length > 0) {
     console.log(`  ⚠️ ${g.violations.length} 筆跨欄位不變式違反（該欄位不採用）：`);
