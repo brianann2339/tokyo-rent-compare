@@ -72,10 +72,42 @@ export type Prov = {
 /** 延遲讀取：Node 測試環境沒有 import.meta.env，模組載入時就讀會直接炸掉。 */
 const base = (): string => (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
 
-export async function loadWire(): Promise<Wire> {
+/** 下載進度。`total` 在伺服器沒給 content-length 時是 null，此時只有已下載量可報。 */
+export type LoadProgress = { loaded: number; total: number | null; phase: 'download' | 'parse' };
+
+/**
+ * 索引是一個大檔（10 区時 1.5 MB gzip，23 区會到數 MB）。
+ * 用 stream 讀而不是 `res.json()`，是為了能報進度——不然使用者在慢網路上
+ * 會盯著一片「載入中…」十幾秒，分不出是在下載還是壞掉了。
+ */
+export async function loadWire(onProgress?: (p: LoadProgress) => void): Promise<Wire> {
   const res = await fetch(`${base()}data/index.json`);
   if (!res.ok) throw new Error(`載入資料失敗：HTTP ${res.status}`);
-  return (await res.json()) as Wire;
+
+  // content-length 在 gzip 傳輸時是「壓縮後」的位元組數，而 reader 讀到的是解壓後的——
+  // 兩者不同單位，混在一起算百分比會得到 >100%。所以只在沒有 content-encoding 時才用它當分母。
+  const encoded = res.headers.get('content-encoding');
+  const lenHeader = res.headers.get('content-length');
+  const total = encoded === null && lenHeader !== null && Number.isFinite(Number(lenHeader))
+    ? Number(lenHeader) : null;
+
+  if (res.body === null || onProgress === undefined) return (await res.json()) as Wire;
+
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value !== undefined) { chunks.push(value); loaded += value.byteLength; onProgress({ loaded, total, phase: 'download' }); }
+  }
+  onProgress({ loaded, total, phase: 'parse' });
+  // 讓瀏覽器把進度畫出來再進 JSON.parse——parse 是同步的，會把主執行緒鎖住一段時間
+  await new Promise((r) => setTimeout(r, 0));
+  const buf = new Uint8Array(loaded);
+  let at = 0;
+  for (const c of chunks) { buf.set(c, at); at += c.byteLength; }
+  return JSON.parse(new TextDecoder().decode(buf)) as Wire;
 }
 
 const provCache = new Map<string, Record<string, Prov>>();

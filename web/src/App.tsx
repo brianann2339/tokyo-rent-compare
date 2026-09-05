@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   loadWire, loadProv, query, queryToFilters, filtersToQuery, yen,
+  type LoadProgress,
   buildingStations, lineBuildingCounts, kindGroup, monthlyWithAssumption, perM2Comparable,
   GENDER, type Wire, type Filters, type Prov, type MyProperty,
 } from './data.ts';
@@ -283,6 +284,7 @@ function MyPropertyPanel(props: {
 
 export default function App() {
   const [wire, setWire] = useState<Wire | null>(null);
+  const [prog, setProg] = useState<LoadProgress | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [f, setF] = useHashFilters();
   const [open, setOpen] = useState<number | null>(null);
@@ -291,7 +293,7 @@ export default function App() {
   const [moreLines, setMoreLines] = useState(false);
 
   useEffect(() => {
-    void loadWire().then(setWire).catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
+    void loadWire(setProg).then(setWire).catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(() => setLimit(60), [f]);
   useEffect(() => { if (f.my !== null) setShowMy(true); }, [f.my]);
@@ -342,7 +344,29 @@ export default function App() {
   }, [wire, result, f.assumeUtil]);
 
   if (err !== null) return <main className="wrap"><h1>東京租屋比價</h1><p className="error">{err}</p></main>;
-  if (wire === null || result === null || stats === null) return <main className="wrap"><h1>東京租屋比價</h1><p>載入中…</p></main>;
+  if (wire === null || result === null || stats === null) {
+    const mb = (n: number): string => `${(n / 1024 / 1024).toFixed(1)} MB`;
+    const pct = prog !== null && prog.total !== null ? Math.min(100, Math.round((prog.loaded / prog.total) * 100)) : null;
+    return (
+      <main className="wrap">
+        <h1>東京租屋比價</h1>
+        <p className="loading">
+          {prog === null ? '連線中…'
+            : prog.phase === 'parse' ? `整理 ${mb(prog.loaded)} 資料中…`
+              : pct !== null ? `下載房源資料 ${pct}%（${mb(prog.loaded)}）`
+                : `下載房源資料 ${mb(prog.loaded)}…`}
+        </p>
+        <div className="loadbar" role="progressbar" aria-label="載入進度"
+          {...(pct === null ? {} : { 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100 })}>
+          <div className={`loadbar-fill${pct === null ? ' indeterminate' : ''}`}
+            style={pct === null ? undefined : { width: `${pct}%` }} />
+        </div>
+        <p className="muted">
+          全站房源一次載入，之後所有篩選與排序都在你的瀏覽器裡跑，不會再連線。
+        </p>
+      </main>
+    );
+  }
 
   const { rows, counts, excluded } = result;
   const { b, u, dict, meta } = wire;
