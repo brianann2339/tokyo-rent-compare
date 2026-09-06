@@ -24,6 +24,7 @@
     "preview": "npm -w web run preview",
     "health": "node crawler/src/cli/health-report.ts",
     "audit:suumo-dups": "node crawler/src/cli/audit-suumo-dups.ts",
+    "audit:why": "node crawler/src/cli/audit-why.ts",
     "alias:candidates": "node crawler/src/cli/alias-candidates.ts"
   },
   "devDependencies": {

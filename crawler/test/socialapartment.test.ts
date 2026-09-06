@@ -120,6 +120,13 @@ describe('樓層數解析（構造欄的三種寫法）', () => {
   test('「鉄筋コンクリート地上4階」（沒有「建」字）→ 4', () => {
     assert.equal(parseSaFloors('鉄筋コンクリート地上4階'), 4);
   });
+  test('「RC造6階」（沒有「地上」也沒有「建」）→ 6', () => {
+    assert.equal(parseSaFloors('RC造6階'), 6);
+  });
+  test('只寫地下層時不可以拿地下層當地上樓層', () => {
+    assert.equal(parseSaFloors('RC造地下2階'), null);
+    assert.equal(parseSaFloors('RC造地下1階'), null);
+  });
   test('沒有樓層資訊 → null，不猜', () => {
     assert.equal(parseSaFloors('鉄骨造'), null);
   });

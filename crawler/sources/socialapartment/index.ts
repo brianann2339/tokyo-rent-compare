@@ -196,19 +196,27 @@ const NOT_OFFERED_FOREIGNER: ForeignerPolicy = {
   rawText: '',
 };
 
-/** `鉄筋コンクリート造陸屋根5階建` / `RC造地下1階地上4階建　(陸屋根)` / `鉄筋コンクリート地上4階` */
+/**
+ * `鉄筋コンクリート造陸屋根5階建` / `RC造地下1階地上4階建　(陸屋根)` /
+ * `鉄筋コンクリート地上4階` / `RC造6階`
+ *
+ * 最後那種（沒有「地上」也沒有「階建」，只有「N階」）先前解不出來，
+ * 於是 structure 欄白紙黑字寫著 6 階、floorsAboveGround 卻記成「這頁沒寫」。
+ * 補上時要先把「地下N階」拿掉再找，否則只寫地下層的物件會被當成地上層。
+ */
 export function parseSaFloors(structure: string): number | null {
-  const above = /地上\s*(\d+)\s*階/.exec(structure);
-  if (above?.[1] !== undefined) {
-    const v = Number(above[1]);
-    if (Number.isFinite(v) && v > 0 && v <= 60) return v;
-  }
-  const built = /(\d+)\s*階建/.exec(structure);
-  if (built?.[1] !== undefined) {
-    const v = Number(built[1]);
-    if (Number.isFinite(v) && v > 0 && v <= 60) return v;
-  }
-  return null;
+  const ok = (raw: string | undefined): number | null => {
+    if (raw === undefined) return null;
+    const v = Number(raw);
+    return Number.isFinite(v) && v > 0 && v <= 60 ? v : null;
+  };
+  const above = ok(/地上\s*(\d+)\s*階/.exec(structure)?.[1]);
+  if (above !== null) return above;
+  // 「地下1階」不能拿來當地上樓層，先剝掉再找
+  const noBasement = structure.replace(/地下\s*\d+\s*階/g, '');
+  const built = ok(/(\d+)\s*階建/.exec(noBasement)?.[1]);
+  if (built !== null) return built;
+  return ok(/(\d+)\s*階/.exec(noBasement)?.[1]);
 }
 
 export const adapter: SourceAdapter = {

@@ -21,7 +21,7 @@ import {
   adapter, manifest,
   parseListItemIds, parseLastPage, parseAreaIds, parseTshAddress,
   parseTshStations, parseTshRooms, parseConditionBlocks, parseDeposit,
-  parseAgeLimit, summaryCell, yenBackslash, decodeEntities, tokyoMunicipality,
+  parseAgeLimit, summaryCell, yenBackslash, decodeEntities, tokyoMunicipality, parseTshFloor,
 } from '../sources/tokyosharehouse/index.ts';
 import { known, notListed, type Field, type Yen } from '../../packages/schema/src/field.ts';
 import type { Listing, Unit } from '../../packages/schema/src/model.ts';
@@ -609,5 +609,34 @@ describe('建置閘門的規則在這裡就先擋住', () => {
         assert.ok(u.initial.depositNonRefundable.v.jpy <= u.initial.deposit.v.jpy, u.id);
       }
     }
+  });
+});
+
+describe('房間樓層', () => {
+  test('地下記成負數，與 SUUMO 的 B1階 同一表示法', () => {
+    const b = parseTshFloor('地下 1階');
+    assert.equal(b.known && b.v, -1);
+    const b2 = parseTshFloor('地下1階');
+    assert.equal(b2.known && b2.v, -1, '中間有沒有空白都要收');
+  });
+
+  test('一般樓層', () => {
+    const f = parseTshFloor('2階');
+    assert.equal(f.known && f.v, 2);
+  });
+
+  test('英文的「Ground floor」標 unparsed，不替原站決定它是幾樓', () => {
+    // 站方自己有 434 筆寫「1階」，所以 Ground floor 極可能就是 1 階——
+    // 但那是推測不是原文，猜一個數字就是虛構。
+    const f = parseTshFloor('Ground floor');
+    assert.equal(f.known, false);
+    assert.equal(f.known === false && f.why, 'unparsed');
+    assert.match(f.srcText, /Ground floor/);
+  });
+
+  test('空字串才是「這頁沒寫」', () => {
+    const f = parseTshFloor('');
+    assert.equal(f.known, false);
+    assert.equal(f.known === false && f.why, 'not_listed_on_page');
   });
 });

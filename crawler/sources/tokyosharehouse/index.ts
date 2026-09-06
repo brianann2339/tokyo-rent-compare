@@ -536,6 +536,25 @@ export function genderOfRoom(r: TshRoom, fallback: GenderRestriction): GenderRes
  */
 const MAX_DEPOSIT_MONTHS = 12;
 
+/**
+ * 房間的「階」欄。
+ *
+ * 站方自己的寫法幾乎全是 `N階`（實測 1,624 次），另有 `地下 1階` 1 次、
+ * 英文的 `Ground floor` 6 次、空字串 46 次。
+ * 地下記成負數，與 SUUMO 的 `B1階` 同一表示法。
+ * `Ground floor` 極可能就是 1 階（站方自己有 434 筆寫 `1階`），但那是推測不是原文，
+ * 所以標 unparsed 把原文留著——寧可讓健康報告記一筆解析失敗，也不替原站決定它的意思。
+ */
+export function parseTshFloor(raw: string): Field<number> {
+  const t = raw.trim();
+  if (t === '') return notListed(t);
+  const b = /^地下\s*(\d+)\s*階$/.exec(t);
+  if (b?.[1] !== undefined) return known(-Number(b[1]), 'measured', `階 ${t}`);
+  const m = /^(\d+)\s*階$/.exec(t);
+  if (m?.[1] === undefined) return unparsed(`階 ${t}`);
+  return known(Number(m[1]), 'measured', `階 ${t}`);
+}
+
 export function parseDeposit(
   raw: string,
   rent: Field<Yen>,
@@ -780,7 +799,7 @@ export const adapter: SourceAdapter = {
         const rent = moneyField(r.rentRaw, '賃料');
         const { deposit, nonRefundable } = parseDeposit(depositRaw, rent);
         const area = parseArea(r.areaRaw);
-        const floor = /^(\d+)階$/.exec(r.floorRaw);
+        const floor = parseTshFloor(r.floorRaw);
         const notes: string[] = [];
         if (r.remarks !== '') notes.push(`備考：${r.remarks}`);
         if (r.conditionRaw !== '') notes.push(`部屋入居条件：${r.conditionRaw}`);
@@ -797,9 +816,7 @@ export const adapter: SourceAdapter = {
           areaM2: area.kind === 'exact' && area.m2 > 0
             ? known(area.m2, 'measured', `広さ ${r.areaRaw}`)
             : notListed(r.areaRaw),
-          floor: floor?.[1] !== undefined
-            ? known(Number(floor[1]), 'measured', `階 ${r.floorRaw}`)
-            : notListed(r.floorRaw),
+          floor,
           monthly: {
             rent,
             adminFee: moneyField(r.adminRaw, '共益費'),

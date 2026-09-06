@@ -310,9 +310,15 @@ export function parseRooms(html: string): OakRoom[] {
         ? known(area.m2, 'measured', `広さ ${area.m2}㎡`)
         : notListed(''),
       layout: layoutRaw === '' ? notListed('') : known(layoutRaw, 'measured', `間取り ${layoutRaw}`),
+      // `data-floor="-1"` **不是**地下 1 階，是站方的「未設定」哨兵：
+      // 2026-09-06 把 data/raw 裡全部 8 個出現 -1 的頁面拉出來看房號，
+      // 分別是 0106／103／0102／102／102／103／0105／003——全在 1 樓。
+      // 誤當成地下層會把 8 間 1 樓的房排到「地下」去。
       floor: floorRaw !== null && /^\d+$/.test(floorRaw)
         ? known(Number(floorRaw), 'measured', `data-floor=${floorRaw}`)
-        : notListed(floorRaw ?? ''),
+        : floorRaw === '-1' || floorRaw === null || floorRaw === ''
+          ? notListed(floorRaw === '-1' ? 'data-floor=-1（站方的未設定哨兵，非地下樓層）' : '')
+          : unparsed(`data-floor=${floorRaw}`),
       kind: ROOM_KIND[attr('type') ?? ''] ?? 'unknown',
       gender: /男性\/女性|男女/.test(cond) ? 'mixed'
         : /女性専用|女性のみ/.test(cond) ? 'female_only'

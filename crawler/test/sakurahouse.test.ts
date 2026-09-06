@@ -225,11 +225,18 @@ describe('小解析器', () => {
     assert.equal(parseAvailableFrom('until 2026/10/08'), null);
   });
 
-  test('樓層：地下不硬換算成負數', () => {
+  test('樓層：地下記成負數（B1F = 地下1階 = −1），與 SUUMO 的 B1階 同一表示法', () => {
     assert.equal(parseFloor('1F'), 1);
     assert.equal(parseFloor('12F'), 12);
-    assert.equal(parseFloor('B1F'), null);
-    assert.equal(parseFloor('-'), null);
+    assert.equal(parseFloor('B1F'), -1);
+    assert.equal(parseFloor('b1f'), -1, '大小寫都要收');
+    assert.equal(parseFloor('B2F'), -2);
+  });
+
+  test('樓層：認不得的 unit 名不編數字', () => {
+    for (const t of ['-', '', 'Apartment Unit R', 'Share House Unit F - 2F']) {
+      assert.equal(parseFloor(t), null, `${t} 不該產生樓層`);
+    }
   });
 
   test('物件種類', () => {

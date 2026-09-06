@@ -303,12 +303,18 @@ export function parseAvailableFrom(label: string): string | null {
   return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
 }
 
-/** 樓層名是 `1F`／`2F`。地下（`B1F`）不硬換算成負數，留未知。 */
+/**
+ * 樓層名是 `1F`／`2F`／`B1F`。
+ * 地下記成負數（B1F = 地下1階 = −1），與 SUUMO 的 `B1階` 同一個表示法
+ * ——2026-09-06 之前這裡把 21 間 B1F 的房記成「樓層未提供」，
+ * 但頁面白紙黑字寫著 B1F。前端顯示會還原成「B1F」。
+ */
 export function parseFloor(unitName: string): number | null {
-  const m = /^(\d{1,2})F$/i.exec(unitName.trim());
-  if (m?.[1] === undefined) return null;
-  const v = Number(m[1]);
-  return Number.isFinite(v) ? v : null;
+  const m = /^(B?)(\d{1,2})F$/i.exec(unitName.trim());
+  if (m?.[2] === undefined) return null;
+  const v = Number(m[2]);
+  if (!Number.isFinite(v)) return null;
+  return m[1] === '' ? v : -v;
 }
 
 const KIND_BY_TYPE: Record<string, PropertyKind> = {
