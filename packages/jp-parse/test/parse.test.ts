@@ -12,7 +12,7 @@ import { parseWalk, parseStations } from '../src/station.ts';
 import { parseLayout, layoutSizeRank } from '../src/layout.ts';
 import { normalizeBuildingName, buildingMatchKey } from '../src/name.ts';
 import {
-  parseContractType, parseContractMonths, parseMinStayMonths,
+  parseContractType, parseContractMonths, parseMinStayMonths, parseStayBucketsMinMonths,
   parseEarlyTermination, parseYearBuilt, parseGender, parseGenderTags, parseForeignerSignals,
 } from '../src/contract.ts';
 import {
@@ -224,6 +224,25 @@ describe('契約條件', () => {
   });
   test('Borderless「Minimum of 1 month-stay is required.」', () => {
     assert.equal(parseMinStayMonths('Minimum of 1 month-stay is required.'), 1);
+  });
+
+  test('入居期間級距（ひつじ的 tenancyPeriod）取所有下界的最小值', () => {
+    assert.equal(parseStayBucketsMinMonths('長期・4〜6か月・1〜3か月'), 1);
+    assert.equal(parseStayBucketsMinMonths('長期・4〜6か月'), 4);
+    assert.equal(parseStayBucketsMinMonths('1〜3か月'), 1);
+    assert.equal(parseStayBucketsMinMonths('4〜6か月'), 4);
+  });
+
+  test('只寫「長期」時回 null——它只說不收短期，沒說最短幾個月，給數字就是虛構', () => {
+    assert.equal(parseStayBucketsMinMonths('長期'), null);
+    assert.equal(parseStayBucketsMinMonths(''), null);
+    assert.equal(parseStayBucketsMinMonths('相談'), null);
+  });
+
+  test('年換算成月，且不合理的長度不採用', () => {
+    assert.equal(parseStayBucketsMinMonths('1〜2年'), 12);
+    assert.equal(parseStayBucketsMinMonths('0か月'), null);
+    assert.equal(parseStayBucketsMinMonths('300か月'), null);
   });
   test('Village House 短期解約違約金（兩段式）', () => {
     const r = parseEarlyTermination('1年未満の解約は3ヵ月分、2年未満の解約は2ヵ月分');

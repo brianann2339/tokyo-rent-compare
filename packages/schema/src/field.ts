@@ -85,6 +85,21 @@ export function conflicting<T>(srcText: string): Field<T> {
 }
 
 /**
+ * 「原站明講有這筆費用，但沒寫金額」。
+ *
+ * 例：Oak House 的建物徽章寫「礼金あり」「保証金必要」，卻不在該頁列出金額。
+ * 這跟 `notListed`（頁面沒提到這個欄位）是兩件不同的事，混用會有兩個後果：
+ *   1. 使用者看到「未提供」，會以為可能不用付——其實原站已經說了要付。
+ *   2. 稽核時看到 srcText 裡有「礼金あり」卻標成 not_listed_on_page，
+ *      會誤以為解析漏抓。
+ * basis 用 `excluded_stated`（明寫另計但沒給金額），值仍然是未知——
+ * 絕不可以因為「知道有這筆」就填一個猜的金額。
+ */
+export function statedNoAmount<T>(srcText: string): Field<T> {
+  return { known: false, why: 'not_listed_on_page', basis: 'excluded_stated', srcText };
+}
+
+/**
  * 「明寫含在別的費用裡」——值為 0 且這個 0 是真的。
  * 建置期閘門只允許在這個 basis 下出現金額 0。
  */

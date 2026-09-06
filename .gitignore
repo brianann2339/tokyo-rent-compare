@@ -12,3 +12,7 @@ data/dist/
 data/normalized/*.ndjson
 web/public/data/
 web/dist/
+# 爬蟲／建置的暫存檔（寫完才 rename 成正式檔）——曾被 `git add -A` 誤收進版本庫
+*.ndjson.gz.tmp
+data/out/prov.tmp/
+.scratch/

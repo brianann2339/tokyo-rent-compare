@@ -390,11 +390,35 @@ describe('欄位轉換', () => {
     assert.equal(s.rawText, 'ＪＲ中央線/三鷹駅 バス15分 歩5分');
   });
 
-  test('階：メゾネットと地下は不編數字', () => {
+  test('階：地下記成負數（B1階 = 地下1階 = −1），是日本通用表示法', () => {
     const four = parseFloorLabel('4階');
     assert.equal(four.known && four.v, 4);
-    for (const t of ['B1階', 'B1-1階', '1-2階', '-', '']) {
-      assert.equal(parseFloorLabel(t).known, false, `${t} 不該產生樓層數字`);
+    const b1 = parseFloorLabel('B1階');
+    assert.equal(b1.known && b1.v, -1);
+    // 上下界相同的區間就是那一層，不是「解不出來」
+    for (const [label, expected] of [['B2階', -2], ['2-2階', 2], ['8-8階', 8]] as const) {
+      const f = parseFloorLabel(label);
+      assert.equal(f.known && f.v, expected, `${label} 應為 ${expected}`);
+    }
+  });
+
+  test('階：真的橫跨兩層的メゾネット標 unparsed，不是「這頁沒寫」', () => {
+    // 2026-09-06 真相層實測：1-2階 1,738 間、1-3階 600 間、B1-1階 255 間。
+    // 頁面白紙黑字寫了樓層，記成 not_listed_on_page 等於對頁面說謊，
+    // 而且會把健康監控唯一不需基線的故障訊號一併關掉。
+    for (const t of ['1-2階', '1-3階', 'B1-1階', '1-B1階', 'B2-B1階', 'B-1階']) {
+      const f = parseFloorLabel(t);
+      assert.equal(f.known, false, `${t} 不該產生單一樓層數字`);
+      assert.equal(f.known === false && f.why, 'unparsed', `${t} 應為 unparsed`);
+      assert.match(f.srcText, /階/, '原文要留著才回得去核對');
+    }
+  });
+
+  test('階：空字串與「-」才是真的沒寫', () => {
+    for (const t of ['-', '']) {
+      const f = parseFloorLabel(t);
+      assert.equal(f.known, false);
+      assert.equal(f.known === false && f.why, 'not_listed_on_page', `${t} 應為 not_listed_on_page`);
     }
   });
 

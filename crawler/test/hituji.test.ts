@@ -16,6 +16,7 @@ import {
   parseSummaries, parseRooms, parseDetail, keysFromUrl, adapter, parseComretCount, pageForCount,
 } from '../sources/hituji/index.ts';
 import { reassembleFlight, sliceBalanced } from '../src/rsc.ts';
+import { parseStayBucketsMinMonths } from '../../packages/jp-parse/src/contract.ts';
 import { monthlyCost, initialCash, tierOf } from '../../packages/cost-model/src/index.ts';
 
 const FIX = path.resolve(import.meta.dirname, '../sources/hituji/fixtures');
@@ -245,6 +246,16 @@ describe('詳情頁結構化欄位（parseDetail）', () => {
   test('区名與入居期間都在 payload 裡', () => {
     assert.equal(parseDetail(akasakaHtml).townName, '港区');
     assert.equal(parseDetail(akasakaHtml).tenancyPeriod, '長期');
+  });
+
+  test('入居期間有複數級距時全部收齊，最短居住期間解得出月數', () => {
+    // 板橋「東京合宿所」原頁 tenancyPeriod:["長期","4〜6か月","1〜3か月"]
+    // （fixture 由 2026-09-06 的 data/raw 快照複製，未經修改）
+    const d = parseDetail(fixture('detail-tokyo-gasshukujo.html.gz'));
+    assert.equal(d.tenancyPeriod, '長期・4〜6か月・1〜3か月');
+    assert.equal(parseStayBucketsMinMonths(d.tenancyPeriod), 1);
+    // 對照：只寫「長期」的頁面沒有月數可讀，這時維持未知才是誠實的
+    assert.equal(parseStayBucketsMinMonths(parseDetail(akasakaHtml).tenancyPeriod), null);
   });
 
   test('詳情頁尾端「類似物件」的扁平欄位不可以被當成本棟的值', () => {

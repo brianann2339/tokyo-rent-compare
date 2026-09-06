@@ -31,8 +31,8 @@ import {
   monthlyCost, initialCash, initialSunk, effectiveMonthly, tierOf,
 } from '../../../packages/cost-model/src/index.ts';
 import {
-  checkRentRange, checkAgencyFeeCap, checkAreaRange, checkYearBuilt,
-  checkMonthlyAtLeastRent, checkDepositNonRefundable, type Violation,
+  checkRentRange, checkAgencyFeeCap, checkAreaRange, checkAreaVsJo, checkYearBuilt,
+  checkWalkMinutes, checkMonthlyAtLeastRent, checkDepositNonRefundable, type Violation,
 } from '../../../packages/schema/src/invariants.ts';
 
 // 這兩個路徑可用環境變數覆蓋——閘門的端到端測試要能在臨時目錄跑，
@@ -147,12 +147,50 @@ function moneyFields(u: Unit): ReadonlyArray<readonly [string, Field<Yen>]> {
 }
 
 /**
+ * 從面積的原文裡撈出同一句話裡寫的帖數。
+ *
+ * 帖數不進資料模型（`Unit.areaM2` 只有 ㎡，因為帖只能得下界，見 jp-parse/area.ts），
+ * 所以要驗「㎡ 是否小於帖 × 1.62」只能回頭讀 srcText——那是原站原文，
+ * 本來就是為了可稽核而留的。2026-09-06 對真相層全量掃描：174,301 間房裡
+ * **0 間**的 areaM2.srcText 同時寫了 ㎡ 與帖，所以這條檢查現在命中 0 筆。
+ * 保留它不是裝飾：哪天有來源開始寫「12.7m2（8.2帖）」，這裡就會擋下來。
+ */
+function joInSrcText(srcText: string): number | null {
+  const m = /(\d+(?:\.\d+)?)\s*[帖畳]/.exec(srcText);
+  if (m?.[1] === undefined) return null;
+  const jo = Number(m[1]);
+  return Number.isFinite(jo) && jo > 0 ? jo : null;
+}
+
+/**
+ * 棟層的不變式：築年與各站徒歩分。
+ *
+ * 為什麼跟房間層分開跑：這兩個值長在建物上，一棟 200 間房就會被重複判 200 次，
+ * 健康報告的「N 筆違反」會膨脹成「N × 該棟房間數」，看起來像災難其實是一筆。
+ * 這裡一棟只判一次；回傳值由呼叫端 OR 進該棟每一間房的旗標與 provenance，
+ * 因為徒歩分是印在每張房卡上的，受影響的確實是每一間房。
+ */
+function checkBuilding(b: Building, g: GateResult): Violation[] {
+  const hits: Violation[] = [];
+  const push = (v: Violation | null): void => { if (v !== null) { hits.push(v); g.violations.push(v); } };
+  if (b.yearBuilt.known) push(checkYearBuilt(b.yearBuilt.v));
+  for (const st of b.stations) {
+    if (!st.walkMinutes.known) continue;
+    const v = checkWalkMinutes(st.walkMinutes.v);
+    if (v === null) continue;
+    // 補上是哪一站——只講「徒歩 220 分」沒辦法回原頁查
+    push({ ...v, detail: `${b.id} ${st.line}/${st.station}：${v.detail}` });
+  }
+  return hits;
+}
+
+/**
  * 閘門 3 + 跨欄位不變式。
  * 閘門 3 違反會中止建置；不變式違反只記錄與標記，值照原文保留
  * （為什麼不降為 conflicting，見 invariants.ts 檔頭）。回傳這間房命中的違反，
  * 呼叫端據此打 FLAG.invariantViolation 並寫進 provenance。
  */
-function checkUnit(b: Building, u: Unit, provided: ReadonlySet<string>, g: GateResult): Violation[] {
+function checkUnit(u: Unit, provided: ReadonlySet<string>, g: GateResult): Violation[] {
   for (const [id, f] of moneyFields(u)) {
     gateZeroWithoutBasis(id, f, u.id, g);
     gateMeasuredNeedsSource(id, f, u.id, g);
@@ -169,8 +207,11 @@ function checkUnit(b: Building, u: Unit, provided: ReadonlySet<string>, g: GateR
   if (u.initial.agencyFee.known && u.monthly.rent.known) {
     push(checkAgencyFeeCap(u.initial.agencyFee.v.jpy, u.monthly.rent.v.jpy));
   }
-  if (u.areaM2.known) push(checkAreaRange(u.areaM2.v));
-  if (b.yearBuilt.known) push(checkYearBuilt(b.yearBuilt.v));
+  if (u.areaM2.known) {
+    push(checkAreaRange(u.areaM2.v));
+    const jo = joInSrcText(u.areaM2.srcText);
+    if (jo !== null) push(checkAreaVsJo(u.areaM2.v, jo));
+  }
   if (u.monthly.rent.known) push(checkMonthlyAtLeastRent(monthlyCost(u).lower.jpy, u.monthly.rent.v.jpy));
   if (u.initial.depositNonRefundable.known && u.initial.deposit.known) {
     push(checkDepositNonRefundable(u.initial.depositNonRefundable.v.jpy, u.initial.deposit.v.jpy));
@@ -451,8 +492,9 @@ async function main(): Promise<void> {
     B.also.push(alsoMask.get(b.id) ?? 0);
     B.btype.push(b.buildingType.known ? btypes.idx(b.buildingType.v) : -1);
 
+    const bViolations = checkBuilding(b, g);
     for (const u of units) {
-      const violations = checkUnit(b, u, provided, g);
+      const violations = [...bViolations, ...checkUnit(u, provided, g)];
       const m = monthlyCost(u);
       const c = initialCash(u);
       const s = initialSunk(u);
@@ -587,7 +629,12 @@ async function main(): Promise<void> {
   if (gz > 500 * 1024) console.warn(`  ⚠️ 首屏資料 ${(gz / 1024).toFixed(0)} KB gzip 已超過 500 KB 預算，該啟動分片了`);
   if (g.violations.length > 0) {
     console.log(`  ⚠️ ${g.violations.length} 筆合理性不變式違反（值照原文保留，該房標記 invariantViolation）：`);
-    for (const v of g.violations.slice(0, 5)) console.log(`     ${v.rule}: ${v.detail}`);
+    // 按規則分組：只印前 5 筆的話，一個規則爆 3000 筆會把其他規則整個蓋掉
+    const byRule = new Map<string, Violation[]>();
+    for (const v of g.violations) byRule.set(v.rule, [...(byRule.get(v.rule) ?? []), v]);
+    for (const [rule, vs] of [...byRule].sort((a, b2) => b2[1].length - a[1].length)) {
+      console.log(`     ${rule} ×${vs.length}   例：${vs[0]?.detail ?? ''}`);
+    }
   }
   if (g.warnings.length > 0) for (const w of g.warnings) console.log(`  · ${w}`);
 }

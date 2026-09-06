@@ -30,14 +30,42 @@ import { loadAdapters } from '../registry.ts';
 
 type Args = { source: string | null; limit: number | null; noCache: boolean; offline: boolean };
 
+/**
+ * 認不得的參數一律中止，**不可以默默忽略**。
+ *
+ * 2026-09-06 的實際事故：我打了 `--source=oakhouse`（等號形式），
+ * 舊的迴圈只認 `--source oakhouse`（空白形式），於是那個參數被靜靜丟掉、
+ * `source` 維持 null＝「跑全部來源」。結果是一個本來只該碰 oakhouse 的指令
+ * 去重跑了每一個來源，還撞上當時正在跑的 hituji 爬取、把它寫到一半的
+ * 暫存檔覆蓋掉。打錯字的代價不該是「安靜地做另一件事」。
+ * 兩種形式現在都收，其餘一律 error + exit 2。
+ */
 function parseArgs(argv: readonly string[]): Args {
   const out: Args = { source: null, limit: null, noCache: false, offline: false };
   for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '--source') out.source = argv[++i] ?? null;
-    else if (a === '--limit') out.limit = Number(argv[++i] ?? '') || null;
+    const raw = argv[i] ?? '';
+    const eq = raw.indexOf('=');
+    const a = eq > 0 ? raw.slice(0, eq) : raw;
+    const inlineValue = eq > 0 ? raw.slice(eq + 1) : null;
+    const value = (): string | null => inlineValue ?? argv[++i] ?? null;
+    if (a === '--source') out.source = value();
+    else if (a === '--limit') {
+      const v = value() ?? '';
+      const n = Number(v);
+      // `--limit 0` 以前會變成「無上限」（`0 || null`），跟使用者想說的正好相反。
+      if (!Number.isInteger(n) || n < 1) {
+        console.error(`--limit 需要 ≥1 的整數，收到「${v}」`);
+        process.exit(2);
+      }
+      out.limit = n;
+    }
     else if (a === '--no-cache') out.noCache = true;
     else if (a === '--offline') out.offline = true;
+    else {
+      console.error(`認不得的參數：${raw}\n`
+        + '可用：--source <id>｜--limit <n>｜--no-cache｜--offline（--source=<id> 等號形式也可以）');
+      process.exit(2);
+    }
   }
   return out;
 }

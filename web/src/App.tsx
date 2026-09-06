@@ -48,6 +48,14 @@ const TIER_LABEL: Record<Filters['sort'], [string, string, string]> = {
   perM2: ['可算每㎡單價', '單價僅有下限', '算不出單價'],
 };
 
+/**
+ * 樓層顯示。地下樓層在索引裡是負數（B1階 = −1，見 suumo/index.ts 的 parseFloorLabel），
+ * 直接印會變成「-1F」——日本沒有這種寫法，讀起來像壞掉的資料。
+ */
+function floorLabel(floor: number): string {
+  return floor < 0 ? `B${-floor}F` : `${floor}F`;
+}
+
 function srcName(dict: Wire['dict'], srcIdx: number): string {
   const id = dict.sources[srcIdx] ?? '';
   return dict.sourceMeta[id]?.nameZh ?? id;
@@ -666,7 +674,7 @@ export default function App() {
                     {shown === undefined ? '車站未提供' : `${shown.name}站${shown.walk !== null ? ` 徒步 ${shown.walk} 分` : ''}`}
                     {sts.length > 1 && <span className="more-st" title={sts.map((s) => `${s.name}${s.walk !== null ? ` ${s.walk}分` : ''}`).join('／')}> +{sts.length - 1} 站</span>}
                     {u.room[i] !== null ? ` · ${u.room[i]} 號室` : ''}
-                    {floor !== null && floor !== undefined ? ` · ${floor}F` : ''}
+                    {floor !== null && floor !== undefined ? ` · ${floorLabel(floor)}` : ''}
                     {u.area[i] !== null ? ` · ${u.area[i]}㎡` : ''}
                     {layout !== null && layout !== undefined ? ` · ${layout}` : ''}
                     {year !== null && year !== undefined ? ` · ${year}年築（${thisYear - year} 年）` : ''}

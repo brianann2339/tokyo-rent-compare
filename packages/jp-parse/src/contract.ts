@@ -65,6 +65,39 @@ export function parseMinStayMonths(input: string): number | null {
 }
 
 /**
+ * 入居期間的「級距標籤」→ 最短居住月數。
+ *
+ * 有些聚合站不寫「最低契約期間 N ヶ月」，而是列出可接受的入居期間級距，
+ * 例如 ひつじ不動産 的 `tenancyPeriod`：「長期」「長期・4〜6か月」
+ * 「長期・4〜6か月・1〜3か月」。這是站方自己的分類，含義是**可接受的停留長度集合**，
+ * 所以最短居住期間 = 所有級距下界的最小值。
+ *
+ * 「長期」單獨出現時回傳 null——它只說「不收短期」，沒說最短是幾個月。
+ * 硬給一個數字（例如 6 或 12）就是虛構；呼叫端應該讓該欄位維持未知，
+ * 原文則留在 srcText 與備考裡讓使用者自己看得到。
+ *
+ * 2026-09-06 對 ひつじ 真相層 545 間房實測，這個函式涵蓋全部 5 種相異值：
+ * 「長期」480 間 → null、「長期・4〜6か月」32 間 → 4、
+ * 「長期・4〜6か月・1〜3か月」26 間 → 1、「1〜3か月」5 間 → 1、「4〜6か月」2 間 → 4。
+ */
+const STAY_BUCKET_RE = /(?:(\d+)\s*~\s*)?(\d+)\s*(ヶ月|か月|ヵ月|カ月|年)/g;
+
+export function parseStayBucketsMinMonths(input: string): number | null {
+  const t = norm(input);
+  let min: number | null = null;
+  for (const m of t.matchAll(STAY_BUCKET_RE)) {
+    const lowRaw = m[1] ?? m[2];
+    if (lowRaw === undefined) continue;
+    const v = Number(lowRaw);
+    if (!Number.isFinite(v) || v <= 0) continue;
+    const months = m[3] === '年' ? v * 12 : v;
+    if (months > 240) continue;
+    if (min === null || months < min) min = months;
+  }
+  return min;
+}
+
+/**
  * 短期解約違約金。
  * Village House 的寫法：「1年未満の解約は3ヵ月分、2年未満の解約は2ヵ月分」
  * 這是「零初期費用」宣傳底下的真實成本，漏抓會誤導使用者。

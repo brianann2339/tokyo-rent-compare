@@ -395,13 +395,35 @@ export function parseSuumoStation(text: string): Station | null {
   };
 }
 
-/** `4階` → 4。`B1階`／`B1-1階`／`1-2階`（メゾネット）沒有單一樓層可言，不編數字。 */
+/**
+ * 一覧頁的「階」欄。
+ *
+ * 2026-09-06 對真相層全量掃描，解不出數字的寫法共 47 種、3,679 間房，
+ * 其中最多的是メゾネット的樓層區間（`1-2階` 1,738、`1-3階` 600…）
+ * 與地下樓層（`B1階` 454、`B1-1階` 255、`B2階` 20…）。
+ *
+ * 先前這些一律回 `notListed(t)`，也就是對著一個白紙黑字寫著「B1階」的頁面
+ * 宣稱「這一頁沒寫樓層」——那句話是假的，而且它把故障訊號也一併關掉了
+ * （`unparsed` 是健康監控唯一不需基線就有意義的訊號，全站卻只有 30 筆）。
+ *
+ * 現在的分法：
+ *   - `4階` → 4；`B1階` → −1（地下 N 階記成 −N，是日本通用的表示法）
+ *   - `2-2階` 這種上下界相同的區間 → 就是 2 階
+ *   - `1-2階`／`B2-B1階` 這種真的橫跨兩層 → **unparsed**：頁面有寫，
+ *     但我們的模型是單一樓層，給任何一個數字都是選一個來用
+ *   - 空字串與 `-` → notListed（頁面真的沒寫）
+ */
 export function parseFloorLabel(text: string): Field<number> {
   const t = text.trim();
   if (t === '' || t === '-') return notListed(t);
-  const m = /^(\d+)階$/.exec(t);
-  if (m?.[1] === undefined) return notListed(t);
-  return known(Number(m[1]), 'measured', `階 ${t}`);
+  const m = /^(B?\d+)-(B?\d+)階$|^(B?\d+)階$/.exec(t);
+  if (m === null) return unparsed(`階 ${t}`);
+  const num = (x: string): number => (x.startsWith('B') ? -Number(x.slice(1)) : Number(x));
+  if (m[3] !== undefined) return known(num(m[3]), 'measured', `階 ${t}`);
+  const lo = num(m[1] as string);
+  const hi = num(m[2] as string);
+  if (lo !== hi) return unparsed(`階 ${t}`);
+  return known(lo, 'measured', `階 ${t}`);
 }
 
 /**

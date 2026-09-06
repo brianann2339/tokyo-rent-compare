@@ -29,7 +29,7 @@ import {
 import type {
   Building, Unit, Listing, Station, ForeignerPolicy, UtilitiesBasis,
 } from '../../../packages/schema/src/model.ts';
-import { parseGenderTags, parseForeignerSignals } from '../../../packages/jp-parse/src/contract.ts';
+import { parseGenderTags, parseForeignerSignals, parseStayBucketsMinMonths } from '../../../packages/jp-parse/src/contract.ts';
 
 export const manifest: SourceManifest = {
   id: 'hituji',
@@ -45,6 +45,9 @@ export const manifest: SourceManifest = {
       'layout', 'areaM2', 'roomNo', 'isVacant',
       'genderRestriction', 'foreignerWelcomed', 'stations', 'totalUnits',
       'yearBuilt',
+      // 站方以級距標籤刊登入居期間（「長期・4〜6か月」），有數字的頁面解得出最短月數。
+      // 只寫「長期」的頁面沒有數字可讀，那是 not_listed_on_page 不是解析故障。
+      'minStayMonths',
     ],
     // 這些欄位站上完全不刊登。宣告出來，健康檢查才不會對它們產生
     // 永遠 0% 的假警報——警報疲勞會讓人乾脆關掉整個監控。
@@ -485,9 +488,15 @@ function buildUnit(
     monthly: {
       rent: yenField(r.rent, 'rent'),
       adminFee: yenField(r.commonServiceFee, 'commonServiceFee'),
+      // ⚠️ payload 的 `utilities` **不是**另一筆水電費，是 commonServiceFee 的顯示字串
+      // （2026-09-06 回頭核對 data/raw 原文：`"commonServiceFee":15000,
+      // "variableCommonServiceFee":"","utilities":"15000"`）。把它當成水電金額收下來，
+      // 等於把同一筆共益費在 adminFee 與 utilities 各記一次，月額直接灌水一倍。
+      // 所以這裡一律不採用；srcText 要寫清楚是「共益費的重複顯示」，
+      // 否則稽核時會看成「金額明明就在原文裡卻沒收」。
       utilities: basis === 'excluded'
-        ? { known: false, why: 'not_listed_on_page', basis: 'excluded_stated', srcText: `variableCommonServiceFee=${variableFeeOf(r)}` }
-        : notListed(`utilities=${r.utilities ?? ''}`),
+        ? { known: false, why: 'not_listed_on_page', basis: 'excluded_stated', srcText: `variableCommonServiceFee=${variableFeeOf(r)}（另計，金額未載明）` }
+        : notListed(`站方未單列水電費；payload 的 utilities=「${r.utilities ?? ''}」是共益費 ${r.commonServiceFee ?? ''} 的重複顯示，不是水電金額`),
       internet: notOffered<Yen>(),
       otherMonthly: notOffered<Yen>(),
     },
@@ -518,7 +527,13 @@ function buildUnit(
     // 入居期間是 payload 的結構化陣列 tenancyPeriod（實測 1,244/1,244 頁都有）。
     // 之前用頁面文字的 regex 只撈得到第一個值，1,244 棟中有 76 棟因此漏掉
     // 「長期・4〜6か月」這種複數值裡的短期選項。
-    minStayMonths: notListed(d.tenancyPeriod),
+    //
+    // 這個欄位是可接受停留長度的**集合**，最短居住期間＝所有級距下界的最小值
+    // （見 jp-parse/contract.ts 的 parseStayBucketsMinMonths）。
+    // 只寫「長期」時沒有月數可讀 → 維持未知，原文留在 srcText 與備考。
+    // 先前這裡一律 notListed，等於對「長期・4〜6か月」這種寫了數字的頁面
+    // 斷言「頁面沒寫」——那句話是假的。
+    minStayMonths: minStayOf(d.tenancyPeriod),
     genderRestriction: parseGenderTags(s.tenancyConditionDescription ?? ''),
     ageLimitRaw: notListed(''),
     petsAllowed: notOffered<boolean>(),
@@ -528,6 +543,17 @@ function buildUnit(
       ...(d.tenancyPeriod !== '' ? [`入居期間：${d.tenancyPeriod}`] : []),
     ],
   };
+}
+
+/**
+ * ひつじ的 `tenancyPeriod` → 最短居住期間。
+ * basis 用 'measured'：數字是站方自己列的級距下界，不是我們推估的。
+ */
+function minStayOf(tenancyPeriod: string): Field<number> {
+  const m = parseStayBucketsMinMonths(tenancyPeriod);
+  return m === null
+    ? notListed<number>(tenancyPeriod)
+    : known(m, 'measured', `入居期間 ${tenancyPeriod}`);
 }
 
 /** discover 把完整房間清單放進 hint 的鍵名。 */

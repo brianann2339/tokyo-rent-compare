@@ -15,7 +15,7 @@
 
 import type { SourceAdapter, SourceManifest, TargetRef, RawDoc, ExtractContext, Fetcher } from '../../src/types.ts';
 import {
-  known, notListed, notOffered, unparsed, conflicting, yen, type Field, type Yen,
+  known, notListed, notOffered, unparsed, conflicting, statedNoAmount, yen, type Field, type Yen,
 } from '../../../packages/schema/src/field.ts';
 import type {
   Building, Unit, Listing, Station, ForeignerPolicy, PropertyKind, GenderRestriction,
@@ -52,6 +52,9 @@ export const manifest: SourceManifest = {
       // apartment 線的新版房間卡片逐間印這兩項（「鍵交換費用 33,000円」「室内清掃費用 55,000円」）。
       // 2026-09-06 之前它們被列在 neverProvides——那句宣告會叫監控永遠不必去看那裡。
       'keyExchangeFee', 'cleaningFeeUpfront',
+      // 「建物概要」區塊有這兩項（977/993 有樓層、747/993 有建築年月），
+      // 先前 extract 寫死 notListed('') 而沒有宣告，所以監控也不會發現它們是 0%。
+      'floorsAboveGround', 'yearBuilt',
     ],
     neverProvides: [
       'utilities', 'internet', 'otherMonthly', 'depositNonRefundable',
@@ -79,7 +82,7 @@ export const manifest: SourceManifest = {
  * 把 HTML 轉成以 ｜ 分隔的可掃描文字。
  * 實體要還原：新版房間卡的面積寫成 `16.52m&sup2;`，不還原就整批解不出面積。
  */
-function text(html: string): string {
+export function text(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -165,6 +168,18 @@ function moneyOf(t: string, label: string): Field<Yen> {
 export type OakBadges = {
   noDeposit: boolean; noKeyMoney: boolean; noSecurityDeposit: boolean;
   noAgencyFee: boolean; noGuarantorPerson: boolean; noGuarantorCompany: boolean;
+  /**
+   * 站方在同一個徽章區同時印正反兩面：「敷金なし」／「敷金あり」、
+   * 「保証会社不要」／「保証会社必要」。只讀反面（なし／不要）會把
+   * 「原站說要付」整批當成「原站沒寫」。
+   * 2026-09-06 對 data/raw/oakhouse 全部 992 個含徽章區的原始檔實測，
+   * 正反兩面是互斥且窮盡的：敷金 830+162、礼金 324+668、保証金 972+20、
+   * 保証人 991+1、保証会社 225+767，每組都剛好等於 992。
+   * 例外是仲介手数料：只有「なし」228 筆、沒有任何「あり」寫法，
+   * 所以其餘 764 筆確實是「這頁沒寫」。
+   */
+  hasDeposit: boolean; hasKeyMoney: boolean; hasSecurityDeposit: boolean;
+  guarantorPersonRequired: boolean; guarantorCompanyRequired: boolean;
   furnished: boolean; foreignerOk: boolean; raw: string;
 };
 
@@ -180,6 +195,11 @@ export function parseBadges(html: string): OakBadges {
     noAgencyFee: has('仲介手数料なし'),
     noGuarantorPerson: has('保証人不要'),
     noGuarantorCompany: has('保証会社不要'),
+    hasDeposit: has('敷金あり'),
+    hasKeyMoney: has('礼金あり'),
+    hasSecurityDeposit: has('保証金必要'),
+    guarantorPersonRequired: has('保証人必要'),
+    guarantorCompanyRequired: has('保証会社必要'),
     furnished: has('家具・家電付き') || has('家具家電付き'),
     foreignerOk: has('外国人入居可'),
     raw: seg.replace(/｜/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300),
@@ -361,6 +381,69 @@ export function parseOakAddress(t: string): { prefecture: string; ward: string; 
   return { prefecture: m[1].trim(), ward: m[2].trim(), town: (m[3] ?? '').trim() };
 }
 
+/**
+ * 站方認可的構造寫法。
+ * 這份清單不是我想出來的：2026-09-06 對 data/raw/oakhouse 993 個含「建物概要」
+ * 的原始檔逐頁抽出構造欄的字面值，全部相異值只有下面這幾種——
+ * RC 572、木造 129、鉄筋コンクリート造 88、鉄骨造 83、SRC 50、
+ * 鉄骨鉄筋コンクリート造 22、軽量鉄骨 5、鉄骨ALC 4、軽量鉄骨造 3。
+ * 「以造字結尾」再加上四個沒有造字的簡寫，剛好蓋滿 960/993。
+ * 認不得的字串一律 unparsed（有文字但解不出來），不是 notListed——
+ * 站方哪天換寫法，健康報告要立刻叫出來，而不是安靜地變成一片「未提供」。
+ */
+const OAK_STRUCT_SHORTHAND = ['RC', 'SRC', '軽量鉄骨', '鉄骨ALC'] as const;
+
+export type OakBuildingSummary = {
+  structure: Field<string>;
+  floorsAboveGround: Field<number>;
+  yearBuilt: Field<number>;
+};
+
+/**
+ * 「建物概要」區塊：構造／地上樓層／建築年月。
+ *
+ * 版面實測長這樣（｜ 是標籤被抽掉留下的分隔）：
+ *   `建物概要｜ ｜ RC ｜ 3階建て ｜ 建築年月:2024/04`
+ * 構造欄可能整格是空的，這時「建物概要」後面第一個數字就是樓層數
+ * ——先用「N階建」把樓層定位出來，再取它前面那一段當構造，
+ * 才不會把「11階建」的第一個 1 誤讀成構造（實測會發生 4 次）。
+ *
+ * 三個欄位先前全部寫死 notListed('')／只認「造」字，2026-09-06 實測的損失是：
+ * 構造 330→960、地上樓層 0→977、築年 0→747（993 個原始檔）。
+ * 築年這裡用 basis 'measured'：站方寫的是**確切的建築年月**（2024/04），
+ * 不是 SUUMO 那種只能推下界的「築N年」。
+ */
+export function parseOakBuildingSummary(t: string): OakBuildingSummary {
+  const i = t.indexOf('建物概要');
+  if (i < 0) {
+    const why = notListed<string>('頁面沒有「建物概要」區塊');
+    return { structure: why, floorsAboveGround: notListed<number>(why.srcText), yearBuilt: notListed<number>(why.srcText) };
+  }
+  const seg = t.slice(i, i + 220);
+  const flat = seg.replace(/[｜\s]+/g, ' ').trim();
+
+  const fm = /([0-9]{1,2})\s*階建/.exec(seg);
+  const floors = fm?.[1] === undefined
+    ? notListed<number>(flat)
+    : known(Number(fm[1]), 'measured', `建物概要 ${fm[0]}`);
+
+  // 構造 = 「建物概要」與樓層數之間那段文字（沒有樓層數時就取整段）
+  const beforeFloor = fm === null ? seg.slice('建物概要'.length) : seg.slice('建物概要'.length, fm.index);
+  const token = beforeFloor.replace(/[｜\s]+/g, ' ').trim();
+  const structure: Field<string> = token === ''
+    ? notListed<string>(flat)
+    : (/造$/.test(token) || OAK_STRUCT_SHORTHAND.some((x) => x === token))
+      ? known(token, 'measured', `建物概要 ${token}`)
+      : unparsed<string>(`建物概要 ${token}`);
+
+  const ym = /建築年月[｜\s:：]*([0-9]{4})[/年]([0-9]{1,2})?/.exec(seg);
+  const yearBuilt = ym?.[1] === undefined
+    ? notListed<number>(flat)
+    : known(Number(ym[1]), 'measured', `建築年月 ${ym[1]}/${ym[2] ?? '??'}`);
+
+  return { structure, floorsAboveGround: floors, yearBuilt };
+}
+
 function foreignerPolicy(badges: OakBadges, roomOk: boolean): ForeignerPolicy {
   const ok = badges.foreignerOk || roomOk;
   return {
@@ -369,12 +452,18 @@ function foreignerPolicy(badges: OakBadges, roomOk: boolean): ForeignerPolicy {
       : notListed(badges.raw),
     residenceCardRequired: notOffered<boolean>(),
     japaneseRequired: notOffered<boolean>(),
+    // 正反兩面都要讀：只讀「不要」會讓 767 棟寫著「保証会社必要」的物件
+    // 變成「原站沒寫」，使用者少掉一筆真實的承租門檻（2026-09-06 實測）。
     guarantorCompanyRequired: badges.noGuarantorCompany
       ? known(false, 'measured', '保証会社不要')
-      : notListed(badges.raw),
+      : badges.guarantorCompanyRequired
+        ? known(true, 'measured', '保証会社必要')
+        : notListed(badges.raw),
     guarantorPersonRequired: badges.noGuarantorPerson
       ? known(false, 'measured', '保証人不要')
-      : notListed(badges.raw),
+      : badges.guarantorPersonRequired
+        ? known(true, 'measured', '保証人必要')
+        : notListed(badges.raw),
     rawText: badges.raw,
   };
 }
@@ -415,8 +504,7 @@ export const adapter: SourceAdapter = {
     const isShareHouseLine = km?.[1] === 'house';
     const buildingId = `oakhouse:${key}`;
 
-    // `建物概要` 與值之間還隔著一個空標籤產生的 ｜，用 \s* 跳不過去（實測 0/565 命中）。
-    const structM = /建物概要[｜\s]*([^｜]{2,30}造[^｜]{0,12})/.exec(t);
+    const summary = parseOakBuildingSummary(t);
     const imgM = /<meta property="og:image" content="([^"]+)"/.exec(html);
 
     const building: Building = {
@@ -436,13 +524,11 @@ export const adapter: SourceAdapter = {
       prefecture: addr.prefecture,
       ward,
       stations: parseOakStations(t),
-      structure: structM?.[1] !== undefined
-        ? known(structM[1].trim(), 'measured', `建物概要 ${structM[1].trim()}`)
-        : notListed(''),
-      yearBuilt: notListed(''),
+      structure: summary.structure,
+      yearBuilt: summary.yearBuilt,
       // 這個來源不標建物種別；那是 SUUMO 這類入口站才有的欄位
       buildingType: notOffered<string>(),
-      floorsAboveGround: notListed(''),
+      floorsAboveGround: summary.floorsAboveGround,
       // 0 筆不是量測值——解析失敗與「頁面真的沒列房」長得一樣，
       // 把它記成 known(0,'measured') 等於宣稱「量到 0 間」，會把故障蓋掉。
       totalUnits: rooms.length > 0
@@ -463,8 +549,18 @@ export const adapter: SourceAdapter = {
      * 卡片講的是「這一間」，比徽章具體，所以卡片優先；
      * 兩邊都說得很明確卻互相矛盾時，誰都不採信——標 conflicting 把兩段原文都留著。
      */
-    const feeOf = (card: Field<Yen> | null, flag: boolean, label: string): Field<Yen> => {
-      if (card === null) return flag ? known(yen(0), 'measured', label) : notListed(badges.raw);
+    const feeOf = (
+      card: Field<Yen> | null, flag: boolean, label: string,
+      /** 站方明講「有這筆費用」的徽章（如「礼金あり」）與其原文標籤。 */
+      stated: { present: boolean; label: string } | null = null,
+    ): Field<Yen> => {
+      if (card === null) {
+        if (flag) return known(yen(0), 'measured', label);
+        // 沒有「なし」徽章，但有「あり／必要」徽章 → 原站說了要付，只是沒寫金額。
+        // 這跟「頁面沒提到」不同，混成 notListed 會讓使用者以為可能不用付。
+        if (stated?.present === true) return statedNoAmount<Yen>(`${stated.label}（金額未載明）｜${badges.raw}`);
+        return notListed(badges.raw);
+      }
       if (flag && card.known && card.v.jpy !== 0) {
         return conflicting<Yen>(`建物層「${label}」 vs 房間卡片「${card.srcText}」`);
       }
@@ -488,11 +584,14 @@ export const adapter: SourceAdapter = {
         otherMonthly: notOffered<Yen>(),
       },
       initial: {
-        keyMoney: feeOf(r.cardKeyMoney, badges.noKeyMoney, '礼金なし'),
-        deposit: feeOf(r.cardDeposit, badges.noDeposit, '敷金なし'),
+        keyMoney: feeOf(r.cardKeyMoney, badges.noKeyMoney, '礼金なし',
+          { present: badges.hasKeyMoney, label: '礼金あり' }),
+        deposit: feeOf(r.cardDeposit, badges.noDeposit, '敷金なし',
+          { present: badges.hasDeposit, label: '敷金あり' }),
         depositNonRefundable: notOffered<Yen>(),
         agencyFee: feeOf(r.cardAgencyFee, badges.noAgencyFee, '仲介手数料なし'),
-        guarantorInitialFee: feeOf(r.cardGuarantorFee, badges.noGuarantorCompany, '保証会社不要'),
+        guarantorInitialFee: feeOf(r.cardGuarantorFee, badges.noGuarantorCompany, '保証会社不要',
+          { present: badges.guarantorCompanyRequired, label: '保証会社必要' }),
         fireInsurance: notOffered<Yen>(),
         // 舊版表格列（share house 線）沒有這兩欄，但 apartment 線的卡片有——
         // 所以它不是「來源根本沒有」，而是「這一頁沒寫」。

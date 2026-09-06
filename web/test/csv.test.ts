@@ -42,7 +42,7 @@ function makeWire(over: Partial<Wire['u']> = {}, name = '測試ハウス'): Wire
 }
 
 const HEADER = [
-  '來源', '物件名', '区', '種類', '房型', '面積㎡', '樓層', '築年',
+  '來源', '物件名', '区', '種類', '房型', '面積㎡', '樓層（地下為負數）', '築年',
   '車站1', '徒歩1', '車站2', '徒歩2', '車站3', '徒歩3',
   '賃料', '管理費', '水電', '水電基準',
   '禮金', '敷金', '敷引', '月額下限', '月額區', '初期現金', '初期現金區', '沉沒成本',
@@ -79,7 +79,7 @@ describe('rowsToCsv', () => {
   test('rent=null：所有金額欄空字串，不是 0', () => {
     const text = rowsToCsv(makeWire(), [{ i: 0, tier: 2, key: 0 }], { assumeUtil: 5000 });
     const r = rec(parseCsv(text)[1] as string[]);
-    for (const k of ['面積㎡', '樓層', '賃料', '管理費', '水電', '水電基準', '禮金', '敷金', '敷引', '月額下限',
+    for (const k of ['面積㎡', '樓層（地下為負數）', '賃料', '管理費', '水電', '水電基準', '禮金', '敷金', '敷引', '月額下限',
       '初期現金', '沉沒成本', '實質月成本12', '每㎡單價', '外國人可租', '性別', '空室', '房型', '車站3', '徒歩3', '徒歩2']) {
       assert.equal(r[k], '', `${k} 應為空`);
     }
@@ -108,7 +108,7 @@ describe('rowsToCsv', () => {
     });
     const r = rec(parseCsv(rowsToCsv(w, [{ i: 0, tier: 0, key: 85000 }], { assumeUtil: null }))[1] as string[]);
     assert.equal(r['房型'], '1K');
-    assert.equal(r['樓層'], '3');
+    assert.equal(r['樓層（地下為負數）'], '3');
     assert.equal(r['仲介數'], '3');
     assert.equal(r['缺項'], '');
     assert.equal(r['面積㎡'], '20.5');
