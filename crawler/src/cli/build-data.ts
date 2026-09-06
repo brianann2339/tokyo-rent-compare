@@ -235,6 +235,10 @@ async function loadAliases(g: GateResult): Promise<Map<string, AliasFile['groups
 async function main(): Promise<void> {
   const g: GateResult = { errors: [], warnings: [], violations: [] };
   const work: Work[] = [];
+  /** 同一個 building.id 被拆成多行、由本層合併掉的行數 */
+  let mergedLines = 0;
+  /** 同一個 unitKey 在多行裡重複出現（分頁重疊重抓）而被丟掉的列數 */
+  let dupKeyRows = 0;
   const manifests: Array<{ id: string; provides: Set<string> }> = [];
   // 來源顯示名從 manifest 帶進資料，UI 就不必為每個新來源改一次硬編碼對照表
   const sourceMeta: Record<string, { nameZh: string; homepage: string }> = {};
@@ -244,9 +248,25 @@ async function main(): Promise<void> {
   for (const id of SOURCES) {
     const p = path.join(DATA, 'normalized', `${id}.ndjson.gz`);
     if (!existsSync(p)) { g.warnings.push(`找不到 ${p}，跳過`); continue; }
+    // 同一棟建物可能被拆成多行——SUUMO 的一覧頁分頁會把同一棟切在兩頁上，
+    // 而 building.id 是由 名稱+住所 算出來的，所以那兩行指的是同一棟。
+    // 不先併起來的話，站內去重只在單一行內比對，跨行的重複刊登整批漏掉
+    // （2026-09-06 實測：2,200 棟被拆成多行，跨行重複 1,203 列）。
+    const byId = new Map<string, Work>();
     for await (const l of readNdjsonGz<Listing>(p)) {
-      work.push({ b: l.building, units: [...l.units] });
+      const seen = byId.get(l.building.id);
+      if (seen === undefined) { byId.set(l.building.id, { b: l.building, units: [...l.units] }); continue; }
+      // 分頁邊界會讓**同一筆刊登**被抓兩次（相同 unitKey）。那不是「多家仲介刊同一間房」
+      // 而是重複抓取，先按 unitKey 去掉，再交給 7 元組合併處理真正的多家刊登。
+      const have = new Set(seen.units.map((u) => u.unitKey));
+      for (const u of l.units) {
+        if (have.has(u.unitKey)) { dupKeyRows += 1; continue; }
+        have.add(u.unitKey);
+        seen.units.push(u);
+      }
+      mergedLines += 1;
     }
+    for (const w of byId.values()) work.push(w);
     sources.idx(id); // 來源索引依載入順序固定，B.also 位元遮罩才有穩定意義
     const mod = await import(`../../sources/${id}/index.ts`) as {
       manifest: { nameZh: string; homepage: string; capabilities: { provides: readonly string[] } };
@@ -518,6 +538,10 @@ async function main(): Promise<void> {
       },
       crossSource: { groups: crossGroups, removedUnits: crossRemoved, buildingOnlyCandidates: crossBuildingOnly },
       emptyBuildingsDropped: emptyBuildings,
+      /** 同一棟被拆成多行（分頁邊界）而在讀檔階段就合併掉的行數 */
+      splitBuildingLinesMerged: mergedLines,
+      /** 同一 unitKey 被重複抓取而丟棄的列數 */
+      duplicateUnitKeyRows: dupKeyRows,
     },
   };
 
@@ -551,7 +575,8 @@ async function main(): Promise<void> {
   const gz = gzipSync(Buffer.from(encodedJson, 'utf8')).length;
   const gzPlain = gzipSync(Buffer.from(plainJson, 'utf8')).length;
   console.log(`✔ 建置完成`);
-  console.log(`  建物 ${meta.buildings} 棟 / 房間 ${meta.units} 間（空棟略過 ${emptyBuildings}）`);
+  console.log(`  建物 ${meta.buildings} 棟 / 房間 ${meta.units} 間（空棟略過 ${emptyBuildings}；`
+    + `同棟被拆成多行而合併 ${mergedLines} 行、同一刊登被重複抓取而丟棄 ${dupKeyRows} 列）`);
   console.log(`  SUUMO 去重：${suumoBefore.length} → ${suumoAfter.length}（${suumoGroups} 組、移除 ${suumoRemoved}、疑似不併 ${suumoSuspect}）；A 區賃料中位數 ${medBefore} → ${medAfter}`);
   console.log(`  跨來源：${crossGroups} 組已審核合併、移除 ${crossRemoved} 間；僅棟層命中 ${crossBuildingOnly} 組（不併）`);
   console.log(`  字典：站 ${stations.list.length}、線 ${lines.list.length}、線站對 ${pairs.length}、間取 ${layouts.list.length}、建物種別 ${btypes.list.length}`);
