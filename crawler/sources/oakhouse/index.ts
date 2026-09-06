@@ -426,25 +426,28 @@ export function parseOakBuildingSummary(t: string): OakBuildingSummary {
     return { structure: why, floorsAboveGround: notListed<number>(why.srcText), yearBuilt: notListed<number>(why.srcText) };
   }
   const seg = t.slice(i, i + 220);
-  const flat = seg.replace(/[｜\s]+/g, ' ').trim();
+  // 沒抓到值時的 srcText 只說「這一欄沒填」，不要把整段 220 字倒進來。
+  // 那段裡有「3階建て」「週1回」這些鄰居欄位的數字，稽核工具看到
+  // 「說沒寫、原文卻有數字」就會誤報，真正的漏抓反而被淹掉。
+  const absent = (field: string): string => `建物概要區塊有，但沒有${field}`;
 
   const fm = /([0-9]{1,2})\s*階建/.exec(seg);
   const floors = fm?.[1] === undefined
-    ? notListed<number>(flat)
+    ? notListed<number>(absent('地上樓層'))
     : known(Number(fm[1]), 'measured', `建物概要 ${fm[0]}`);
 
   // 構造 = 「建物概要」與樓層數之間那段文字（沒有樓層數時就取整段）
   const beforeFloor = fm === null ? seg.slice('建物概要'.length) : seg.slice('建物概要'.length, fm.index);
   const token = beforeFloor.replace(/[｜\s]+/g, ' ').trim();
   const structure: Field<string> = token === ''
-    ? notListed<string>(flat)
+    ? notListed<string>(absent('構造'))
     : (/造$/.test(token) || OAK_STRUCT_SHORTHAND.some((x) => x === token))
       ? known(token, 'measured', `建物概要 ${token}`)
       : unparsed<string>(`建物概要 ${token}`);
 
   const ym = /建築年月[｜\s:：]*([0-9]{4})[/年]([0-9]{1,2})?/.exec(seg);
   const yearBuilt = ym?.[1] === undefined
-    ? notListed<number>(flat)
+    ? notListed<number>(absent('建築年月'))
     : known(Number(ym[1]), 'measured', `建築年月 ${ym[1]}/${ym[2] ?? '??'}`);
 
   return { structure, floorsAboveGround: floors, yearBuilt };

@@ -1,0 +1,307 @@
+{
+ "sourceId": "oakhouse",
+ "runAt": "2026-09-06T04:23:51.597Z",
+ "buildings": 526,
+ "units": 977,
+ "robotsSha256": "79739f859070043398ad0f45eb73ba3c90a28ce2a573231eb198d968045483a3",
+ "robotsChanged": false,
+ "buildIds": [],
+ "fields": {
+  "yearBuilt": {
+   "applicable": 526,
+   "measured": 372,
+   "notListed": 154,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "structure": {
+   "applicable": 526,
+   "measured": 501,
+   "notListed": 16,
+   "unparsed": 9,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "totalUnits": {
+   "applicable": 526,
+   "measured": 519,
+   "notListed": 7,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "sourceUpdatedAt": {
+   "applicable": 526,
+   "measured": 0,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 526
+  },
+  "stations": {
+   "applicable": 526,
+   "measured": 526,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "stationLine": {
+   "applicable": 1623,
+   "measured": 1623,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "ward": {
+   "applicable": 526,
+   "measured": 526,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "rent": {
+   "applicable": 977,
+   "measured": 977,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "adminFee": {
+   "applicable": 977,
+   "measured": 976,
+   "notListed": 1,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "utilities": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 977
+  },
+  "keyMoney": {
+   "applicable": 977,
+   "measured": 964,
+   "notListed": 1,
+   "unparsed": 0,
+   "conflicting": 12,
+   "notOffered": 0
+  },
+  "deposit": {
+   "applicable": 977,
+   "measured": 971,
+   "notListed": 1,
+   "unparsed": 0,
+   "conflicting": 5,
+   "notOffered": 0
+  },
+  "depositNonRefundable": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 977
+  },
+  "agencyFee": {
+   "applicable": 977,
+   "measured": 976,
+   "notListed": 1,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "guarantorInitialFee": {
+   "applicable": 977,
+   "measured": 98,
+   "notListed": 879,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "fireInsurance": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 977
+  },
+  "renewalFee": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 977
+  },
+  "earlyTerminationPenalty": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 977
+  },
+  "areaM2": {
+   "applicable": 977,
+   "measured": 977,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "layout": {
+   "applicable": 977,
+   "measured": 974,
+   "notListed": 3,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "roomNo": {
+   "applicable": 977,
+   "measured": 976,
+   "notListed": 1,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "floor": {
+   "applicable": 977,
+   "measured": 967,
+   "notListed": 10,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "availableFrom": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 977,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "isVacant": {
+   "applicable": 977,
+   "measured": 977,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "furnished": {
+   "applicable": 977,
+   "measured": 698,
+   "notListed": 279,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "minStayMonths": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 977,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "contractMonths": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 977,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "ageLimitRaw": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 977
+  },
+  "petsAllowed": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 977
+  },
+  "foreignerWelcomed": {
+   "applicable": 977,
+   "measured": 782,
+   "notListed": 195,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "residenceCardRequired": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 977
+  },
+  "japaneseRequired": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 977
+  },
+  "guarantorCompanyRequired": {
+   "applicable": 977,
+   "measured": 977,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "guarantorPersonRequired": {
+   "applicable": 977,
+   "measured": 977,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "genderRestriction": {
+   "applicable": 977,
+   "measured": 977,
+   "notListed": 0,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "contractType": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 977,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  },
+  "utilitiesBasis": {
+   "applicable": 977,
+   "measured": 0,
+   "notListed": 977,
+   "unparsed": 0,
+   "conflicting": 0,
+   "notOffered": 0
+  }
+ }
+}

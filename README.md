@@ -107,26 +107,31 @@ web/                  Vite + React，欄式 JSON + 瀏覽器端掃描
 
 ## 目前收錄（12 個來源）
 
-去重後 **30,863 棟 / 70,531 間**（SUUMO 同棟多家仲介重複刊登合併 4,232 列、跨站同房合併 204 間）。
-「東京空房」是去重後、實際進索引的房間數。
+去重後 **86,755 棟 / 174,630 間**（SUUMO 同棟多家仲介重複刊登合併 13,553 列、
+跨站同房合併 1,928 間，1,212 組跨來源同棟全部人審過）。
+「東京房間」是去重前該來源自己的房間數；「最後確認」是那批資料的抓取日。
 
-| 來源 | 東京空房 | 取得方式 | 備註 |
-|---|---:|---|---|
-| SUUMO | 65,326 | 一覧頁 SSR | 收都心 10 区（使用者指定）；同棟 7 元組相同視為同一間房，50 組稽核親自核對 |
-| Leopalace21 | 2,825 | JSON-LD（sitemap 枚舉） | 與 SUUMO 重複的 66 組已人審合併 |
-| Tokyo Sharehouse | 833 | SSR 路徑分頁 | 聚合站；`データ更新日` 進鮮度欄位 |
-| Sakura House | 666 | 真實有頭 Chrome + CDP | Cloudflare 對真瀏覽器透明放行；無任何繞過 |
-| ひつじ不動産 | 516 | RSC payload（`RSC: 1`） | 累積式分頁，一次取最後一頁 |
-| UR 賃貸住宅 | 150 | 官方站自用 JSON API | 礼金・仲介・更新料・保証人全免；rent 空時讀 rent_normal |
-| Oak House | 95 | SSR | `/apartment/` 與 `/house/`（share house）兩條線；敷金礼金保証金仲介全零 |
-| Borderless House | 56 | SSR | 水電網路費有明確金額（少見） |
-| Social Apartment | 22 | SSR | 物件頁不列初期費用金額 → notOffered |
-| Couverture | 19 | 靜態 HTML（map.html） | 全站無礼金/敷金欄位 |
-| Village House | 16 | SSR（sitemap） | 反向成本（違約金/退去清掃/火險）有抓 |
-| JKK 東京 | 7 | session+token POST（Shift_JIS） | 全物件礼金/仲介/更新料なし；庫存少是真實現況 |
+| 來源 | 東京房間 | 最後確認 | 取得方式 | 備註 |
+|---|---:|---|---|---|
+| SUUMO | 183,546 | 2026-09-06 | 一覧頁 SSR | **23 区全收**；同棟 7 元組相同視為同一間房，50 組稽核親自核對 |
+| Leopalace21 | 2,881 | 2026-08-16 | JSON-LD（sitemap 枚舉） | 站方今日刊登 1,694 棟，少於我們的 1,699——sitemap 隨空房增減 |
+| Oak House | 977 | 2026-09-06 | SSR | `/apartment/` 與 `/house/`（share house）兩條線 |
+| ひつじ不動産 | 954 | 2026-09-06 | RSC payload（`RSC: 1`） | 逐棟抓 `/rooms` 取完整房間清單，不只詳情頁的預覽 |
+| Tokyo Sharehouse | 898 | 2026-08-16 | SSR 路徑分頁 | 聚合站；`データ更新日` 進鮮度欄位 |
+| Sakura House | 666 | 2026-08-16 | 真實有頭 Chrome + CDP | 只能人在場時手動跑；Cloudflare 對真瀏覽器透明放行，無任何繞過 |
+| UR 賃貸住宅 | 114 | 2026-09-06 | 官方站自用 JSON API | 礼金・仲介・更新料・保証人全免；114 間是今日的實際空房 |
+| Borderless House | 56 | 2026-08-16 | SSR | 水電網路費有明確金額（少見） |
+| Social Apartment | 22 | 2026-08-16 | SSR | 物件頁不列初期費用金額 → notOffered |
+| Couverture | 19 | 2026-08-16 | 靜態 HTML（map.html） | 全站無礼金/敷金欄位 |
+| Village House | 16 | 2026-08-16 | SSR（sitemap） | 反向成本（違約金/退去清掃/火險）有抓 |
+| JKK 東京 | 7 | 2026-08-16 | session+token POST（Shift_JIS） | 全物件礼金/仲介/更新料なし；庫存少是真實現況 |
 
-⚠️ Oak House 的數字是**可申請房間**：站方列出 2,365 間，其中滿室的不進索引（棟層 `totalUnits` 仍記全數）。
-share house 空室率本來就低，這個差距是真實現況不是漏抓。
+⚠️ 各來源的數字都是**當下可申請的房間**，不是它管理的總戶數。
+share house 空室率本來就低（Oak House 站方列出 2,365 間、現在開放申請 977 間），
+UR 的 308 是含滿室建物的目錄數。這些差距是真實現況不是漏抓。
+
+⚠️ Sakura House 只能在人在場時用真實瀏覽器抓，沒有 `data/raw/`，
+所以解析器改動要等下次人工重抓才會反映到資料上。
 
 不收錄：XROSS HOUSE（robots.txt 禁止搜尋與分頁，無合規列舉路徑）。
 

@@ -58,6 +58,8 @@ const REVIEWED: Record<string, string> = {
   'villagehouse|minStayMonths': 'srcText 是解約違約金條文，站方沒有規定最短居住期間',
   'oakhouse|floor': 'data-floor="-1" 是站方的未設定哨兵，不是地下樓層（實測 8 頁房號全在 1 樓）',
   'oakhouse|initial.agencyFee': '站方只印「仲介手数料なし」，沒有任何「あり」寫法（實測 992 頁 0 筆），所以沒印＝沒說',
+  'sakurahouse|floor': '`B1F` 已於 2026-09-06 改成 −1，但這個來源只能用真人在場的瀏覽器抓、沒有 data/raw/，'
+    + '真相層要等下次人工重抓才會更新',
 };
 
 type Row = { key: string; n: number; withNum: number; sample: string };
@@ -68,6 +70,10 @@ function walk(src: string, prefix: string, node: unknown, out: Map<string, Row>)
   if (typeof o['known'] === 'boolean' && 'basis' in o) {
     if (o['known'] === true) return;
     if (o['why'] !== 'not_listed_on_page') return;
+    // statedNoAmount()：原站明講有這筆費用、只是沒寫金額。
+    // 它刻意用 why='not_listed_on_page' + basis='excluded_stated'（金額確實沒寫），
+    // 是已經表達清楚的狀態，不是漏抓——原文裡的數字是同一段徽章文字帶進來的。
+    if (o['basis'] === 'excluded_stated') return;
     const srcText = typeof o['srcText'] === 'string' ? o['srcText'] : '';
     const key = `${src}|${prefix}`;
     const row = out.get(key) ?? { key, n: 0, withNum: 0, sample: '' };
