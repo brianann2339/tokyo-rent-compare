@@ -385,6 +385,7 @@ export default function App() {
   if (f.wards.length > 0) addF('ward', `區域 ${f.wards.length} 個`, { wards: [] });
   if (f.sources.length > 0) addF('src', `來源 ${f.sources.length} 個`, { sources: [] });
   if (f.layouts.length > 0) addF('lay', `房型 ${f.layouts.join('・')}`, { layouts: [] });
+  if (f.buildingTypes.length > 0) addF('bt', `建物種別 ${f.buildingTypes.join('・')}`, { buildingTypes: [] });
   if (f.line !== '') addF('line', `路線 ${f.line}`, { line: '', st: '' });
   if (f.st !== '') addF('st', `車站 ${f.st}`, { st: '' });
   if (f.maxMonthly !== null) addF('mm', `月額 ≤ ${yen(f.maxMonthly)}`, { maxMonthly: null });
@@ -446,6 +447,24 @@ export default function App() {
               <option value="perM2">每㎡單價（比競品）</option>
             </select>
           </label>
+
+          <fieldset>
+            <legend>建物種別（原站標示，可複選）</legend>
+            <div className="layout-chips">
+              {dict.buildingTypes.map((bt) => (
+                <button key={bt} type="button"
+                  className={`lchip ${f.buildingTypes.includes(bt) ? 'on' : ''}`}
+                  onClick={() => set({
+                    buildingTypes: f.buildingTypes.includes(bt)
+                      ? f.buildingTypes.filter((x) => x !== bt)
+                      : [...f.buildingTypes, bt],
+                  })}>{bt}</button>
+              ))}
+            </div>
+            <small className="muted">
+              「その他」多是倉庫或短租設施，不是一般住宅——原站就是這樣標的。
+            </small>
+          </fieldset>
 
           <fieldset>
             <legend>房型（可複選）</legend>
@@ -675,6 +694,11 @@ export default function App() {
 
                   <div className="chips">
                     <Chip tone={kindGroup(wire, b.kind[bi] as number) === 'share' ? 'warn' : 'flat'}>{KIND_ZH[kindName] ?? kindName}</Chip>
+                    {(b.btype[bi] as number) >= 0 && (
+                      <Chip tone={dict.buildingTypes[b.btype[bi] as number] === 'その他' ? 'warn' : 'flat'}>
+                        {dict.buildingTypes[b.btype[bi] as number]}
+                      </Chip>
+                    )}
                     <Chip tone={u.key[i] === 0 ? 'good' : 'flat'}>
                       禮金 {u.key[i] === null ? '未提供' : u.key[i] === 0 ? '零' : yen(u.key[i])}
                     </Chip>

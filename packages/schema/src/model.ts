@@ -85,6 +85,16 @@ export type Building = {
   readonly stations: readonly Station[];
 
   readonly structure: Field<string>;    // 鉄筋コンクリート造 等
+  /**
+   * 原站自己標的建物種別（マンション／アパート／一戸建て／テラス・タウンハウス／その他）。
+   *
+   * 這是日本租屋網的標準篩選器，而且是分辨「這是住宅嗎」的唯一可靠訊號：
+   * 2026-09-06 抽驗抓到 3.57㎡ 的「舟渡トランクルーム」與 2.4㎡ 的「bCASA Yahiro」，
+   * 值我們都抄對了，但它們在原站的種別是「その他」——是儲藏空間不是住宅。
+   * 混在找房的池子裡會污染每㎡單價（2.4㎡ ¥33,000 ＝ ¥13,750/㎡）。
+   * 與 `kind`（共居 vs 一般）是不同維度：kind 講居住形態，這個講建物形式。
+   */
+  readonly buildingType: Field<string>;
   readonly yearBuilt: Field<number>;
   readonly floorsAboveGround: Field<number>;
   readonly totalUnits: Field<number>;
@@ -187,7 +197,7 @@ export const ATTR_FIELD_IDS = [
   'genderRestriction', 'ageLimitRaw', 'petsAllowed',
   'foreignerWelcomed', 'residenceCardRequired', 'japaneseRequired',
   'guarantorCompanyRequired', 'guarantorPersonRequired',
-  'structure', 'yearBuilt', 'floorsAboveGround', 'totalUnits',
+  'structure', 'buildingType', 'yearBuilt', 'floorsAboveGround', 'totalUnits',
   'stations', 'sourceUpdatedAt',
 ] as const;
 

@@ -39,7 +39,8 @@ function listing(p: {
   const building: Building = {
     id: p.id, sourceId: p.src, sourceUrl: `https://${p.src}/${p.id}`, name: p.name, kind: 'apartment',
     ward: p.ward, addressRaw: '', stations: p.stations.map((s) => ({ line: '', station: s, walkMinutes: notListed('') })),
-    structure: notListed(''), yearBuilt: notListed(''), floorsAboveGround: notListed(''), totalUnits: notListed(''),
+    structure: notListed(''),
+    buildingType: notListed(''), yearBuilt: notListed(''), floorsAboveGround: notListed(''), totalUnits: notListed(''),
     fetchedAt: '2026-08-23T00:00:00Z', htmlSha256: '', sourceUpdatedAt: notListed(''),
   } as unknown as Building;
   return { building, units: p.rooms.map(([r, a], k) => unit(p.id, String(k), r, a)) };

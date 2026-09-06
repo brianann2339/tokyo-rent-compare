@@ -23,12 +23,13 @@ function makeWire(): Wire {
       sourceMeta: { s1: { nameZh: '來源一', homepage: '' }, s2: { nameZh: '來源二', homepage: '' } },
       kinds: ['unknown', 'apartment', 'sharehouse', 'social', 'dormitory'],
       layouts: ['1K', '1LDK', '個室'], lines: ['JR山手線', '小田急線'],
+      buildingTypes: ['マンション', 'アパート'],
       pairs: [[0, 0], [0, 1], [0, 2], [1, 0]],
     },
     b: {
       name: ['甲', '乙'], url: ['u0', 'u1'], ward: [0, 1], src: [0, 1],
       stn: [0, 1, 2], stw: [10, 3, 5], stc: [2, 1], total: [null, null], fetchedAt: ['2026-08-22', '2026-08-22'],
-      kind: [1, 0], yearBuilt: [2015, null], also: [0, 0],
+      kind: [1, 0], yearBuilt: [2015, null], also: [0, 0], btype: [0, 1],
     },
     u: {
       bid: [0, 0, 1], room: [null, null, null], layout: [0, 1, 2], area: [20, 40, null], floor: [3, null, null],
@@ -77,9 +78,21 @@ describe('query：種類／房型／樓層／屋齡', () => {
     assert.equal(r.excluded.kindUnknown, 1);
     assert.deepEqual(ids(w, F({ kind: 'share' })), []);
   });
+  test('建物種別複選（原站標的マンション／アパート，與 kind 是不同維度）', () => {
+    const w = makeWire();
+    assert.deepEqual(ids(w, F({ buildingTypes: ['マンション'] })), [0, 1]);
+    assert.deepEqual(ids(w, F({ buildingTypes: ['アパート'] })), [2]);
+    assert.deepEqual(ids(w, F({ buildingTypes: ['マンション', 'アパート'] })), [0, 1, 2]);
+    assert.deepEqual(ids(w, F({ buildingTypes: ['その他'] })), [], '字典裡沒有的值＝空結果，不可當成不篩');
+  });
+
   test('房型複選', () => {
     const w = makeWire();
     assert.deepEqual(ids(w, F({ layouts: ['1K', '個室'] })), [0, 2]);
+    // 選了字典裡沒有的值＝空結果。舊行為是靜默不篩，使用者會看到全部卻以為篩過了
+    assert.deepEqual(ids(w, F({ layouts: ['沒這種房型'] })), []);
+    assert.deepEqual(ids(w, F({ wards: ['沒這個区'] })), []);
+    assert.deepEqual(ids(w, F({ sources: ['沒這個來源'] })), []);
   });
   test('樓層下限：未知者排除並計數', () => {
     const w = makeWire();

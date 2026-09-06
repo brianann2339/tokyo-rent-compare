@@ -129,7 +129,7 @@ export function dictDec(o: DictBlock, n: number): unknown[] {
 }
 
 /** 這些欄位走頻率字典（值域小、重複度高）。 */
-const DICT_B = ['ward', 'src', 'kind', 'also', 'stc', 'total', 'yearBuilt', 'stn', 'stw'] as const;
+const DICT_B = ['ward', 'src', 'kind', 'also', 'stc', 'total', 'yearBuilt', 'stn', 'stw', 'btype'] as const;
 const DICT_U = ['layout', 'floor', 'admin', 'util', 'utilBasis', 'depNR', 'gender', 'foreigner',
   'vacant', 'monthlyTier', 'initCashTier', 'missing', 'flags', 'ads'] as const;
 /** 原樣保留（字串為主，gzip 自己處理得很好）。 */

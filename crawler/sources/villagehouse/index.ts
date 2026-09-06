@@ -257,6 +257,8 @@ export const adapter: SourceAdapter = {
       yearBuilt: yearBuilt === null
         ? notListed(yearRaw)
         : known(yearBuilt, 'measured', `築年月 ${yearRaw}`),
+      // 這個來源不標建物種別；那是 SUUMO 這類入口站才有的欄位
+      buildingType: notOffered<string>(),
       floorsAboveGround: Number.isFinite(floorsN) && floorsN > 0
         ? known(floorsN, 'measured', `構造•階建て ${structRaw}`)
         : notListed(structRaw),

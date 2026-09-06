@@ -26,7 +26,7 @@ export type Wire = {
   dict: {
     wards: string[]; stations: string[]; sources: string[];
     sourceMeta: Record<string, { nameZh: string; homepage: string }>;
-    kinds: string[]; layouts: string[]; lines: string[];
+    kinds: string[]; layouts: string[]; lines: string[]; buildingTypes: string[];
     /** [路線索引, 車站索引]，供「選線 → 列站」與路線篩選 */
     pairs: Array<[number, number]>;
   };
@@ -38,6 +38,8 @@ export type Wire = {
     yearBuilt: (number | null)[];
     /** 位元遮罩：同一間房也刊登在哪些來源（位元＝dict.sources 索引） */
     also: number[];
+    /** 原站標的建物種別索引（-1 = 來源不標或這頁沒寫） */
+    btype: number[];
   };
   u: {
     bid: number[]; room: (string | null)[]; layout: number[];
@@ -209,6 +211,7 @@ export type Filters = {
   /** '' 不限；'apt' 一般賃貸；'share' 共居（sharehouse／social／dormitory） */
   kind: '' | 'apt' | 'share';
   layouts: string[];
+  buildingTypes: string[];
   line: string;
   st: string;
   maxMonthly: number | null;
@@ -230,7 +233,7 @@ export type Filters = {
 };
 
 export const DEFAULT_FILTERS: Filters = {
-  q: '', wards: [], sources: [], kind: '', layouts: [], line: '', st: '',
+  q: '', wards: [], sources: [], kind: '', layouts: [], buildingTypes: [], line: '', st: '',
   maxMonthly: null, maxInitCash: null, minArea: null, maxArea: null, maxWalk: null,
   minFloor: null, maxAge: null,
   noKeyMoney: false, noDeposit: false, utilIncluded: false, foreignerOnly: false,
@@ -246,6 +249,7 @@ export function filtersToQuery(f: Filters): string {
   if (f.sources.length > 0) p.set('src', f.sources.join(','));
   if (f.kind !== '') p.set('kind', f.kind);
   if (f.layouts.length > 0) p.set('layout', f.layouts.join(','));
+  if (f.buildingTypes.length > 0) p.set('btype', f.buildingTypes.join(','));
   if (f.line !== '') p.set('line', f.line);
   if (f.st !== '') p.set('st', f.st);
   if (f.maxMonthly !== null) p.set('maxMonthly', String(f.maxMonthly));
@@ -292,7 +296,8 @@ export function queryToFilters(qs: string): Filters {
     q: p.get('q') ?? '',
     wards: list('ward'), sources: list('src'),
     kind: kindRaw === 'apt' || kindRaw === 'share' ? kindRaw : '',
-    layouts: list('layout'), line: p.get('line') ?? '', st: p.get('st') ?? '',
+    layouts: list('layout'), buildingTypes: list('btype'),
+    line: p.get('line') ?? '', st: p.get('st') ?? '',
     maxMonthly: num('maxMonthly'), maxInitCash: num('maxInit'),
     minArea: num('minArea'), maxArea: num('maxArea'), maxWalk: num('maxWalk'),
     minFloor: num('minFloor'), maxAge: num('maxAge'),
@@ -355,9 +360,16 @@ export function monthlyWithAssumption(w: Wire, i: number, assumeUtil: number | n
 export function query(w: Wire, f: Filters, now: Date = new Date()): QueryResult {
   const { u, b, dict } = w;
   const n = u.bid.length;
-  const wardIdx = new Set(f.wards.map((x) => dict.wards.indexOf(x)).filter((i) => i >= 0));
-  const srcIdx = new Set(f.sources.map((x) => dict.sources.indexOf(x)).filter((i) => i >= 0));
-  const layoutIdx = new Set(f.layouts.map((x) => dict.layouts.indexOf(x)).filter((i) => i >= 0));
+  // 「有沒有選」與「選到的值在不在字典裡」是兩件事。
+  // 舊寫法把不存在的值過濾掉後 set 變空，於是條件被當成「沒選」——篩選器靜默失效，
+  // 使用者會看到全部結果卻以為篩過了。書籤存了舊 URL、資料更新後那個值消失就會踩到。
+  // 車站篩選器本來就是嚴格的（選了不存在的站回空結果），這裡統一其餘四個。
+  const toIdxSet = (vals: readonly string[], d: readonly string[]): Set<number> | null =>
+    (vals.length === 0 ? null : new Set(vals.map((x) => d.indexOf(x))));
+  const wardIdx = toIdxSet(f.wards, dict.wards);
+  const srcIdx = toIdxSet(f.sources, dict.sources);
+  const layoutIdx = toIdxSet(f.layouts, dict.layouts);
+  const btypeIdx = toIdxSet(f.buildingTypes, dict.buildingTypes);
   const lineIdx = f.line === '' ? -1 : dict.lines.indexOf(f.line);
   const lineStations = new Set<number>();
   if (lineIdx >= 0) for (const [li, si] of dict.pairs) if (li === lineIdx) lineStations.add(si);
@@ -375,13 +387,14 @@ export function query(w: Wire, f: Filters, now: Date = new Date()): QueryResult 
     const cached = bPass.get(bi);
     if (cached !== undefined) return cached;
     let ok = true;
-    if (wardIdx.size > 0 && !wardIdx.has(b.ward[bi] as number)) ok = false;
-    if (ok && srcIdx.size > 0 && !srcIdx.has(b.src[bi] as number)) ok = false;
+    if (wardIdx !== null && !wardIdx.has(b.ward[bi] as number)) ok = false;
+    if (ok && srcIdx !== null && !srcIdx.has(b.src[bi] as number)) ok = false;
     if (ok && f.kind !== '') {
       const kg = kindGroup(w, b.kind[bi] as number);
       if (kg === 'unknown') { ok = false; bPass.set(bi, false); excluded.kindUnknown += -1; /* 以房間數計，下面補 */ return false; }
       if (kg !== f.kind) ok = false;
     }
+    if (ok && btypeIdx !== null && !btypeIdx.has(b.btype[bi] as number)) ok = false;
     if (ok && f.maxAge !== null) {
       const y = b.yearBuilt[bi];
       if (y === null || y === undefined) { bPass.set(bi, false); excluded.ageUnknown += -1; return false; }
@@ -439,7 +452,7 @@ export function query(w: Wire, f: Filters, now: Date = new Date()): QueryResult 
     if (f.noKeyMoney && u.key[i] !== 0) continue;
     if (f.noDeposit && u.dep[i] !== 0) continue;
     if (f.utilIncluded && u.utilBasis[i] !== 1) continue;
-    if (layoutIdx.size > 0 && !layoutIdx.has(u.layout[i] as number)) continue;
+    if (layoutIdx !== null && !layoutIdx.has(u.layout[i] as number)) continue;
 
     const area = u.area[i];
     if (f.minArea !== null && (area === null || area === undefined || area < f.minArea)) continue;

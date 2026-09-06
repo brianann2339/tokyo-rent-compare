@@ -597,6 +597,8 @@ export function buildListing(hint: SakuraHint, url: string, fetchedAt: string): 
     stations: parseSakuraStations(b.stations, b.access ?? ''),
     structure: notOffered<string>(),
     yearBuilt: notOffered<number>(),
+    // 這個來源不標建物種別；那是 SUUMO 這類入口站才有的欄位
+    buildingType: notOffered<string>(),
     floorsAboveGround: notOffered<number>(),
     totalUnits: known(roomCount, 'measured', `payload 房間數 ${roomCount}`),
     imageUrls: (b.images ?? [])

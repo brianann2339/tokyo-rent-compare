@@ -280,6 +280,8 @@ export const adapter: SourceAdapter = {
       ward: addr.ward,
       stations: parseCvStations(t),
       structure: notOffered<string>(),
+      // 這個來源不標建物種別（マンション／アパート…）；那是 SUUMO 這類入口站才有的欄位
+      buildingType: notOffered<string>(),
       yearBuilt: notOffered<number>(),
       floorsAboveGround: notListed(''),
       totalUnits: roomsCountM?.[1] !== undefined

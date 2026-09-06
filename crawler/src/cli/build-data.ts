@@ -353,6 +353,7 @@ async function main(): Promise<void> {
   const stations = dict();
   const lines = dict();
   const layouts = dict();
+  const btypes = dict();
   const pairSet = new Set<string>();
 
   // 索引只放「搜尋當下就要用」的欄位。id／availFrom／img 都搬去 prov 桶：
@@ -364,6 +365,8 @@ async function main(): Promise<void> {
     stn: [] as number[], stw: [] as (number | null)[], stc: [] as number[],
     total: [] as (number | null)[], fetchedAt: [] as string[], kind: [] as number[],
     yearBuilt: [] as (number | null)[], also: [] as number[],
+    /** 原站標的建物種別（マンション／アパート／一戸建て…）。-1 = 該來源不標或這頁沒寫。 */
+    btype: [] as number[],
   };
   const U = {
     bid: [] as number[], room: [] as (string | null)[], layout: [] as number[],
@@ -426,6 +429,7 @@ async function main(): Promise<void> {
     B.kind.push(Math.max(0, KINDS.indexOf(b.kind)));
     B.yearBuilt.push(numOrNull(b.yearBuilt));
     B.also.push(alsoMask.get(b.id) ?? 0);
+    B.btype.push(b.buildingType.known ? btypes.idx(b.buildingType.v) : -1);
 
     for (const u of units) {
       const violations = checkUnit(b, u, provided, g);
@@ -522,6 +526,7 @@ async function main(): Promise<void> {
     dict: {
       wards: wards.list, stations: stations.list, sources: sources.list, sourceMeta,
       kinds: KINDS, layouts: layouts.list, lines: lines.list, pairs,
+      buildingTypes: btypes.list,
     },
     b: B, u: U,
   };
@@ -549,7 +554,7 @@ async function main(): Promise<void> {
   console.log(`  建物 ${meta.buildings} 棟 / 房間 ${meta.units} 間（空棟略過 ${emptyBuildings}）`);
   console.log(`  SUUMO 去重：${suumoBefore.length} → ${suumoAfter.length}（${suumoGroups} 組、移除 ${suumoRemoved}、疑似不併 ${suumoSuspect}）；A 區賃料中位數 ${medBefore} → ${medAfter}`);
   console.log(`  跨來源：${crossGroups} 組已審核合併、移除 ${crossRemoved} 間；僅棟層命中 ${crossBuildingOnly} 組（不併）`);
-  console.log(`  字典：站 ${stations.list.length}、線 ${lines.list.length}、線站對 ${pairs.length}、間取 ${layouts.list.length}`);
+  console.log(`  字典：站 ${stations.list.length}、線 ${lines.list.length}、線站對 ${pairs.length}、間取 ${layouts.list.length}、建物種別 ${btypes.list.length}`);
   console.log(`  index.json ${(encodedJson.length / 1024).toFixed(0)} KB raw → ${(gz / 1024).toFixed(0)} KB gzip`);
   console.log(`    （未編碼會是 ${(gzPlain / 1024).toFixed(0)} KB gzip，壓縮省下 ${(100 * (gzPlain - gz) / gzPlain).toFixed(1)}%；`
     + `無損閘門逐格比對 ${cells.toLocaleString()} 格通過）`);

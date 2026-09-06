@@ -220,6 +220,8 @@ function buildBuilding(b: UrBuilding, raw: RawDoc): Building {
     stations: stationsOf(b.access),
     structure: notOffered<string>(),
     yearBuilt: notOffered<number>(),
+    // 這個來源不標建物種別；那是 SUUMO 這類入口站才有的欄位
+    buildingType: notOffered<string>(),
     floorsAboveGround: notListed(''),
     totalUnits: notListed(''),
     imageUrls: b.image === '' ? [] : [b.image],

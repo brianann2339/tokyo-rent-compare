@@ -401,6 +401,8 @@ export const adapter: SourceAdapter = {
       ward: '',
       stations: parseBhStations(html),
       structure: notOffered<string>(),
+      // 這個來源不標建物種別（マンション／アパート…）；那是 SUUMO 這類入口站才有的欄位
+      buildingType: notOffered<string>(),
       yearBuilt: notOffered<number>(),
       floorsAboveGround: notOffered<number>(),
       // 站方的房間表逐床列出，列數就是床位數；這是數表格列不是估算

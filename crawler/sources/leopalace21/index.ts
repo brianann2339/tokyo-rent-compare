@@ -510,6 +510,8 @@ export const adapter: SourceAdapter = {
       stations,
       // 建物構造（木造／鉄骨造…）只在房間詳情頁，建物頁沒有
       structure: notOffered<string>(),
+      // 這個來源不標建物種別（マンション／アパート…）；那是 SUUMO 這類入口站才有的欄位
+      buildingType: notOffered<string>(),
       yearBuilt: agree(
         asNumber(apartment['yearBuilt']),
         asNumber(complexProps.get('築年')) ?? summary.yearBuilt,

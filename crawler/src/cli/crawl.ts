@@ -13,12 +13,13 @@
  */
 
 import { mkdir, writeFile, readdir, readFile, rename, rm } from 'node:fs/promises';
-import { createWriteStream } from 'node:fs';
+import { createWriteStream, existsSync } from 'node:fs';
 import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 
 import { HttpFetcher, DATA_ROOT } from '../http.ts';
+import { readNdjsonGz } from '../ndjson.ts';
 import { healthCollector, compareToBaseline, medianBaseline, type SourceHealth } from '../health.ts';
 import { writeLatestReport } from './health-report.ts';
 import type { Listing } from '../../../packages/schema/src/model.ts';
@@ -131,6 +132,23 @@ async function crawlSource(adapter: SourceAdapter, args: Args): Promise<SourceHe
     throw e;
   }
   process.stdout.write(`\r  處理 ${done} 筆  收錄 ${kept}  跳過 ${skipped}  錯誤 ${failures.length}   \n`);
+
+  // 離線重解析不該讓資料變少。
+  // 2026-09-06 的教訓：ur 與 sakurahouse 走 API／真實瀏覽器，沒有 data/raw/ 目錄，
+  // `--offline` 於是從不完整的 cache 讀，靜默把 150→126 間、666→627 間。
+  // 那不是「解析改變」而是「原始檔根本不全」，寫出去就是無聲的資料損失。
+  if (args.offline && existsSync(outPath)) {
+    let before = 0;
+    for await (const _ of readNdjsonGz<unknown>(outPath)) before += 1;
+    if (before > 0 && kept < before * 0.95) {
+      await rm(tmpPath, { force: true });
+      throw new Error(
+        `[offline] 重解析後從 ${before} 棟掉到 ${kept} 棟（少於 95%）——`
+        + `多半是本機原始檔不全（這個來源有 data/raw/${m.id}/ 嗎？），不是解析改變。`
+        + '既有真相層原封不動，未覆寫。要強制覆寫請先正常抓一次。',
+      );
+    }
+  }
   await rename(tmpPath, outPath);
 
   const runAt = new Date().toISOString();

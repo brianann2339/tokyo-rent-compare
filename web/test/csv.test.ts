@@ -30,12 +30,12 @@ function makeWire(over: Partial<Wire['u']> = {}, name = '測試ハウス'): Wire
       wards: ['新宿区'], stations: ['新宿', '代々木'], sources: ['testsrc'],
       sourceMeta: { testsrc: { nameZh: '測試來源', homepage: 'https://example.test' } },
       kinds: ['unknown', 'apartment', 'sharehouse', 'social', 'dormitory'],
-      layouts: ['1K'], lines: ['JR山手線'], pairs: [[0, 0], [0, 1]],
+      layouts: ['1K'], lines: ['JR山手線'], buildingTypes: ['マンション'], pairs: [[0, 0], [0, 1]],
     },
     b: {
       name: [name], url: ['https://example.test/1'], ward: [0], src: [0],
       stn: [0, 1], stw: [5, null], stc: [2], total: [1], fetchedAt: ['2026-08-22'], kind: [1],
-      yearBuilt: [2010], also: [0],
+      yearBuilt: [2010], also: [0], btype: [0],
     },
     u,
   };

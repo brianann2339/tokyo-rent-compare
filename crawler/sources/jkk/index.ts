@@ -761,6 +761,8 @@ export const adapter: SourceAdapter = {
       ward: addr.ward,
       stations: head.stations,
       structure: notOffered<string>(),
+      // 這個來源不標建物種別（マンション／アパート…）；那是 SUUMO 這類入口站才有的欄位
+      buildingType: notOffered<string>(),
       yearBuilt: builtYear === null
         ? notListed(head.builtRaw)
         : known(builtYear, 'measured', `竣工年月日 ${head.builtRaw}`),

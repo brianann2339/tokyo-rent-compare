@@ -34,7 +34,7 @@ function makeIndex(over: Partial<Record<string, unknown[]>> = {}): ColumnIndex {
     b: {
       name: ['テスト荘'], url: ['https://example.test/1'], ward: [0], src: [0],
       stn: [0, 1], stw: [5, null], stc: [2], total: [10], fetchedAt: ['2026-09-06'],
-      kind: [1], yearBuilt: [2015], also: [0],
+      kind: [1], yearBuilt: [2015], also: [0], btype: [0],
     },
     u,
   };
@@ -94,6 +94,7 @@ describe('無損往返', () => {
     idx.b['stn'] = [0, 1]; idx.b['stw'] = [5, 5]; idx.b['stc'] = [1, 1];
     idx.b['total'] = [1, 1]; idx.b['fetchedAt'] = ['2026-09-06', '2026-09-06'];
     idx.b['kind'] = [1, 1]; idx.b['yearBuilt'] = [2015, 2016]; idx.b['also'] = [0, 0];
+    idx.b['btype'] = [0, 0];
     const back = roundTrip(idx);
     assertLossless(idx, back);
     assert.deepEqual(back.u['bid'], [1, 0]);

@@ -428,6 +428,8 @@ function buildBuilding(s: HitujiSummary, raw: RawDoc, ctx: ExtractContext, d: Hi
     ward: d.townName ?? keys.ward,
     stations: stationsOf(s, d),
     structure: notOffered<string>(),
+    // 這個來源不標建物種別（マンション／アパート…）；那是 SUUMO 這類入口站才有的欄位
+    buildingType: notOffered<string>(),
     // 站上有「建物の建築年」這個欄位（payload 的 constructionYear，實測 767/1,244 頁有值），
     // 2026-09-06 之前這裡硬寫 notOffered＝「來源根本沒有這個欄位」，那是錯的 why：
     // health 的填充率與 unparsed 告警都不會對 not_offered 出聲，缺口永遠不會浮出來。

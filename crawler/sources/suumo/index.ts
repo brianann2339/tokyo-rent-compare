@@ -638,6 +638,16 @@ export const adapter: SourceAdapter = {
       // 「建物種別: マンション」是種別不是構造（RC造等），SUUMO 賃貸不刊構造
       structure: notListed(h.kindLabel),
       yearBuilt: parseSuumoYearBuilt(h.ageText, ageBaseAt),
+      // 建物種別（賃貸マンション／アパート／一戸建て／テラス・タウンハウス／その他）。
+      // 這個欄位其實一直被解析著（`h.kindLabel`），只是以前只拿來推 `kind`（全部映到 apartment）
+      // 就丟掉了。2026-09-06 全量統計 87,318 個標記：マンション 69.2%、アパート 26.9%、
+      // 一戸建て 3.1%、テラス・タウンハウス 0.7%、**その他 53 棟**。
+      // 最後那個很小但很重要——抽驗抓到 3.57㎡「舟渡トランクルーム」與 2.4㎡「bCASA Yahiro」
+      // 都是「その他」：值抄對了，但它們是儲藏空間不是住宅，混進找房的池子會污染每㎡單價。
+      // 開頭的「賃貸」是全站共通贅字，去掉只留種別本身。
+      buildingType: h.kindLabel === ''
+        ? notListed<string>('')
+        : known(h.kindLabel.replace(/^賃貸/, ''), 'measured', `建物種別 ${h.kindLabel}`),
       floorsAboveGround: parseFloorsAboveGround(h.floorsText),
       totalUnits: notListed('詳情頁有「総戸数」欄，首版只讀一覧頁'),
       imageUrls: h.imageUrl === '' ? [] : [h.imageUrl],

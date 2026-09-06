@@ -440,6 +440,8 @@ export const adapter: SourceAdapter = {
         ? known(structM[1].trim(), 'measured', `建物概要 ${structM[1].trim()}`)
         : notListed(''),
       yearBuilt: notListed(''),
+      // 這個來源不標建物種別；那是 SUUMO 這類入口站才有的欄位
+      buildingType: notOffered<string>(),
       floorsAboveGround: notListed(''),
       // 0 筆不是量測值——解析失敗與「頁面真的沒列房」長得一樣，
       // 把它記成 known(0,'measured') 等於宣稱「量到 0 間」，會把故障蓋掉。
