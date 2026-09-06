@@ -12,12 +12,14 @@
  *   data/health/runs/{ts}-{source}.json
  */
 
-import { mkdir, writeFile, readdir, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, readdir, readFile, rename, rm } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { createGzip } from 'node:zlib';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
-import { gzipSync } from 'node:zlib';
 
 import { HttpFetcher, DATA_ROOT } from '../http.ts';
-import { collectHealth, compareToBaseline, medianBaseline, type SourceHealth } from '../health.ts';
+import { healthCollector, compareToBaseline, medianBaseline, type SourceHealth } from '../health.ts';
 import { writeLatestReport } from './health-report.ts';
 import type { Listing } from '../../../packages/schema/src/model.ts';
 import type { SourceAdapter } from '../types.ts';
@@ -72,50 +74,67 @@ async function crawlSource(adapter: SourceAdapter, args: Args): Promise<SourceHe
   }
 
   const ctx = { manifest: m, now: new Date() };
-  const refs: Array<{ url: string; hint?: Record<string, unknown> }> = [];
-  for await (const ref of adapter.discover(ctx, fetcher)) refs.push(ref);
-  const targets = args.limit === null ? refs : refs.slice(0, args.limit);
-  console.log(`  列舉到 ${refs.length} 筆${args.limit === null ? '' : `，本次只抓前 ${targets.length} 筆（試點）`}`);
-
-  const listings: Listing[] = [];
   const buildIds = new Set<string>();
   const failures: Array<{ url: string; error: string }> = [];
   // extract 回 null 與「丟出例外」是兩件事：前者多半是「不在收錄範圍」
   // （例：Oak House 的 sitemap 是全國的，非東京物件會回 null），
   // 後者才是真的壞掉。混在一起會讓真正的解析錯誤被幾百筆正常跳過淹沒。
   let skipped = 0;
-
+  let kept = 0;
   let done = 0;
-  for (const ref of targets) {
-    try {
-      const raw = m.fetchMode === 'none'
-        ? { url: ref.url, body: '', fetchedAt: new Date().toISOString(), sha256: '', status: 200, notModified: false }
-        : await fetcher.get(ref.url);
-      if (raw.buildId !== undefined) buildIds.add(raw.buildId);
-      const listing = adapter.extract(raw, ref, ctx);
-      if (listing !== null) listings.push(listing);
-      else skipped += 1;
-    } catch (e) {
-      failures.push({ url: ref.url, error: e instanceof Error ? e.message : String(e) });
+
+  // 一邊 discover 一邊解析一邊寫檔，**任何一份完整資料都不留在記憶體**。
+  // 2026-09-06 的教訓：SUUMO 23 区列舉出 87,113 筆，舊寫法先把 refs（hint 裡是整棟資料）
+  // 與 listings 兩份都堆起來、最後再 `listings.map(JSON.stringify).join('\n')` 產生一個
+  // 400 MB 的巨串餵給 gzipSync——1,753 頁全部抓完（0 錯誤）之後才在寫檔那一行 OOM，
+  // 兩個半小時的網路請求全部白費。
+  const collector = healthCollector(m);
+  const outPath = path.join(DATA_ROOT, 'normalized', `${m.id}.ndjson.gz`);
+  const tmpPath = `${outPath}.tmp`;
+  await mkdir(path.join(DATA_ROOT, 'normalized'), { recursive: true });
+
+  // 真相層以 gzip 存放：SUUMO 一家未壓縮就 300 MB，超過 GitHub 建議的單檔上限。
+  // 代價是 git diff 不再直接可讀，改用 `npm run diff:data` 之類的方式看（尚未做）。
+  const gz = createGzip();
+  const writing = pipeline(gz, createWriteStream(tmpPath));
+  const writeLine = async (line: string): Promise<void> => {
+    if (!gz.write(line)) await new Promise<void>((r) => gz.once('drain', () => r()));
+  };
+
+  try {
+    for await (const ref of adapter.discover(ctx, fetcher)) {
+      if (args.limit !== null && done >= args.limit) break;
+      try {
+        const raw = m.fetchMode === 'none'
+          ? { url: ref.url, body: '', fetchedAt: new Date().toISOString(), sha256: '', status: 200, notModified: false }
+          : await fetcher.get(ref.url);
+        if (raw.buildId !== undefined) buildIds.add(raw.buildId);
+        const listing = adapter.extract(raw, ref, ctx);
+        if (listing !== null) {
+          await writeLine(`${JSON.stringify(listing)}\n`);
+          collector.add(listing);
+          kept += 1;
+        } else skipped += 1;
+      } catch (e) {
+        failures.push({ url: ref.url, error: e instanceof Error ? e.message : String(e) });
+      }
+      done += 1;
+      if (done % 25 === 0) {
+        process.stdout.write(`\r  處理 ${done} 筆${args.limit === null ? '' : ` / 上限 ${args.limit}`}  收錄 ${kept}  跳過 ${skipped}  錯誤 ${failures.length}   `);
+      }
     }
-    done += 1;
-    if (done % 25 === 0 || done === targets.length) {
-      const pct = ((done / targets.length) * 100).toFixed(0);
-      process.stdout.write(`\r  抓取進度 ${done}/${targets.length} (${pct}%)  收錄 ${listings.length}  跳過 ${skipped}  錯誤 ${failures.length}   `);
-    }
+    gz.end();
+    await writing;
+  } catch (e) {
+    gz.destroy();
+    await rm(tmpPath, { force: true }); // 中途失敗不留半份真相層，舊檔原封不動
+    throw e;
   }
-  process.stdout.write('\n');
+  process.stdout.write(`\r  處理 ${done} 筆  收錄 ${kept}  跳過 ${skipped}  錯誤 ${failures.length}   \n`);
+  await rename(tmpPath, outPath);
 
   const runAt = new Date().toISOString();
-  await mkdir(path.join(DATA_ROOT, 'normalized'), { recursive: true });
-  // 真相層以 gzip 存放：SUUMO 一家未壓縮就 88 MB，超過 GitHub 建議的單檔上限。
-  // 代價是 git diff 不再直接可讀，改用 `npm run diff:data` 之類的方式看（尚未做）。
-  await writeFile(
-    path.join(DATA_ROOT, 'normalized', `${m.id}.ndjson.gz`),
-    gzipSync(Buffer.from(listings.map((l) => JSON.stringify(l)).join('\n') + '\n', 'utf8')),
-  );
-
-  const health = collectHealth(m, listings, {
+  const health = collector.finish({
     robotsSha256: fetcher.robots.sha256,
     robotsChanged: fetcher.robotsChanged(),
     buildIds: [...buildIds],
@@ -128,10 +147,9 @@ async function crawlSource(adapter: SourceAdapter, args: Args): Promise<SourceHe
     JSON.stringify(health, null, 1), 'utf8',
   );
 
-  const units = listings.reduce((n, l) => n + l.units.length, 0);
   console.log(args.offline
-    ? `  ✔ ${listings.length} 棟 / ${units} 間房（全部來自本機原始檔，0 次網路請求）`
-    : `  ✔ ${listings.length} 棟 / ${units} 間房；HTTP ${fetcher.stats.requests} 次（304 快取命中 ${fetcher.stats.notModified}）`);
+    ? `  ✔ ${health.buildings} 棟 / ${health.units} 間房（全部來自本機原始檔，0 次網路請求）`
+    : `  ✔ ${health.buildings} 棟 / ${health.units} 間房；HTTP ${fetcher.stats.requests} 次（304 快取命中 ${fetcher.stats.notModified}）`);
   if (skipped > 0) console.log(`  · ${skipped} 筆不在收錄範圍（非東京或非房源頁），已跳過`);
   if (failures.length > 0) {
     console.log(`  ⚠️ ${failures.length} 筆真的出錯，前 3 筆：`);

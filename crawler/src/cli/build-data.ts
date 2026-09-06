@@ -301,7 +301,8 @@ async function main(): Promise<void> {
       g.errors.push(`[閘門4] 跨來源同房未審核：${key}（房間層命中 ${hits}；來源 ${ls.map((l) => l.building.sourceId).join('+')}）→ npm run alias:candidates 後人審加入 data/aliases/buildings.json`);
       continue;
     }
-    const reviewed = new Set([alias.primary, ...alias.members]);
+    // excluded 也算「已審核」——審核員看過並判定它不是同一棟，所以放行但不合併
+    const reviewed = new Set([alias.primary, ...alias.members, ...(alias.excluded ?? [])]);
     const unknownIds = ls.map((l) => l.building.id).filter((id) => !reviewed.has(id));
     if (unknownIds.length > 0) {
       g.errors.push(`[閘門4] alias 組 ${key} 出現未審核的新成員：${unknownIds.join(', ')}`);
@@ -314,7 +315,9 @@ async function main(): Promise<void> {
       if (u.monthly.rent.known && u.areaM2.known) primarySig.set(`${u.monthly.rent.v.jpy}|${u.areaM2.v}`, u);
     }
     crossGroups += 1;
+    const excluded = new Set(alias.excluded ?? []);
     for (const memberId of alias.members) {
+      if (excluded.has(memberId)) continue; // 保險：同時列在兩邊時以「不合併」為準
       const member = byId.get(memberId);
       if (member === undefined) continue; // 這次抓取沒有它，沒東西可併
       member.units = member.units.filter((u) => {
@@ -371,9 +374,13 @@ async function main(): Promise<void> {
   let provBucketNo = -1;
   let provBucket: Record<string, unknown> = {};
   let provBucketCount = 0;
+  // 桶預先 gzip 存放：未壓縮 439 桶是 507 MB，gzip 後 12 MB（42 倍）。
+  // GitHub Pages 發布站台上限 1 GB，而且 artifact 越大部署越久（10 分鐘逾時）。
+  // 2026-09-06 實測 Pages 對 .json.gz 送 `content-type: application/gzip` 且**不**加
+  // content-encoding，所以瀏覽器不會自動解——前端用 DecompressionStream('gzip') 解（見 web/src/data.ts）。
   const flushProv = async (): Promise<void> => {
     if (provBucketNo < 0) return;
-    await writeFile(path.join(PROV_TMP, `p${provBucketNo}.json`), JSON.stringify(provBucket), 'utf8');
+    await writeFile(path.join(PROV_TMP, `p${provBucketNo}.json.gz`), gzipSync(Buffer.from(JSON.stringify(provBucket), 'utf8'), { level: 9 }));
     provBucket = {};
     provBucketCount += 1;
   };

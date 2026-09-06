@@ -27,8 +27,17 @@ export const SOURCE_PRIORITY = [
 
 export type AliasGroup = {
   readonly key: string;
-  readonly primary: string;           // buildingId
-  readonly members: readonly string[]; // 其餘 buildingId
+  readonly primary: string;            // buildingId
+  readonly members: readonly string[];  // 判定為同一棟、要併進 primary 的
+  /**
+   * 判定為**不同棟**的 buildingId。
+   *
+   * 同名不代表同棟：2026-09-06 實測到「LOVIE麻布十番」在 SUUMO 有兩筆，一筆住所是南麻布１
+   * （與 Leopalace 的南麻布１−２７−１４ 對得上）、另一筆是西麻布１（對不上）。
+   * 沒有這個欄位的話，審核員只有「全部合併」或「整組不審」兩種選擇，
+   * 而後者會讓閘門 4 永遠擋著建置——等於逼人把不同棟的東西併在一起。
+   */
+  readonly excluded?: readonly string[];
   readonly reviewedAt: string;
   readonly note: string;
 };

@@ -46,16 +46,27 @@ function tally(stat: FieldStat, f: Field<unknown>): void {
   }
 }
 
-export function collectHealth(
-  manifest: SourceManifest,
-  listings: readonly Listing[],
-  meta: { robotsSha256: string; robotsChanged: boolean; buildIds: readonly string[]; runAt: string },
-): SourceHealth {
+export type HealthMeta = { robotsSha256: string; robotsChanged: boolean; buildIds: readonly string[]; runAt: string };
+
+/**
+ * 增量累計器。
+ *
+ * 為什麼不是「傳一個 listings 陣列進來」：SUUMO 23 区是 87,113 筆刊登，
+ * 把它們全部留在記憶體等統計，是 crawl 撞破 Node 4 GB heap 的原因之一。
+ * 改成一筆算完就丟，crawl 才能邊解析邊寫檔。
+ * `collectHealth` 仍保留原簽名（既有測試與呼叫端不動），內部走同一套累計邏輯。
+ */
+export function healthCollector(manifest: SourceManifest): {
+  add: (listing: Listing) => void;
+  finish: (meta: HealthMeta) => SourceHealth;
+} {
   const fields: Record<string, FieldStat> = {};
   const get = (k: string): FieldStat => (fields[k] ??= blank());
-
   let units = 0;
-  for (const { building, units: us } of listings) {
+  let buildings = 0;
+
+  const add = ({ building, units: us }: Listing): void => {
+    buildings += 1;
     tally(get('yearBuilt'), building.yearBuilt);
     tally(get('structure'), building.structure);
     tally(get('totalUnits'), building.totalUnits);
@@ -113,18 +124,30 @@ export function collectHealth(
       ub.applicable += 1;
       if (u.utilitiesBasis === 'unknown') ub.notListed += 1; else ub.measured += 1;
     }
-  }
+  };
 
-  return {
+  const finish = (meta: HealthMeta): SourceHealth => ({
     sourceId: manifest.id,
     runAt: meta.runAt,
-    buildings: listings.length,
+    buildings,
     units,
     robotsSha256: meta.robotsSha256,
     robotsChanged: meta.robotsChanged,
     buildIds: meta.buildIds,
     fields,
-  };
+  });
+
+  return { add, finish };
+}
+
+export function collectHealth(
+  manifest: SourceManifest,
+  listings: readonly Listing[],
+  meta: HealthMeta,
+): SourceHealth {
+  const c = healthCollector(manifest);
+  for (const l of listings) c.add(l);
+  return c.finish(meta);
 }
 
 /** 有效填充率：分母排除「來源根本不提供」的部分，否則會產生永遠 0% 的假警報。 */

@@ -112,17 +112,37 @@ export async function loadWire(onProgress?: (p: LoadProgress) => void): Promise<
 
 const provCache = new Map<string, Record<string, Prov>>();
 
-/** 桶位由 unit 序號直算——不需要下載一個數萬鍵的對照表。 */
+/**
+ * 桶位由 unit 序號直算——不需要下載一個數萬鍵的對照表。
+ *
+ * 桶檔是**預先 gzip** 的（未壓縮 507 MB vs 壓縮後 12 MB，部署 artifact 差 42 倍）。
+ * GitHub Pages 對 `.json.gz` 送 `content-type: application/gzip` 而**不**加 content-encoding
+ * （2026-09-06 實測），所以要自己解。若哪天伺服器改成自動解（帶 content-encoding），
+ * 這裡的 header 判斷會走 res.json() 那條，不會雙重解壓炸掉。
+ */
 export async function loadProv(w: Wire, unitIdx: number): Promise<Prov | null> {
   const bucket = `p${Math.floor(unitIdx / w.meta.provBucket)}`;
   let obj = provCache.get(bucket);
   if (obj === undefined) {
-    const res = await fetch(`${base()}data/prov/${bucket}.json`);
+    const res = await fetch(`${base()}data/prov/${bucket}.json.gz`);
     if (!res.ok) return null;
-    obj = (await res.json()) as Record<string, Prov>;
+    obj = await readMaybeGzipped<Record<string, Prov>>(res);
     provCache.set(bucket, obj);
   }
   return obj[String(unitIdx)] ?? null;
+}
+
+/** 伺服器已經解過（有 content-encoding）就直接讀；否則自己用 DecompressionStream 解。 */
+async function readMaybeGzipped<T>(res: Response): Promise<T> {
+  const alreadyDecoded = res.headers.get('content-encoding') !== null;
+  if (alreadyDecoded || res.body === null || typeof DecompressionStream === 'undefined') {
+    if (!alreadyDecoded && typeof DecompressionStream === 'undefined') {
+      throw new Error('這個瀏覽器不支援 DecompressionStream，無法讀取費用明細（需要 Chrome 80+／Safari 16.4+／Firefox 113+）');
+    }
+    return (await res.json()) as T;
+  }
+  const text = await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).text();
+  return JSON.parse(text) as T;
 }
 
 // ── 車站扁平陣列的存取 ──────────────────────────────────────────
