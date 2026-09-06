@@ -509,3 +509,12 @@ export function query(w: Wire, f: Filters, now: Date = new Date()): QueryResult 
 /** 顯示金額。undefined 與 null 都代表「未提供」——刻意不提供預設值參數。 */
 export const yen = (n: number | null | undefined): string =>
   n === null || n === undefined ? '—' : `¥${n.toLocaleString('ja-JP')}`;
+
+/**
+ * 樓層顯示。地下樓層在索引裡是負數（B1階 = −1，見 suumo/index.ts 的 parseFloorLabel
+ * 與 sakurahouse 的 parseFloor），直接印會變成「-1F」——日本沒有這種寫法，
+ * 使用者看到會以為資料壞了。
+ */
+export function floorLabel(floor: number): string {
+  return floor < 0 ? `B${-floor}F` : `${floor}F`;
+}

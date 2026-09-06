@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import type { Wire } from '../src/data.ts';
 import { rowsToCsv, csvFileName } from '../src/csv.ts';
+import { floorLabel } from '../src/data.ts';
 
 /** 最小 Wire：一棟一間。預設這一間賃料未知（rent=null），其餘可用 over 覆蓋。 */
 function makeWire(over: Partial<Wire['u']> = {}, name = '測試ハウス'): Wire {
@@ -184,5 +185,17 @@ describe('csvFileName', () => {
   });
   test('不給日期時用今天', () => {
     assert.match(csvFileName(42), /^tokyo-rent-\d{8}-42\.csv$/);
+  });
+});
+
+describe('樓層顯示', () => {
+  test('地上照印，地下還原成 BNF', () => {
+    assert.equal(floorLabel(1), '1F');
+    assert.equal(floorLabel(14), '14F');
+    assert.equal(floorLabel(-1), 'B1F');
+    assert.equal(floorLabel(-2), 'B2F');
+  });
+  test('0 不會變成 B0F', () => {
+    assert.equal(floorLabel(0), '0F');
   });
 });

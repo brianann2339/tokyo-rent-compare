@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  loadWire, loadProv, query, queryToFilters, filtersToQuery, yen,
+  loadWire, loadProv, query, queryToFilters, filtersToQuery, yen, floorLabel,
   type LoadProgress,
   buildingStations, lineBuildingCounts, kindGroup, monthlyWithAssumption, perM2Comparable,
   GENDER, type Wire, type Filters, type Prov, type MyProperty,
@@ -48,14 +48,6 @@ const TIER_LABEL: Record<Filters['sort'], [string, string, string]> = {
   initSunk: ['初期費用完整', '初期費用僅有下限', '初期費用資料不足'],
   perM2: ['可算每㎡單價', '單價僅有下限', '算不出單價'],
 };
-
-/**
- * 樓層顯示。地下樓層在索引裡是負數（B1階 = −1，見 suumo/index.ts 的 parseFloorLabel），
- * 直接印會變成「-1F」——日本沒有這種寫法，讀起來像壞掉的資料。
- */
-function floorLabel(floor: number): string {
-  return floor < 0 ? `B${-floor}F` : `${floor}F`;
-}
 
 function srcName(dict: Wire['dict'], srcIdx: number): string {
   const id = dict.sources[srcIdx] ?? '';
