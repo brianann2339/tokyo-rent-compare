@@ -5,6 +5,8 @@
  * 所以不需要任何搜尋索引函式庫——引入一個依賴去換一個已經是 0.15 ms 的東西不划算。
  */
 
+import { decodeIndex, type EncodedIndex, type ColumnIndex } from '../../packages/wire-codec/src/index.ts';
+
 export const UTIL_BASIS = ['unknown', 'included', 'excluded'] as const;
 export const GENDER = ['unknown', 'mixed', 'female_only', 'male_only'] as const;
 export const TIER = ['A', 'B', 'C'] as const;
@@ -91,7 +93,7 @@ export async function loadWire(onProgress?: (p: LoadProgress) => void): Promise<
   const total = encoded === null && lenHeader !== null && Number.isFinite(Number(lenHeader))
     ? Number(lenHeader) : null;
 
-  if (res.body === null || onProgress === undefined) return (await res.json()) as Wire;
+  if (res.body === null || onProgress === undefined) return hydrate(await res.json());
 
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -107,7 +109,17 @@ export async function loadWire(onProgress?: (p: LoadProgress) => void): Promise<
   const buf = new Uint8Array(loaded);
   let at = 0;
   for (const c of chunks) { buf.set(c, at); at += c.byteLength; }
-  return JSON.parse(new TextDecoder().decode(buf)) as Wire;
+  return hydrate(JSON.parse(new TextDecoder().decode(buf)));
+}
+
+/**
+ * 索引是壓縮編碼格式（頂層 `v: 'C2'`）。舊格式沒有 `v`，原樣回傳——
+ * 這讓新前端讀得懂新舊兩種檔，部署當下 GitHub Pages 那 10 分鐘的快取窗口才不會開天窗。
+ */
+function hydrate(parsed: unknown): Wire {
+  const o = parsed as { v?: string };
+  if (o.v !== 'C2') return parsed as Wire;
+  return decodeIndex(parsed as EncodedIndex) as unknown as Wire;
 }
 
 const provCache = new Map<string, Record<string, Prov>>();

@@ -11,12 +11,13 @@ import { mkdtemp, mkdir, writeFile, rm, readFile, readdir } from 'node:fs/promis
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { gzipSync } from 'node:zlib';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { known, notListed, notOffered, yen, type Field, type Yen } from '../../packages/schema/src/field.ts';
 import type { Listing, Unit, SourceId } from '../../packages/schema/src/model.ts';
+import { decodeIndex, type EncodedIndex } from '../../packages/wire-codec/src/index.ts';
 
 const run = promisify(execFile);
 const CLI = path.resolve(import.meta.dirname, '../src/cli/build-data.ts');
@@ -113,7 +114,10 @@ describe('閘門 4：跨來源同房未審核就不准產檔', () => {
 
     const r = await build();
     assert.equal(r.code, 0, `應該成功，stderr=${r.stderr}`);
-    const idx = JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as {
+    // index.json 是壓縮編碼格式（頂層 v:'C2'），要先解碼才有欄位
+    const encoded = JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex;
+    assert.equal(encoded.v, 'C2', 'index.json 應為 C2 編碼格式');
+    const idx = decodeIndex(encoded) as unknown as {
       meta: { units: number; buildings: number; dedup: { crossSource: { groups: number; removedUnits: number } } };
       dict: { sources: string[] };
       b: { also: number[] };
@@ -127,8 +131,10 @@ describe('閘門 4：跨來源同房未審核就不准產檔', () => {
     const suumoBit = 1 << idx.dict.sources.indexOf('suumo');
     assert.equal((idx.b.also[0] as number) & suumoBit, suumoBit);
 
+    // prov 桶是預先 gzip 的（未壓縮 507 MB vs 壓縮後 11 MB）
     const provFiles = await readdir(path.join(dir, 'out', 'prov'));
-    const prov = JSON.parse(await readFile(path.join(dir, 'out', 'prov', provFiles[0] as string), 'utf8')) as
+    assert.ok(provFiles.every((f) => f.endsWith('.json.gz')), `prov 桶應為 .json.gz，實際 ${provFiles.join(',')}`);
+    const prov = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'prov', provFiles[0] as string))).toString('utf8')) as
       Record<string, { alsoListed?: Array<{ src: string; url: string }> }>;
     const also = (prov['0'] ?? {}).alsoListed;
     assert.deepEqual(also, [{ src: 'suumo', url: 'https://example.test/r1' }]);
@@ -149,7 +155,7 @@ describe('閘門 4：跨來源同房未審核就不准產檔', () => {
       gzipSync(Buffer.from(`${JSON.stringify(listing('suumo', 95000))}\n`, 'utf8')));
     const r = await build();
     assert.equal(r.code, 0, `應該成功，stderr=${r.stderr}`);
-    const idx = JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as {
+    const idx = decodeIndex(JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex) as unknown as {
       meta: { units: number; dedup: { crossSource: { groups: number; buildingOnlyCandidates: number } } };
     };
     assert.equal(idx.meta.units, 2, '兩間都要留著');

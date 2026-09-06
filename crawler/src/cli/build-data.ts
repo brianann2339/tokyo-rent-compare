@@ -18,6 +18,7 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 
 import { readNdjsonGz } from '../ndjson.ts';
+import { encodeIndex, decodeIndex, assertLossless, type ColumnIndex } from '../../../packages/wire-codec/src/index.ts';
 
 import { DATA_ROOT } from '../http.ts';
 import { loadSourceIds } from '../registry.ts';
@@ -509,20 +510,34 @@ async function main(): Promise<void> {
     },
     b: B, u: U,
   };
-  const json = JSON.stringify(index);
-  await writeFile(path.join(OUT_DIR, 'index.json'), json, 'utf8');
+  const plainJson = JSON.stringify(index);
+
+  // ── 閘門 5：壓縮不得改變任何一個數字 ────────────────────────────
+  // 編碼器對「表示不了的值」都會丟例外，但那只擋得住它想得到的形狀。
+  // 這道閘門是最後一關：encode → decode → **全量逐格 Object.is 比對**，
+  // 任何一格對不上就讓建置失敗。這樣「解碼後的數字跟原值不一樣而且沒人會知道」
+  // 在結構上就不可能發生——那正是本專案最高原則要防的事，只是換了發生位置。
+  const encoded = encodeIndex(index as unknown as ColumnIndex);
+  const encodedJson = JSON.stringify(encoded);
+  const roundTrip = decodeIndex(JSON.parse(encodedJson) as typeof encoded);
+  const { cells } = assertLossless(index as unknown as ColumnIndex, roundTrip);
+
+  await writeFile(path.join(OUT_DIR, 'index.json'), encodedJson, 'utf8');
 
   // 舊桶整個換掉：桶的鍵與數量會隨資料變動，殘留的舊桶會被誤讀
   await rm(path.join(OUT_DIR, 'prov'), { recursive: true, force: true });
   await rename(PROV_TMP, path.join(OUT_DIR, 'prov'));
 
-  const gz = gzipSync(Buffer.from(json, 'utf8')).length;
+  const gz = gzipSync(Buffer.from(encodedJson, 'utf8')).length;
+  const gzPlain = gzipSync(Buffer.from(plainJson, 'utf8')).length;
   console.log(`✔ 建置完成`);
   console.log(`  建物 ${meta.buildings} 棟 / 房間 ${meta.units} 間（空棟略過 ${emptyBuildings}）`);
   console.log(`  SUUMO 去重：${suumoBefore.length} → ${suumoAfter.length}（${suumoGroups} 組、移除 ${suumoRemoved}、疑似不併 ${suumoSuspect}）；A 區賃料中位數 ${medBefore} → ${medAfter}`);
   console.log(`  跨來源：${crossGroups} 組已審核合併、移除 ${crossRemoved} 間；僅棟層命中 ${crossBuildingOnly} 組（不併）`);
   console.log(`  字典：站 ${stations.list.length}、線 ${lines.list.length}、線站對 ${pairs.length}、間取 ${layouts.list.length}`);
-  console.log(`  index.json ${(json.length / 1024).toFixed(0)} KB raw → ${(gz / 1024).toFixed(0)} KB gzip`);
+  console.log(`  index.json ${(encodedJson.length / 1024).toFixed(0)} KB raw → ${(gz / 1024).toFixed(0)} KB gzip`);
+  console.log(`    （未編碼會是 ${(gzPlain / 1024).toFixed(0)} KB gzip，壓縮省下 ${(100 * (gzPlain - gz) / gzPlain).toFixed(1)}%；`
+    + `無損閘門逐格比對 ${cells.toLocaleString()} 格通過）`);
   console.log(`  provenance ${provBucketCount} 桶（邊產邊寫，不在記憶體累積）`);
   if (gz > 500 * 1024) console.warn(`  ⚠️ 首屏資料 ${(gz / 1024).toFixed(0)} KB gzip 已超過 500 KB 預算，該啟動分片了`);
   if (g.violations.length > 0) {
