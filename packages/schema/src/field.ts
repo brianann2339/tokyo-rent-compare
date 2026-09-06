@@ -74,6 +74,17 @@ export function unparsed<T>(srcText: string): Field<T> {
 }
 
 /**
+ * 同一頁的兩處說法互相矛盾——例如建物層徽章寫「敷金なし」，
+ * 而該房間的卡片寫「敷金 1ヶ月」。
+ *
+ * 這種情況**不可以挑一個來用**：挑錯就是斷言了一件原站沒有一致主張的事。
+ * 兩邊的原文都留在 srcText 裡，讓看的人自己判斷。
+ */
+export function conflicting<T>(srcText: string): Field<T> {
+  return { known: false, why: 'conflicting', basis: 'unstated', srcText };
+}
+
+/**
  * 「明寫含在別的費用裡」——值為 0 且這個 0 是真的。
  * 建置期閘門只允許在這個 basis 下出現金額 0。
  */

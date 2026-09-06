@@ -334,6 +334,18 @@ export function splitLineStation(head: string): LineStation | null {
   return fromTokens(h);
 }
 
+/**
+ * 路線名的最低門檻。寧可留空（未知）也不要把散文殘句放進路線字典——
+ * 使用者在路線下拉看到「です！」會不知道那是什麼，選了也只會得到空結果。
+ * 「JR」「JR線」這種原站就只寫這麼多的要留（含事業者名即可）。
+ */
+function looksLikeLine(s: string): boolean {
+  const t = s.replace(/^[☆★●○◆■・\s]+/, '').trim();
+  if (t === '') return false;
+  if (t.length > 24) return false;
+  return /線|ライン|ライナー|モノレール|JR|ＪＲ|メトロ|新幹線/.test(t);
+}
+
 export function parseTshStations(cellHtml: string): readonly Station[] {
   const out: Station[] = [];
   const seen = new Map<string, number>();
@@ -352,9 +364,17 @@ export function parseTshStations(cellHtml: string): readonly Station[] {
       const trimmed = parts.line.includes('」')
         ? parts.line.slice(parts.line.lastIndexOf('」') + 1)
         : parts.line;
-      const line = trimmed.includes('駅')
-        ? trimmed.slice(trimmed.lastIndexOf('駅') + 1).replace(/^[\s・･、,/]+/, '').trim()
+      // 「駅」當站名邊界時要避開「各駅停車」——那個「駅」是路線名的一部分，
+      // 切下去會得到「停車」這種不存在的路線（2026-09-06 實測 3 筆）。
+      let cutAt = -1;
+      for (const mm of trimmed.matchAll(/駅(?!停車)/g)) cutAt = mm.index ?? -1;
+      const cut = cutAt >= 0
+        ? trimmed.slice(cutAt + 1).replace(/^[\s・･、,/]+/, '').trim()
         : trimmed.trim();
+      // 最後一道防線：路線名長得不像路線就當作不知道。
+      // 站名是從結構化位置抓的、可信；但 line 有可能是散文被切出來的殘句
+      // （實測「です！」「☆JR総武線」），存進去會變成路線字典裡一個假的選項。
+      const line = looksLikeLine(cut) ? cut.replace(/^[☆★●○◆■・\s]+/, '').trim() : '';
       // 公車站牌不是鐵路車站。判準是「這一列提到公車設施，而且沒有任何鐵路路線活下來」——
       //「山手線 目黒駅 バス4分…」有路線，是鐵路站的公車補充說明，要留。
       if (/バス|停留所|営業所/.test(line) && !LINE_SUFFIX_RE.test(line)) continue;

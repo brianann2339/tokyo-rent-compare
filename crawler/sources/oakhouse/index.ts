@@ -15,12 +15,12 @@
 
 import type { SourceAdapter, SourceManifest, TargetRef, RawDoc, ExtractContext, Fetcher } from '../../src/types.ts';
 import {
-  known, notListed, notOffered, unparsed, yen, type Field, type Yen,
+  known, notListed, notOffered, unparsed, conflicting, yen, type Field, type Yen,
 } from '../../../packages/schema/src/field.ts';
 import type {
   Building, Unit, Listing, Station, ForeignerPolicy, PropertyKind, GenderRestriction,
 } from '../../../packages/schema/src/model.ts';
-import { parseMoney } from '../../../packages/jp-parse/src/money.ts';
+import { parseMoney, monthsToYen } from '../../../packages/jp-parse/src/money.ts';
 import { parseArea } from '../../../packages/jp-parse/src/area.ts';
 
 const SITE = 'https://www.oakhouse.jp';
@@ -49,10 +49,13 @@ export const manifest: SourceManifest = {
       'guarantorInitialFee', 'layout', 'areaM2', 'roomNo', 'floor', 'isVacant',
       'furnished', 'genderRestriction', 'foreignerWelcomed',
       'guarantorPersonRequired', 'guarantorCompanyRequired', 'stations', 'structure',
+      // apartment 線的新版房間卡片逐間印這兩項（「鍵交換費用 33,000円」「室内清掃費用 55,000円」）。
+      // 2026-09-06 之前它們被列在 neverProvides——那句宣告會叫監控永遠不必去看那裡。
+      'keyExchangeFee', 'cleaningFeeUpfront',
     ],
     neverProvides: [
       'utilities', 'internet', 'otherMonthly', 'depositNonRefundable',
-      'fireInsurance', 'keyExchangeFee', 'cleaningFeeUpfront', 'otherInitial',
+      'fireInsurance', 'otherInitial',
       'renewalFee', 'renewalAdminFee', 'cleaningFeeOnExit', 'earlyTerminationPenalty',
       'ageLimitRaw', 'petsAllowed', 'residenceCardRequired', 'japaneseRequired',
       'sourceUpdatedAt',
@@ -95,12 +98,58 @@ function text(html: string): string {
 function labelledMoney(t: string, label: string): { raw: string; jpy: number } | null {
   // 金額只要 1 位數就收：要求 3 位數會把原站白紙黑字的「共益費 ¥0」判成「頁面沒寫」。
   // 前面有 `標籤｜` 錨點、且 [^0-9] 跨不過數字，抓到的必定是標籤後第一個數字串。
-  const re = new RegExp(`(${label})｜[^0-9]{0,40}([0-9,]+)`);
+  // 標籤要有左邊界，否則「再契約料」的尾巴會命中「契約料」——
+  // 2026-09-06 實測 apartment/15758 的「再契約料 258,000円」被收成 contractFee，
+  // 而且 srcText 被合成成「契約料 ¥258,000」，錯誤還被自己的 srcText 蓋住。
+  // text() 最後才壓縮空白，所以分隔符旁邊會留空格：實際長相是「｜ 契約料 ｜ 22,000円 ｜」
+  const re = new RegExp(`(?:^|｜)\\s*(${label})\\s*｜[^0-9]{0,40}([0-9,]+)`);
   const m = re.exec(t);
   if (m?.[1] === undefined || m[2] === undefined) return null;
   const r = parseMoney(`${m[2]}円`);
   if (r.kind !== 'amount' && r.kind !== 'zero') return null;
   return { raw: `${m[1]} ¥${m[2]}`, jpy: r.kind === 'zero' ? 0 : r.jpy };
+}
+
+/** 取標籤後的原文（到下一個分隔符為止）。回 null 代表這張卡片根本沒有這個欄位。 */
+function labelledRaw(t: string, label: string): string | null {
+  // `<dt>礼金</dt><dd>1ヶ月</dd>` 經過 text() 會變成「｜礼金｜ ｜1ヶ月｜」——
+  // 標籤與值之間隔著**兩個**分隔符（中間的換行讓 `｜+` 那一步壓不掉）。
+  const m = new RegExp(`(?:^|｜)\\s*${label}\\s*(?:｜\\s*)+([^｜]{1,40})`).exec(t);
+  const v = m?.[1]?.trim();
+  return v === undefined || v === '' ? null : v;
+}
+
+/**
+ * 房間卡片自己印的費用。新版 apartment 卡片會逐間印「礼金 1ヶ月」「敷金 1ヶ月」，
+ * 那是**這一間**的條件，比建物層的「敷金なし」徽章具體。
+ *
+ * 「Nヶ月」要乘上賃料才是金額；賃料未知、或月數離譜（日本慣例最多 3，這裡寬鬆給到 12）
+ * 就回 unparsed 而不是算一個數字出來——原站沒有主張過那個金額。
+ */
+function roomFee(t: string, label: string, rent: Field<Yen>): Field<Yen> | null {
+  const raw = labelledRaw(t, label);
+  if (raw === null) return null;
+  const src = `${label} ${raw}`;
+  const r = parseMoney(raw);
+  switch (r.kind) {
+    case 'amount': return known(yen(r.jpy), 'measured', src);
+    case 'zero': return known(yen(0), 'measured', src);
+    case 'included': return known(yen(0), 'included_stated', src);
+    case 'months':
+      if (!rent.known || !(r.months >= 0 && r.months <= 12)) return unparsed<Yen>(src);
+      return known(yen(monthsToYen(r.months, rent.v.jpy)), 'measured', src);
+    case 'negotiable': return notListed<Yen>(src);
+    case 'absent': return notListed<Yen>(src);
+    default: return unparsed<Yen>(src);
+  }
+}
+
+/** 取第一個「有值」的；都沒有就回第一個非 null 的未知狀態（保住它的 why 與原文）。 */
+function firstKnown(...fs: Array<Field<Yen> | null>): Field<Yen> {
+  for (const f of fs) if (f !== null && f.known) return f;
+  for (const f of fs) if (f !== null && !f.known && f.why === 'unparsed') return f;
+  for (const f of fs) if (f !== null) return f;
+  return notListed<Yen>('');
 }
 
 function moneyOf(t: string, label: string): Field<Yen> {
@@ -140,6 +189,13 @@ export function parseBadges(html: string): OakBadges {
 export type OakRoom = {
   id: string; roomNo: Field<string>; vacant: boolean;
   rent: Field<Yen>; adminFee: Field<Yen>; contractFee: Field<Yen>;
+  /**
+   * 新版 apartment 卡片會逐間印自己的敷金／礼金／仲介手数料等。
+   * `null` = 這張卡片沒有這個欄位（舊版表格列一律如此），要退回建物層徽章。
+   */
+  cardKeyMoney: Field<Yen> | null; cardDeposit: Field<Yen> | null;
+  cardAgencyFee: Field<Yen> | null; cardGuarantorFee: Field<Yen> | null;
+  cardKeyExchange: Field<Yen> | null; cardCleaningUpfront: Field<Yen> | null;
   areaM2: Field<number>; layout: Field<string>; floor: Field<number>;
   kind: PropertyKind; gender: GenderRestriction;
   foreignerOk: boolean; furnished: boolean | null; rawText: string;
@@ -214,13 +270,22 @@ export function parseRooms(html: string): OakRoom[] {
     const cond = /入居条件｜([\s\S]{0,260}?)(?:｜内装|｜ 空室通知|｜採光|｜こだわり条件|｜水回り|$)/
       .exec(t)?.[1] ?? '';
 
+    const rentField = moneyOf(t, '賃料');
     out.push({
       id: key,
       roomNo,
       vacant: status !== null && status !== 'novacancy',
-      rent: moneyOf(t, '賃料'),
+      rent: rentField,
+      cardKeyMoney: roomFee(t, '礼金', rentField),
+      cardDeposit: roomFee(t, '敷金', rentField),
+      cardAgencyFee: roomFee(t, '仲介手数料', rentField),
+      cardGuarantorFee: roomFee(t, '初回保証料', rentField),
+      cardKeyExchange: roomFee(t, '鍵交換費用', rentField),
+      cardCleaningUpfront: roomFee(t, '室内清掃費用', rentField),
       adminFee: moneyOf(t, ADMIN_FEE_LABEL),
-      contractFee: moneyOf(t, '契約料'),
+      // 兩條產品線的標籤不同：share house 印「契約料」、apartment 卡片印「事務手数料」。
+      // 只認前者會讓 apartment 線的這筆費用整批變成「頁面沒寫」。
+      contractFee: firstKnown(moneyOf(t, '契約料'), roomFee(t, '事務手数料', rentField)),
       areaM2: area.kind === 'exact'
         ? known(area.m2, 'measured', `広さ ${area.m2}㎡`)
         : notListed(''),
@@ -387,8 +452,22 @@ export const adapter: SourceAdapter = {
       htmlSha256: raw.sha256,
     };
 
-    const zeroIf = (flag: boolean, label: string): Field<Yen> =>
-      flag ? known(yen(0), 'measured', label) : notListed(badges.raw);
+    /**
+     * 建物層徽章（「敷金なし」）與房間卡片（「敷金 1ヶ月」）打架時怎麼辦。
+     *
+     * 舊寫法一律用徽章，於是 2026-09-06 實測出 24 筆 basis='measured' 的假零——
+     * 同一頁上該房卡片白紙黑字寫著「敷金 1ヶ月」，我們卻說它免敷金，
+     * 使用者的初期現金被低估一整個月房租。
+     * 卡片講的是「這一間」，比徽章具體，所以卡片優先；
+     * 兩邊都說得很明確卻互相矛盾時，誰都不採信——標 conflicting 把兩段原文都留著。
+     */
+    const feeOf = (card: Field<Yen> | null, flag: boolean, label: string): Field<Yen> => {
+      if (card === null) return flag ? known(yen(0), 'measured', label) : notListed(badges.raw);
+      if (flag && card.known && card.v.jpy !== 0) {
+        return conflicting<Yen>(`建物層「${label}」 vs 房間卡片「${card.srcText}」`);
+      }
+      return card;
+    };
 
     const units: Unit[] = rooms.filter((r) => r.vacant).map((r) => ({
       id: `${buildingId}#${r.id}`,
@@ -407,15 +486,17 @@ export const adapter: SourceAdapter = {
         otherMonthly: notOffered<Yen>(),
       },
       initial: {
-        keyMoney: zeroIf(badges.noKeyMoney, '礼金なし'),
-        deposit: zeroIf(badges.noDeposit, '敷金なし'),
+        keyMoney: feeOf(r.cardKeyMoney, badges.noKeyMoney, '礼金なし'),
+        deposit: feeOf(r.cardDeposit, badges.noDeposit, '敷金なし'),
         depositNonRefundable: notOffered<Yen>(),
-        agencyFee: zeroIf(badges.noAgencyFee, '仲介手数料なし'),
-        guarantorInitialFee: zeroIf(badges.noGuarantorCompany, '保証会社不要'),
+        agencyFee: feeOf(r.cardAgencyFee, badges.noAgencyFee, '仲介手数料なし'),
+        guarantorInitialFee: feeOf(r.cardGuarantorFee, badges.noGuarantorCompany, '保証会社不要'),
         fireInsurance: notOffered<Yen>(),
-        keyExchangeFee: notOffered<Yen>(),
+        // 舊版表格列（share house 線）沒有這兩欄，但 apartment 線的卡片有——
+        // 所以它不是「來源根本沒有」，而是「這一頁沒寫」。
+        keyExchangeFee: r.cardKeyExchange ?? notListed<Yen>(''),
         contractFee: r.contractFee,
-        cleaningFeeUpfront: notOffered<Yen>(),
+        cleaningFeeUpfront: r.cardCleaningUpfront ?? notListed<Yen>(''),
         otherInitial: notOffered<Yen>(),
       },
       deferred: {
