@@ -179,9 +179,12 @@ export function parseContractFees(t: string): {
   const i = t.indexOf('初期費用');
   const seg = i >= 0 ? t.slice(i, i + 300) : '';
   const wetM = /水回り付き個室[：:]\s*([0-9,]+)\s*円/.exec(seg);
-  // 「水回り付き個室：…」を先に取り除いてから素の「個室：…」を探す（前方一致するため）
-  const rest = seg.replace(/水回り付き個室[：:]\s*[0-9,]+\s*円/, '');
-  const plainM = /個室(?:・[^：:｜\s]{1,6})?[：:]\s*([0-9,]+)\s*円/.exec(rest);
+  // 「水回り付き個室：…」を先に取り除いてから素の「個室：…」を探す（前方一致するため）。
+  // ⚠️ `/g` 必須：replace は既定で最初の一つしか消さないので、同じ段落に
+  // 「水回り付き個室」が二度出ると二つ目が素の個室として拾われ、水回り価格が素の価格になる。
+  // lookbehind も併用して二重に防ぐ（どちらか一方だけだと 2026-09-06 の回帰と同じ穴が残る）。
+  const rest = seg.replace(/水回り付き個室[：:]\s*[0-9,]+\s*円/g, '');
+  const plainM = /(?<!水回り付き)個室(?:・[^：:｜\s]{1,6})?[：:]\s*([0-9,]+)\s*円/.exec(rest);
   const num = (s: string | undefined): number | null => {
     if (s === undefined) return null;
     const r = parseMoney(`${s}円`);
