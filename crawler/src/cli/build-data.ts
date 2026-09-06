@@ -57,6 +57,13 @@ export const FLAG = {
   petsYes: 1, petsNo: 2, furnishedYes: 4, furnishedNo: 8,
   fixedTerm: 16, ordinary: 32, minStayKnown: 64, ageLimitKnown: 128,
   guarantorPersonYes: 256, guarantorPersonNo: 512,
+  /**
+   * 這間房至少違反一條合理性不變式（面積 14000㎡、賃料 8,800 円 之類）。
+   * 值照原文保留——那些數字是原站自己寫的，不是我們編的——但衍生比較
+   * （每㎡單價、費用排序）不該把它當一般資料看，所以在這裡標出來。
+   * 明細在該房 provenance 的 invariants 欄。
+   */
+  invariantViolation: 1024,
 } as const;
 
 function flagsOf(u: Unit): number {
@@ -139,8 +146,13 @@ function moneyFields(u: Unit): ReadonlyArray<readonly [string, Field<Yen>]> {
   ];
 }
 
-/** 閘門 3 + 跨欄位不變式。違反不變式的欄位不採用，但只警告不中止（記入報告）。 */
-function checkUnit(b: Building, u: Unit, provided: ReadonlySet<string>, g: GateResult): void {
+/**
+ * 閘門 3 + 跨欄位不變式。
+ * 閘門 3 違反會中止建置；不變式違反只記錄與標記，值照原文保留
+ * （為什麼不降為 conflicting，見 invariants.ts 檔頭）。回傳這間房命中的違反，
+ * 呼叫端據此打 FLAG.invariantViolation 並寫進 provenance。
+ */
+function checkUnit(b: Building, u: Unit, provided: ReadonlySet<string>, g: GateResult): Violation[] {
   for (const [id, f] of moneyFields(u)) {
     gateZeroWithoutBasis(id, f, u.id, g);
     gateMeasuredNeedsSource(id, f, u.id, g);
@@ -151,7 +163,8 @@ function checkUnit(b: Building, u: Unit, provided: ReadonlySet<string>, g: GateR
   gateMeasuredNeedsSource('areaM2', u.areaM2, u.id, g);
   gateMeasuredNeedsSource('layout', u.layout, u.id, g);
 
-  const push = (v: Violation | null): void => { if (v !== null) g.violations.push(v); };
+  const hits: Violation[] = [];
+  const push = (v: Violation | null): void => { if (v !== null) { hits.push(v); g.violations.push(v); } };
   if (u.monthly.rent.known) push(checkRentRange(u.monthly.rent.v.jpy));
   if (u.initial.agencyFee.known && u.monthly.rent.known) {
     push(checkAgencyFeeCap(u.initial.agencyFee.v.jpy, u.monthly.rent.v.jpy));
@@ -162,6 +175,7 @@ function checkUnit(b: Building, u: Unit, provided: ReadonlySet<string>, g: GateR
   if (u.initial.depositNonRefundable.known && u.initial.deposit.known) {
     push(checkDepositNonRefundable(u.initial.depositNonRefundable.v.jpy, u.initial.deposit.v.jpy));
   }
+  return hits;
 }
 
 const yenOrNull = (f: Field<Yen>): number | null => (f.known ? f.v.jpy : null);
@@ -414,7 +428,7 @@ async function main(): Promise<void> {
     B.also.push(alsoMask.get(b.id) ?? 0);
 
     for (const u of units) {
-      checkUnit(b, u, provided, g);
+      const violations = checkUnit(b, u, provided, g);
       const m = monthlyCost(u);
       const c = initialCash(u);
       const s = initialSunk(u);
@@ -440,7 +454,7 @@ async function main(): Promise<void> {
       U.initCash.push(c.lower.jpy); U.initCashTier.push(TIER[tierOf(u, c)]);
       U.initSunk.push(s.lower.jpy); U.effMonthly12.push(e.lower.jpy);
       U.missing.push(missingMask(u));
-      U.flags.push(flagsOf(u));
+      U.flags.push(flagsOf(u) | (violations.length > 0 ? FLAG.invariantViolation : 0));
       U.ads.push(merged?.adCount ?? 1);
 
       // provenance：每欄的原文出處，只在使用者點開房源時才載入。
@@ -460,6 +474,7 @@ async function main(): Promise<void> {
         ...(u.ageLimitRaw.known && u.ageLimitRaw.v.trim() !== '' ? { ageLimitRaw: u.ageLimitRaw.v } : {}),
         ...(merged === undefined ? {} : { adCount: merged.adCount, mergedFrom: merged.mergedFrom }),
         ...(also === undefined ? {} : { alsoListed: also }),
+        ...(violations.length === 0 ? {} : { invariants: violations.map((v) => v.detail) }),
         fields: Object.fromEntries(
           moneyFields(u).map(([id, f]) => [id, f.known
             ? { v: f.v.jpy, basis: f.basis, src: f.srcText.slice(0, 80) }
@@ -541,7 +556,7 @@ async function main(): Promise<void> {
   console.log(`  provenance ${provBucketCount} 桶（邊產邊寫，不在記憶體累積）`);
   if (gz > 500 * 1024) console.warn(`  ⚠️ 首屏資料 ${(gz / 1024).toFixed(0)} KB gzip 已超過 500 KB 預算，該啟動分片了`);
   if (g.violations.length > 0) {
-    console.log(`  ⚠️ ${g.violations.length} 筆跨欄位不變式違反（該欄位不採用）：`);
+    console.log(`  ⚠️ ${g.violations.length} 筆合理性不變式違反（值照原文保留，該房標記 invariantViolation）：`);
     for (const v of g.violations.slice(0, 5)) console.log(`     ${v.rule}: ${v.detail}`);
   }
   if (g.warnings.length > 0) for (const w of g.warnings) console.log(`  · ${w}`);

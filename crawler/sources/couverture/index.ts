@@ -66,6 +66,22 @@ export const manifest: SourceManifest = {
   },
 };
 
+/**
+ * 数値実体（`&#8545;` ＝ローマ数字 Ⅱ）まで戻す。
+ * `<title>` に生の実体が残る物件が実在する（クーベルチュール錦糸町Ⅱ／北大塚Ⅱ）。
+ */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
 function text(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -149,22 +165,65 @@ export function parseCvRooms(html: string): CvRoom[] {
   return out;
 }
 
-/** `【契約手数料】個室：40,000円 水回り付き個室：50,000円` */
-export function parseContractFees(t: string): { plain: number | null; wet: number | null; raw: string } {
+/**
+ * 契約手数料。原站有**兩種**寫法，物件頁 25 頁の実測で 21 頁が後者：
+ *   分価  `【契約手数料】個室：40,000円 水回り付き個室：50,000円`（別記：`個室・相部屋：40,000円`）
+ *   一本値 `【契約手数料】 40,000円`
+ * 一本値の頁は部屋の別なく同額——原站がそう書いているので、水回り付きにも同じ値を返す。
+ * 分価の型に当てはまらないからといって金額を捨てると、頁に印字されている料金を
+ * 「頁に記載なし」と偽ることになる。
+ */
+export function parseContractFees(t: string): {
+  plain: number | null; wet: number | null; split: boolean; raw: string;
+} {
   const i = t.indexOf('初期費用');
   const seg = i >= 0 ? t.slice(i, i + 300) : '';
-  const plainM = /(?<!水回り付き)個室[：:]\s*([0-9,]+)\s*円/.exec(seg.replace(/水回り付き個室[：:]\s*[0-9,]+\s*円/, ''));
   const wetM = /水回り付き個室[：:]\s*([0-9,]+)\s*円/.exec(seg);
+  // 「水回り付き個室：…」を先に取り除いてから素の「個室：…」を探す（前方一致するため）
+  const rest = seg.replace(/水回り付き個室[：:]\s*[0-9,]+\s*円/, '');
+  const plainM = /個室(?:・[^：:｜\s]{1,6})?[：:]\s*([0-9,]+)\s*円/.exec(rest);
   const num = (s: string | undefined): number | null => {
     if (s === undefined) return null;
     const r = parseMoney(`${s}円`);
     return r.kind === 'amount' ? r.jpy : null;
   };
+  const split = plainM !== null || wetM !== null;
+  // タグ由来の `｜` が見出しと金額の間に挟まる：`【契約手数料】｜ 40,000円`
+  const flat = split ? null : num(/【契約手数料】[｜\s]*([0-9,]+)\s*円/.exec(rest)?.[1]);
   return {
-    plain: num(plainM?.[1]),
-    wet: num(wetM?.[1]),
+    plain: split ? num(plainM?.[1]) : flat,
+    wet: split ? num(wetM?.[1]) : flat,
+    split,
     raw: seg.replace(/｜/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200),
   };
+}
+
+/**
+ * 住所欄。`住所｜東京都渋谷区元代々木町` と `住所｜豊島区北大塚3丁目`（都名省略）の両方がある。
+ *
+ * ⚠️ 都名を無条件に前置してはいけない。旧実装は「埼玉県川口市芝樋ノ爪」に「東京都」を足して
+ * 「東京都埼玉県川口市芝樋ノ爪」という存在しない住所を作り、prefecture も '東京都' と決め打ちしていた。
+ * 原站が言っていないことを我々が断言する＝捏造。収録範囲は東京都なので、
+ * 他県が明記されている物件は**除外**する（籍を書き換えない）。
+ * 都道府県が書かれていない頁は、区市名をそのまま行政区として使い、都名は補わない。
+ */
+const CV_PREFECTURE_RE = /^(東京都|北海道|京都府|大阪府|[^｜\s]{2,3}県)/;
+
+export function parseCvAddress(
+  t: string,
+): { addressRaw: string; prefecture: string; ward: string } | null {
+  // 「区市」優先且非貪婪——`東京都渋谷区元代々木町` 的行政区是「渋谷区」，
+  // 若讓 `[区市]` 貪婪匹配會得到「渋谷区元代々木町」。
+  const m = /住所｜\s*｜?\s*((?:東京都)?([^｜\s]{1,6}?[区市])[^｜\s]{0,20})/.exec(t);
+  const addressRaw = m?.[1];
+  const ward = m?.[2];
+  if (addressRaw === undefined || ward === undefined) return null;
+
+  const pref = CV_PREFECTURE_RE.exec(addressRaw)?.[1] ?? null;
+  if (pref !== null && pref !== '東京都') return null;
+  // 都名が書かれている頁だけ '東京都' と言う。省略頁（実測 4 頁は全頁どこにも「東京都」の
+  // 文字が無い）は空にする——区名から都を逆算するのは推測であって原站の記載ではない。
+  return { addressRaw, prefecture: pref ?? '', ward };
 }
 
 const NOT_OFFERED_FOREIGNER: ForeignerPolicy = {
@@ -194,14 +253,12 @@ export const adapter: SourceAdapter = {
     const html = raw.body;
     const t = text(html);
     const nameM = /<title>シェアハウス\s*([^|｜<]+)/.exec(html);
-    const name = (nameM?.[1] ?? '').trim();
+    const name = decodeEntities(nameM?.[1] ?? '').trim();
     if (name === '') return null;
 
-    // 「区市」優先且非貪婪——`東京都渋谷区元代々木町` 的行政区是「渋谷区」，
-    // 若讓 `[区市町村]` 貪婪匹配會得到「渋谷区元代々木町」。
-    // 「東京都」是**選用**的：部分頁面直接寫 `住所｜豊島区北大塚3丁目`（省略都名）。
-    const addrM = /住所｜\s*｜?\s*((?:東京都)?([^｜\s]{1,6}?[区市])[^｜\s]{0,20})/.exec(t);
-    if (addrM?.[1] === undefined || addrM[2] === undefined) return null;
+    const addr = parseCvAddress(t);
+    // 東京都以外（COCONわらび＝埼玉県川口市）と、住所が読めない頁は収録しない
+    if (addr === null) return null;
 
     const slug = /house_detail\/([a-z0-9-]+)/.exec(ref.url)?.[1] ?? ref.url;
     const buildingId = `couverture:${slug}`;
@@ -218,9 +275,9 @@ export const adapter: SourceAdapter = {
       sourceUrl: ref.url,
       name,
       kind: 'sharehouse',
-      addressRaw: addrM[1].startsWith('東京都') ? addrM[1] : `東京都${addrM[1]}`,
-      prefecture: '東京都',
-      ward: addrM[2],
+      addressRaw: addr.addressRaw,
+      prefecture: addr.prefecture,
+      ward: addr.ward,
       stations: parseCvStations(t),
       structure: notOffered<string>(),
       yearBuilt: notOffered<number>(),
@@ -235,14 +292,15 @@ export const adapter: SourceAdapter = {
     };
 
     const units: Unit[] = rooms.filter((r) => r.vacant).map((r) => {
-      // 契約手数料分「個室」與「水回り付き個室」兩價，依備考是否明寫居室內浴室／廁所判定。
-      // 規則本身來自同一頁的「【契約手数料】個室：40,000円 水回り付き個室：50,000円」，
-      // 判定依據也來自同一頁的備考欄——兩邊都有出處，srcText 記錄推導過程供稽核。
+      // 分価頁は「個室」と「水回り付き個室」の二本立てなので、備考に居室内浴室／トイレの
+      // 記載があるかで選ぶ。規則も判定材料も同じ頁にあるので、srcText に推導過程を残す。
+      // 一本値の頁は部屋の別なく同額なので、備考は選択に関与しない＝書かない。
       const feeJpy = r.wetArea ? fees.wet : fees.plain;
       const contractFee: Field<Yen> = feeJpy === null
         ? notListed(fees.raw)
-        : known(yen(feeJpy), 'measured',
-          `${fees.raw}｜備考=${r.wetArea ? '居室內有水回り' : '無水回り記載'}`);
+        : known(yen(feeJpy), 'measured', fees.split
+          ? `${fees.raw}｜備考=${r.wetArea ? '居室內有水回り' : '無水回り記載'}`
+          : fees.raw);
 
       return {
         id: `${buildingId}#${r.number}`,

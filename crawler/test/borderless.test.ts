@@ -255,7 +255,11 @@ describe('ROPPONGI1 逐欄對照原站', () => {
     const u = unitOf(roppongi, '3A-2');
     assert.equal(u.monthly.rent.known && u.monthly.rent.v.jpy, 59000);
     assert.equal(u.monthly.utilities.known && u.monthly.utilities.v.jpy, 11000);
-    assert.equal(u.areaM2.known && u.areaM2.v, 13.4);
+    // 13.4㎡ は「2 人で使う部屋」の広さ、¥59,000 は「ベッド 1 台」の賃料。
+    // 両者を並べると 1 人あたり単価が半額に見える偽の比較になるので、床の専有面積は未知。
+    // （原文の 13.4㎡ は srcText と notes に残す＝捨てるのではなく、値として名乗らない）
+    assert.equal(u.areaM2.known, false);
+    assert.match(u.areaM2.srcText, /13\.4㎡/);
     assert.equal(u.layout.known && u.layout.v, 'Room for 2');
     assert.equal(u.genderRestriction, 'female_only');
     assert.equal(u.isVacant.known && u.isVacant.v, true);
@@ -265,8 +269,10 @@ describe('ROPPONGI1 逐欄對照原站', () => {
   test('共用房的面積是整間的，要在 notes 講清楚', () => {
     const u = unitOf(roppongi, '3A-2');
     assert.ok(u.notes.some((n) => n.includes('部屋全体')), u.notes.join(' | '));
-    // 單人房不該有這條
-    assert.ok(!unitOf(roppongi, '2D-1').notes.some((n) => n.includes('部屋全体')));
+    // 單人房不該有這條，而且單人房的面積照常是已知的
+    const single = unitOf(roppongi, '2D-1');
+    assert.ok(!single.notes.some((n) => n.includes('部屋全体')));
+    assert.equal(single.areaM2.known && single.areaM2.v, 7.5);
   });
 
   test('2D-1 / 3C-1：空室予定，isVacant = false 但有可入住日', () => {

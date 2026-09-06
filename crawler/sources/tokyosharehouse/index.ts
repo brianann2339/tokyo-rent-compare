@@ -111,6 +111,25 @@ function plain(fragment: string): string {
 }
 
 /**
+ * 全形數字 → 半形。JS 的 `\d` 只認 ASCII 0-9，而 TSH 的運營者有一批把步行分鐘
+ * 寫成全形（`徒歩８分`）。不轉的話正則整條匹配失敗。
+ * 只轉數字：全形英字與長音符不能動（動了會毀掉片假名詞彙）。
+ */
+export function halfWidthDigits(s: string): string {
+  return s.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+}
+
+/**
+ * Unicode Cf（format）類不可見字元。實測 エリア 欄有物件寫成 `東京都\u200e世田谷区経堂1丁目`——
+ * U+200E（LEFT-TO-RIGHT MARK）來自原站，肉眼完全看不出來，卻會讓 ward 變成
+ * 一個「看起來是世田谷区但不等於世田谷区」的字串，該棟從此不會出現在区篩選裡。
+ * `\s` 不含這類字元，所以壓空白清不掉，必須另外剝。
+ */
+export function stripFormatChars(s: string): string {
+  return s.replace(/[\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g, '');
+}
+
+/**
  * 取右欄摘要表的一格。
  * 結構固定：`<td><div class="detail-value-area"><div class="label">エリア</div>
  *            <div class="labelDesc">…</div></div></td>`
@@ -138,6 +157,23 @@ export type AddressResult =
   | { readonly kind: 'unparsed' };
 
 /**
+ * 市区町村名的切點。**不可以**用 `/^(.{1,8}?)[区市町村]/` 這種「非貪婪＋字元類含町村」的寫法：
+ * 大字裡的「町」「村」會讓它提前收尾，實測切出過根本不存在的行政區——
+ * `東村山市萩山町` → `東村`、`武蔵村山市学園` → `武蔵村`。
+ *
+ * 改成依「区 → 市 → 郡＋町/村」的優先序各自比對完整型態：
+ * 区名裡不會再出現区，市名裡不會再出現市，郡下的町村一定帶郡名。
+ * 三種都不中就回空字串（例：原站自己漏寫市名的 `東京都国分寺光町1丁目`）——
+ * 硬切出「国分寺光町」等於把原站的錯誤升級成一個新的行政區分類。
+ */
+export function tokyoMunicipality(rest: string): string {
+  const m = /^([^0-9０-９]{1,5}?区)/.exec(rest)
+    ?? /^([^0-9０-９]{1,6}?市)/.exec(rest)
+    ?? /^([^0-9０-９]{1,6}?郡[^0-9０-９]{1,6}?[町村])/.exec(rest);
+  return m?.[1] ?? '';
+}
+
+/**
  * 「エリア」欄的地址。實測三種寫法：
  *   `東京都港区西新橋一丁目`（有都名）
  *   `杉並区下井草1丁目`（**省略都名**）
@@ -146,15 +182,16 @@ export type AddressResult =
  * 省略都名時只在「区名屬於 23 特別区」且「字串裡沒有其他県／府／道／市」時才判定為東京。
  * 「中央区」「北区」「港区」在大阪市等地也存在，但那些寫法一定帶著市名或県名；
  * TSH 的收錄範圍是關東，非東京的地址實測都帶「県」或「市」。仍判不出來就回 unparsed，不猜。
+ *
+ * ⚠️ 解析前一定要先剝 Cf 不可見字元（見 stripFormatChars）：原站有一筆把 U+200E
+ * 夾在「東京都」與「世田谷区」之間，不剝就會產出一個外觀相同、值不同的假行政區。
  */
 export function parseTshAddress(raw: string): AddressResult {
-  const t = raw.replace(/\s+/g, '').trim();
+  const t = stripFormatChars(raw).replace(/\s+/g, '').trim();
   if (t === '') return { kind: 'unparsed' };
 
   if (t.startsWith('東京都')) {
-    const rest = t.slice('東京都'.length);
-    const m = /^([^0-9０-９]{1,8}?[区市町村])/.exec(rest);
-    return { kind: 'tokyo', addressRaw: t, ward: m?.[1] ?? '' };
+    return { kind: 'tokyo', addressRaw: t, ward: tokyoMunicipality(t.slice('東京都'.length)) };
   }
   if (/[都道府県]/.test(t)) return { kind: 'other' };
 
@@ -166,45 +203,186 @@ export function parseTshAddress(raw: string): AddressResult {
 }
 
 /**
- * アクセス欄。是運營者自己填的自由欄位，實測四種寫法都存在：
- *   `都営三田線 内幸町駅 徒歩3分`   標準
- *   `JR総武線 荻窪駅 16分`          **沒有「徒歩」二字**
- *   `JR山手線 大崎 徒歩10分`        **沒有「駅」字**
- *   `東京都営浅草線ほか 三田駅 徒歩8分` 路線帶「ほか」
+ * アクセス欄。是運營者自己填的自由欄位，實測的寫法遠不只一種：
+ *   `都営三田線 内幸町駅 徒歩3分`                        標準
+ *   `JR総武線 荻窪駅 16分`                               **沒有「徒歩」二字**
+ *   `JR山手線 大崎 徒歩10分`                             **沒有「駅」字**
+ *   `京急本線 平和島駅 徒歩８分`                         **全形數字**
+ *   `JR京浜東北線 蒲田駅 徒歩約8分`                      **「約」卡在徒歩與數字之間**
+ *   `鷹の台駅 西武国分寺線 徒歩10分`                     **站名寫在路線前面**
+ *   `東急東横線「都立大学」駅 徒歩8分、「学芸大学」駅 徒歩16分`  一格塞兩站
+ *   `日比谷線 八丁堀駅`                                  **完全沒寫分鐘**
  *
- * 所以不能用「駅」當錨點，改從尾端的「N分」往回切：
- * 時間前的最後一個空白段是站名，再前面全部是路線。
+ * 三條原則，每一條都是踩過的坑：
+ *
+ * 1. **分鐘讀不出來不可以丟掉整列**。站名與路線是與分鐘各自獨立的事實，照收；
+ *    分鐘另外標未知——有數字但讀不出來（`徒歩1分半`、`徒歩30秒`、`西武池袋線 大泉学園駅 12`）
+ *    標 unparsed（唯一的故障訊號，health 靠它告警），完全沒寫數字才標 not_listed。
+ *    舊版是「正則不中就 continue」，加上 `\d` 不認全形數字，實測讓 61 棟建物一個車站都沒有。
+ *
+ * 2. **切點用「駅」與路線後綴（線／ライン／ライナー／モノレール）雙錨點，切不出來就整列不收**。
+ *    舊版從句尾「N分」往回切、最後一個空白段當站名，遇到「徒歩約」「自転車6分・」「バスと」
+ *    這類修飾語就整串左移一格：站名欄裝進句子碎片、路線欄裝「路線＋站名」，
+ *    而這些碎片會變成車站字典裡使用者看得到的選項。硬切的代價比少收一列大得多。
+ *
+ * 3. **バス停／停留所／営業所不是鐵路車站**，切得出來也不收。
  *
  * 沒寫「徒歩」的那種可能是徒歩也可能是バス，walkMinutes 一律留未知、
  * 原文完整保留在 rawText，不替站方補上「徒歩」。
  */
-const TSH_MINUTES_RE = /(徒歩|バス)?\s*(\d+(?:\.\d+)?)\s*分\s*$/;
+const TSH_MINUTES_RE = /(徒歩|歩|バス|自転車|車|乗車|電車)?\s*(?:約)?\s*(\d+(?:\.\d+)?)\s*分\s*$/;
+/** 同款但不錨定句尾，用來把「一格兩站」切開。 */
+const TSH_MINUTES_G = /(?:徒歩|歩|バス|自転車|車|乗車|電車)?\s*(?:約)?\s*\d+(?:\.\d+)?\s*分/g;
+const LINE_SUFFIX_RE = /(線|ライン|ライナー|モノレール)$/;
+/** 站名不可能長這樣：交通方式、時間、公車設施、句讀。 */
+const NOT_A_STATION_RE = /徒歩|歩\d|バス|自転車|乗車|下車|電車|停留所|営業所|交番|\d+\s*[分秒]|^\d+$|[。「」『』【】*＊]/;
+const BRACKETED_TAIL_RE = /[「『【]([^」』】]{1,20})[」』】]\s*$/;
+const OPEN_BRACKET_RE = /^[「『（(【[]/;
+const CLOSE_BRACKET_RE = /[」』）)】\]]$/;
+
+/**
+ * 一格裡塞了多站時切段。只在「這個 N分 後面還有駅或路線」時才切：
+ * 「バス5分+徒歩1分・自転車6分・徒歩18分」後面既無駅也無線，那是同一站的多種到達方式，
+ * 切開會憑空生出三個不存在的車站。
+ */
+export function tshAccessSegments(text: string): readonly string[] {
+  const out: string[] = [];
+  let start = 0;
+  for (const m of text.matchAll(TSH_MINUTES_G)) {
+    const end = (m.index ?? 0) + m[0].length;
+    if (!/駅|線|ライン|ライナー|モノレール/.test(text.slice(end))) continue;
+    out.push(text.slice(start, end));
+    start = end;
+  }
+  if (text.slice(start).trim() !== '') out.push(text.slice(start));
+  return out.map((s) => s.replace(/^[\s、,・･。]+/, '').trim()).filter((s) => s !== '');
+}
+
+/** 站名候選的清洗：去括號、砍掉「…まで／…から」的尾巴、並列取最後一個、路線黏在前面就切掉。 */
+function cleanStationName(token: string): string {
+  const stripped = token.replace(OPEN_BRACKET_RE, '').replace(CLOSE_BRACKET_RE, '').trim()
+    .replace(/(まで|から|へ).*$/, '')
+    .replace(/[（(].*$/, '');
+  const listed = Math.max(stripped.lastIndexOf('、'), stripped.lastIndexOf('/'));
+  const one = listed >= 0 ? stripped.slice(listed + 1) : stripped;
+  const glued = one.lastIndexOf('線');
+  // 「丸ノ内線東高円寺」：路線黏在站名前面。線之前至少要有 2 字才算路線名，
+  // 否則會把「西線11条」這種本身含「線」的站名切壞。
+  const bare = glued >= 2 && glued < one.length - 1 ? one.slice(glued + 1).replace(/^[の‐\-・･]+/, '') : one;
+  // 「JR池袋駅東口」這種把事業者黏在站名前面的寫法：站名本身不會以 JR 開頭
+  return bare.replace(/^(?:JR|ＪＲ)(?=.)/, '').replace(/駅$/, '').trim();
+}
+
+/** 上面切掉的路線那半。 */
+function lineGluedBefore(token: string): string {
+  const s = token.replace(OPEN_BRACKET_RE, '').replace(CLOSE_BRACKET_RE, '').trim();
+  const i = s.lastIndexOf('線');
+  return i >= 2 && i < s.length - 1 ? s.slice(0, i + 1) : '';
+}
+
+function isStationName(s: string): boolean {
+  return s !== '' && s.length <= 12 && !NOT_A_STATION_RE.test(s) && !LINE_SUFFIX_RE.test(s);
+}
+
+export type LineStation = { readonly line: string; readonly station: string };
+
+/** 由後往前找第一個「像站名」的詞；它前面的詞（扣掉交通方式碎片）就是路線。 */
+function fromTokens(before: string): LineStation | null {
+  const first = before.split(/\s+/).filter((t) => t !== '');
+  const toks = first.length === 1 && (first[0] ?? '').includes('/')
+    ? (first[0] ?? '').split('/').filter((t) => t !== '')
+    : first;
+  for (let i = toks.length - 1; i >= 0; i--) {
+    const tok = toks[i] ?? '';
+    const station = cleanStationName(tok);
+    if (!isStationName(station)) continue;
+    const pre = toks.slice(0, i).filter((t) => !NOT_A_STATION_RE.test(t)).join(' ').trim();
+    return { line: pre === '' ? lineGluedBefore(tok) : pre, station };
+  }
+  return null;
+}
+
+/** `東京メトロ・日比谷線「小伝馬町」`、`●東京メトロ千代田線【乃木坂駅】` 這種引號寫法。 */
+function fromBrackets(s: string): LineStation | null {
+  const t = s.trim();
+  const m = BRACKETED_TAIL_RE.exec(t);
+  if (m?.[1] === undefined) return null;
+  const station = m[1].trim().replace(/駅$/, '');
+  return isStationName(station) ? { line: t.slice(0, m.index).trim(), station } : null;
+}
+
+export function splitLineStation(head: string): LineStation | null {
+  const h = head.trim();
+  if (h === '') return null;
+  const quoted = fromBrackets(h);
+  if (quoted !== null) return quoted;
+  const i = h.lastIndexOf('駅');
+  if (i >= 0) {
+    const before = h.slice(0, i).trim();
+    const after = h.slice(i + 1).replace(/^[\s・･、,/]+/, '').replace(CLOSE_BRACKET_RE, '').trim();
+    const parts = fromBrackets(before) ?? fromTokens(before);
+    if (parts === null) return null;
+    // 站名寫在路線前面（`鷹の台駅 西武国分寺線`）：駅 後面那段才是路線
+    return after !== '' && LINE_SUFFIX_RE.test(after) ? { line: after, station: parts.station } : parts;
+  }
+  const toks = h.split(/\s+/).filter((t) => t !== '');
+  const last = toks[toks.length - 1] ?? '';
+  if (toks.length >= 2 && LINE_SUFFIX_RE.test(last)) {
+    const station = cleanStationName(toks[toks.length - 2] ?? '');
+    return isStationName(station) ? { line: last, station } : null;
+  }
+  return fromTokens(h);
+}
 
 export function parseTshStations(cellHtml: string): readonly Station[] {
   const out: Station[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   for (const m of cellHtml.matchAll(/<div>([\s\S]*?)<\/div>/g)) {
-    const line = plain(m[1] ?? '');
-    if (line === '') continue;
-    const g = TSH_MINUTES_RE.exec(line);
-    if (g?.[2] === undefined) continue;
-    const minutes = Number(g[2]);
-    if (!Number.isFinite(minutes)) continue;
-
-    const head = line.slice(0, g.index).trim().split(/\s+/);
-    const station = (head.pop() ?? '').replace(/駅$/, '').trim();
-    const lineName = head.join(' ').trim();
-    const key = `${lineName}|${station}`;
-    if (station === '' || seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      line: lineName,
-      station,
-      walkMinutes: g[1] === '徒歩'
-        ? known(minutes, 'measured', line)
-        : notListed(`${line}（原文未寫交通方式，不視為步行時間）`),
-      rawText: line,
-    });
+    const original = plain(m[1] ?? '');
+    if (original === '') continue;
+    for (const seg of tshAccessSegments(stripFormatChars(halfWidthDigits(original)))) {
+      // 「（池袋駅西口乗り場から約7分）」這種整段括號是補充說明，不是車站列
+      if (/^[（(]/.test(seg)) continue;
+      const g = TSH_MINUTES_RE.exec(seg);
+      const head = g === null ? seg : seg.slice(0, g.index);
+      const parts = splitLineStation(head);
+      if (parts === null) continue;
+      // 一格塞多站又只寫一個時間時，line 會殘留前面幾站的名字（`…「馬喰横山」 都営浅草線`）。
+      // 這些殘句會直接變成路線字典的項目，切到最後一個站名之後只留真正的路線。
+      const trimmed = parts.line.includes('」')
+        ? parts.line.slice(parts.line.lastIndexOf('」') + 1)
+        : parts.line;
+      const line = trimmed.includes('駅')
+        ? trimmed.slice(trimmed.lastIndexOf('駅') + 1).replace(/^[\s・･、,/]+/, '').trim()
+        : trimmed.trim();
+      // 公車站牌不是鐵路車站。判準是「這一列提到公車設施，而且沒有任何鐵路路線活下來」——
+      //「山手線 目黒駅 バス4分…」有路線，是鐵路站的公車補充說明，要留。
+      if (/バス|停留所|営業所/.test(line) && !LINE_SUFFIX_RE.test(line)) continue;
+      if (line === '' && /バス停|バス亭|停留所|営業所/.test(head)) continue;
+      const minutes = g === null ? Number.NaN : Number(g[2]);
+      const walked = g?.[1] === '徒歩' || g?.[1] === '歩';
+      const row: Station = {
+        line,
+        station: parts.station,
+        walkMinutes: walked && Number.isFinite(minutes)
+          ? known(minutes, 'measured', original)
+          : g !== null
+            ? notListed(`${original}（原文未寫交通方式，不視為步行時間）`)
+            // 有數字卻讀不出分鐘（`徒歩1分半`／`徒歩30秒`／尾端只有裸數字）＝我們讀不出來，
+            // 這是故障訊號，不可以標成「這頁沒寫」把它靜音掉
+            : /\d+\s*[分秒]|\d+\s*$/.test(seg)
+              ? unparsed(original)
+              : notListed(original),
+        rawText: original,
+      };
+      // 同一條線的同一站可能被寫成兩列（實測：一列「バス4分（バス停まで徒歩3分）」、
+      // 另一列「徒歩18分」）。留分鐘已知的那一列，否則第二列的真實步行時間會被先到的那列擋掉。
+      const key = `${line}|${parts.station}`;
+      const at = seen.get(key);
+      if (at === undefined) { seen.set(key, out.length); out.push(row); continue; }
+      const prev = out[at];
+      if (prev !== undefined && !prev.walkMinutes.known && row.walkMinutes.known) out[at] = row;
+    }
   }
   return out;
 }
@@ -332,6 +510,12 @@ export function genderOfRoom(r: TshRoom, fallback: GenderRestriction): GenderRes
  * 括號裡的百分比與減法都是對「原站白紙黑字寫出來的兩個數字」做算術，不是憑空生值，
  * 所以算式一律寫進 srcText 供稽核。
  */
+/**
+ * 保証金倍率的合理上界。日本的保証金慣例最多 3 個月；放寬到 12 是為了留餘裕，
+ * 不是因為看過 12 個月的物件。超過就視為原站把金額寫進倍率位置（見 parseDeposit）。
+ */
+const MAX_DEPOSIT_MONTHS = 12;
+
 export function parseDeposit(
   raw: string,
   rent: Field<Yen>,
@@ -349,11 +533,17 @@ export function parseDeposit(
   } else if (money.kind === 'zero') {
     deposit = known(yen(0), 'measured', `保証金 ${head}`);
   } else if (money.kind === 'months') {
-    // 「家賃1カ月分」是倍數不是金額——只有賃料已知時才換算，且把算式寫進 srcText 供稽核
-    deposit = rent.known
-      ? known(yen(Math.round(money.months * rent.v.jpy)), 'measured',
-        `保証金 ${head} × 賃料 ${rent.v.jpy}円`)
-      : notListed(`${head}（賃料未知，不換算）`);
+    // 「家賃1カ月分」是倍數不是金額——只有賃料已知時才換算，且把算式寫進 srcText 供稽核。
+    // ⚠️ 換算前先過合理範圍：原站有一筆把金額寫進倍率位置（逐字「家賃44000カ月分」，
+    // 顯然是想寫 ¥44,000），照乘會生出 ¥2,420,000,000 這個原站從未主張過的數字。
+    // 日本的保証金慣例最多 3 個月，這裡寬鬆放到 12；超出就是原站那一句寫壞了，
+    // 標 unparsed 並保留原文——寧可讓 health 亮燈，也不編一個沒人寫過的金額。
+    deposit = money.months > MAX_DEPOSIT_MONTHS
+      ? unparsed(`保証金 ${head}`)
+      : rent.known
+        ? known(yen(Math.round(money.months * rent.v.jpy)), 'measured',
+          `保証金 ${head} × 賃料 ${rent.v.jpy}円`)
+        : notListed(`${head}（賃料未知，不換算）`);
   } else if (money.kind === 'unparsed') {
     deposit = unparsed(`保証金 ${head}`);
   }
@@ -422,7 +612,11 @@ function foreignerPolicy(text: string): ForeignerPolicy {
     residenceCardRequired: s.residenceCard === true
       ? known(true, 'measured', `外国人 ${text}`)
       : notListed(text),
-    japaneseRequired: s.japanese === true
+    // 「日本語以外の言語対応不可」是否定形的日語能力要求：運營者只能用日語對應，
+    // 等於租客要具備日語能力。共用的 parseForeignerSignals 只認肯定寫法
+    //（「日本語の読み書き」等），這個寫法在 TSH 佔了近百筆，漏掉就是整欄靜音。
+    // 判定依據原文原樣留在 srcText，使用者自己看得到我們是憑哪一句下的結論。
+    japaneseRequired: s.japanese === true || /日本語以外の言語対応不可/.test(text)
       ? known(true, 'measured', `外国人 ${text}`)
       : notListed(text),
     guarantorCompanyRequired: notOffered<boolean>(),
@@ -549,10 +743,18 @@ export const adapter: SourceAdapter = {
       htmlSha256: raw.sha256,
     };
 
-    const units: Unit[] = parseTshRooms(html)
-      // 詳情頁只列空室與空室予定，但保險起見仍排除明確標示已滿的房間
-      .filter((r) => r.status === 'available' || r.status === 'coming_soon')
-      .map((r) => {
+    // 詳情頁只列空室與空室予定，但保險起見仍排除明確標示已滿的房間
+    const rooms = parseTshRooms(html)
+      .filter((r) => r.status === 'available' || r.status === 'coming_soon');
+    // 原站的 room-num 欄偶爾裝的是房型文字（實測「ルームシェア RoomShare」出現兩次），
+    // 房號因此不唯一，2 階與 4 階兩間不同的房會拿到同一個 unit id 而互相蓋掉。
+    // 房號重複時補上頁面序位當後綴；不重複的房號維持原樣，既有 id 不受影響。
+    const roomNoTimes = new Map<string, number>();
+    for (const r of rooms) roomNoTimes.set(r.roomNo, (roomNoTimes.get(r.roomNo) ?? 0) + 1);
+
+    const units: Unit[] = rooms
+      .map((r, i) => {
+        const unitKey = (roomNoTimes.get(r.roomNo) ?? 0) > 1 ? `${r.roomNo}#${i + 1}` : r.roomNo;
         const rent = moneyField(r.rentRaw, '賃料');
         const { deposit, nonRefundable } = parseDeposit(depositRaw, rent);
         const area = parseArea(r.areaRaw);
@@ -563,9 +765,9 @@ export const adapter: SourceAdapter = {
         if (ruleText !== '') notes.push(`ハウスルール：${ruleText}`);
 
         return {
-          id: `${buildingId}#${r.roomNo}`,
+          id: `${buildingId}#${unitKey}`,
           buildingId,
-          unitKey: r.roomNo,
+          unitKey,
           sourceUrl: ref.url,
           roomNo: known(r.roomNo, 'measured', `部屋番号 ${r.roomNoRaw}`),
           layout: r.layout === '' ? notListed('') : known(r.layout, 'measured', `部屋種別 ${r.layout}`),

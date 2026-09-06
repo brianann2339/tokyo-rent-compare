@@ -21,7 +21,7 @@ import {
   adapter, manifest,
   parseListItemIds, parseLastPage, parseAreaIds, parseTshAddress,
   parseTshStations, parseTshRooms, parseConditionBlocks, parseDeposit,
-  parseAgeLimit, summaryCell, yenBackslash, decodeEntities,
+  parseAgeLimit, summaryCell, yenBackslash, decodeEntities, tokyoMunicipality,
 } from '../sources/tokyosharehouse/index.ts';
 import { known, notListed, type Field, type Yen } from '../../packages/schema/src/field.ts';
 import type { Listing, Unit } from '../../packages/schema/src/model.ts';
@@ -204,6 +204,104 @@ describe('保証金：月數／金額／償却／返却', () => {
     const d = parseDeposit('', rent69k);
     assert.equal(d.deposit.known, false);
     assert.equal(d.nonRefundable.known, false);
+  });
+
+  // 2026-09-06 稽核：原站逐字寫「保証金 家賃44000カ月分」（顯然想寫 ¥44,000），
+  // 舊版照乘賃料生出 ¥2,420,000,000 並標成 measured——那是原站從未主張過的數字。
+  test('倍率大到不像話時是原站寫壞了，標 unparsed 保留原文，不硬乘', () => {
+    const d = parseDeposit('家賃44000カ月分 （退去時¥0返却）', rent69k);
+    assert.equal(d.deposit.known, false);
+    assert.equal(d.deposit.known === false && d.deposit.why, 'unparsed');
+    assert.match(d.deposit.srcText, /家賃44000カ月分/);
+    // 敷引是從保証金減出來的，保証金都讀不出來就不可能算得出敷引
+    assert.equal(d.nonRefundable.known, false);
+  });
+
+  test('12 個月以內照常換算（上界不可以誤傷正常值）', () => {
+    const d = parseDeposit('家賃2カ月分', rent69k);
+    assert.equal(d.deposit.known && d.deposit.v.jpy, 138000);
+  });
+});
+
+describe('アクセス欄：切點與「讀不出來」的處理（2026-09-06 稽核）', () => {
+  test('全形數字的步行分鐘——舊版讓 61 棟建物一個車站都沒有', () => {
+    const s = parseTshStations('<div>京急本線 平和島駅 徒歩８分</div><div>京急本線 大森町 徒歩８分</div>');
+    assert.deepEqual(
+      s.map((x) => [x.line, x.station, x.walkMinutes.known ? x.walkMinutes.v : null]),
+      [['京急本線', '平和島', 8], ['京急本線', '大森町', 8]],
+    );
+  });
+
+  test('「徒歩約8分」的「約」不可以讓整串左移一格', () => {
+    const s = parseTshStations('<div>JR京浜東北線 蒲田駅 徒歩約8分</div>');
+    assert.equal(s[0]?.line, 'JR京浜東北線');
+    assert.equal(s[0]?.station, '蒲田');
+    assert.equal(s[0]?.walkMinutes.known && s[0].walkMinutes.v, 8);
+  });
+
+  test('站名寫在路線前面時不可以把兩欄對調', () => {
+    const s = parseTshStations('<div>鷹の台駅 西武国分寺線 徒歩10分</div>');
+    assert.equal(s[0]?.line, '西武国分寺線');
+    assert.equal(s[0]?.station, '鷹の台');
+    assert.equal(s[0]?.walkMinutes.known && s[0].walkMinutes.v, 10);
+  });
+
+  test('交通方式碎片不可以進站名欄', () => {
+    const s = parseTshStations('<div>都営地下鉄浅草線/東京メトロ銀座線 浅草駅 バス5分+徒歩1分・自転車6分・徒歩18分</div>');
+    assert.equal(s.length, 1);
+    assert.equal(s[0]?.station, '浅草');
+    assert.equal(s[0]?.line, '都営地下鉄浅草線/東京メトロ銀座線');
+    assert.equal(s[0]?.walkMinutes.known && s[0].walkMinutes.v, 18);
+  });
+
+  test('一格塞兩站要切成兩筆，較近的那站不可以被吃掉', () => {
+    const s = parseTshStations('<div>東急東横線「都立大学」駅 徒歩8分、「学芸大学」駅 徒歩16分</div>');
+    assert.deepEqual(
+      s.map((x) => [x.station, x.walkMinutes.known ? x.walkMinutes.v : null]),
+      [['都立大学', 8], ['学芸大学', 16]],
+    );
+  });
+
+  test('同一線同一站被寫成兩列時，留分鐘已知的那一列', () => {
+    const s = parseTshStations(
+      '<div>山手線 目黒駅 バス4分（バス停まで徒歩3分）</div><div>山手線 目黒駅 徒歩18分</div>',
+    );
+    assert.equal(s.length, 1);
+    assert.equal(s[0]?.walkMinutes.known && s[0].walkMinutes.v, 18);
+  });
+
+  test('原站沒寫分鐘＝這頁沒寫；有數字卻讀不出來＝解析失敗（要告警）', () => {
+    const none = parseTshStations('<div>日比谷線 八丁堀駅</div>');
+    assert.equal(none[0]?.station, '八丁堀');
+    assert.equal(none[0]?.walkMinutes.known === false && none[0].walkMinutes.why, 'not_listed_on_page');
+    const secs = parseTshStations('<div>西武池袋線 桜台駅 徒歩30秒</div>');
+    assert.equal(secs[0]?.station, '桜台');
+    assert.equal(secs[0]?.walkMinutes.known === false && secs[0].walkMinutes.why, 'unparsed');
+  });
+
+  test('公車站牌不是鐵路車站，切得出來也不收', () => {
+    assert.deepEqual(parseTshStations('<div>バス 下田橋・丸山営業所 徒歩3分</div>'), []);
+    assert.deepEqual(parseTshStations('<div>国際興業バス 中丸町 バス停 徒歩1分</div>'), []);
+  });
+});
+
+describe('行政區：不可以切出不存在的市区町村（2026-09-06 稽核）', () => {
+  test('地名中途的「町」「村」不可以讓切點提前收尾', () => {
+    assert.equal(tokyoMunicipality('東村山市萩山町'), '東村山市');
+    assert.equal(tokyoMunicipality('武蔵村山市学園'), '武蔵村山市');
+    assert.equal(tokyoMunicipality('千代田区神田小川町1'), '千代田区');
+    assert.equal(tokyoMunicipality('西多摩郡瑞穂町箱根ケ崎'), '西多摩郡瑞穂町');
+  });
+
+  test('原站自己漏寫「市」時回空字串，不硬切出假行政區', () => {
+    assert.equal(tokyoMunicipality('国分寺光町1丁目'), '');
+    assert.deepEqual(parseTshAddress('東京都国分寺光町1丁目'),
+      { kind: 'tokyo', addressRaw: '東京都国分寺光町1丁目', ward: '' });
+  });
+
+  test('地址混入 U+200E 不可見字元要剝掉，否則字典會出現兩個「世田谷区」', () => {
+    assert.deepEqual(parseTshAddress('東京都\u200e世田谷区経堂1丁目'),
+      { kind: 'tokyo', addressRaw: '東京都世田谷区経堂1丁目', ward: '世田谷区' });
   });
 });
 

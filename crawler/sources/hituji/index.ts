@@ -13,6 +13,12 @@
  *
  * 注意兩種回應格式差很多：一般 GET 的 HTML 只含 30 筆，
  * 帶 `RSC: 1` 標頭才拿得到完整 payload——這點若搞錯會默默只抓到 30 筆。
+ *
+ * 一棟要看兩頁（2026-09-06 修正）：
+ *   詳情頁 `{webUrl}`      → 建物層的一切（constructionYear／stationData／
+ *                            qualificationForeigner／tenancyPeriod）＋房間**預覽**（各房型上限 2 筆）
+ *   房間頁 `{webUrl}/rooms` → 完整房間清單（鍵名是複數 singleRooms／dormitoryRooms）
+ * 只抓詳情頁會少 32% 的可申請房（實測：站方自報 802 間，預覽只給得出 545 間）。
  */
 
 import { reassembleFlight, extractObjects, extractArrayAfterKey } from '../../src/rsc.ts';
@@ -38,6 +44,7 @@ export const manifest: SourceManifest = {
       'rent', 'adminFee', 'deposit', 'keyMoney',
       'layout', 'areaM2', 'roomNo', 'isVacant',
       'genderRestriction', 'foreignerWelcomed', 'stations', 'totalUnits',
+      'yearBuilt',
     ],
     // 這些欄位站上完全不刊登。宣告出來，健康檢查才不會對它們產生
     // 永遠 0% 的假警報——警報疲勞會讓人乾脆關掉整個監控。
@@ -45,7 +52,7 @@ export const manifest: SourceManifest = {
       'agencyFee', 'guarantorInitialFee', 'fireInsurance', 'keyExchangeFee',
       'contractFee', 'cleaningFeeUpfront', 'renewalFee', 'renewalAdminFee',
       'cleaningFeeOnExit', 'earlyTerminationPenalty', 'depositNonRefundable',
-      'yearBuilt', 'structure', 'floorsAboveGround', 'petsAllowed',
+      'structure', 'floorsAboveGround', 'petsAllowed',
     ],
   },
   legal: {
@@ -64,7 +71,17 @@ export const manifest: SourceManifest = {
   },
 };
 
-/** 列表頁 payload 的建物摘要。欄位名取自 2026-08-16 實測的 RSC payload。 */
+/**
+ * 列表頁 payload 的建物摘要。欄位名取自 2026-08-16 實測的 RSC payload。
+ *
+ * ⚠️ 這裡除了 `id`／`name`／`webUrl` 以外全部是選填，而且是**真的會消失**：
+ * 2026-09-06 的覆蓋調查發現站方已把 `totalRoomCount`、`availableRoomCount`、
+ * `nearestTrainStationName`、`transportationName`、`transportationTimeMinutes`、
+ * `hasAvailableRoomForForeigner`、`minRent`／`maxRent`、`ownerName` 從列表 payload 拿掉。
+ * 所以凡是用到這些欄位的地方都必須有「詳情頁 payload 的退路」（見 `parseDetail`）——
+ * 少了退路，下一次 crawl 會把 1,243 棟的車站與 1,244 棟的總戶數靜默歸零，
+ * 而 95% 閘門守的是棟數，這種歸零它不會擋。
+ */
 type HitujiSummary = {
   id: number;
   name: string;
@@ -100,9 +117,9 @@ type HitujiRoom = {
    * 變動共益費的說明，例「実費」。
    * 空字串＝共益費是固定額；「実費」＝另有按實際用量計算的費用。
    */
-  variableCommonServiceFee: string;
+  variableCommonServiceFee?: string;
   /** `commonServiceFee` 與 `variableCommonServiceFee` 的**顯示串接**，不是獨立金額。 */
-  utilities: string;
+  utilities?: string;
   deposit: number;
   keyMoney: number;
   availabilityCode: string;
@@ -159,12 +176,19 @@ export function parseSummaries(html: string): HitujiSummary[] {
  * 合併前必須先記住來源——原始 payload 的房間物件本身沒有任何欄位可以區分，
  * 合併後就再也分不出來，會把相部屋標成個室。
  * （2026-08-16 親自比對 HAKUSAN HOUSE 原站時發現。）
+ *
+ * 詳情頁給的是**預覽**，兩個陣列各最多 2 筆；完整清單在 `{webUrl}/rooms`，
+ * 那一頁的鍵名是**複數**（`singleRooms`／`dormitoryRooms`，掛在 `comretRooms` 底下）。
+ * `extractArrayAfterKey` 是精確鍵比對，只餵單數鍵就永遠只撿得到那 2 筆預覽。
+ * 單複數都收：同一份 payload 不會兩種都有，重複 id 由下面的 seen 濾掉。
  */
 export function parseRooms(html: string): HitujiRoom[] {
   const buf = reassembleFlight(html);
+  const pick = (keys: readonly string[]): HitujiRoom[] =>
+    keys.flatMap((k) => extractArrayAfterKey<HitujiRoom>(buf, k));
   const tagged: HitujiRoom[] = [
-    ...extractArrayAfterKey<HitujiRoom>(buf, 'singleRoom').map((r) => ({ ...r, __kind: '個室' as const })),
-    ...extractArrayAfterKey<HitujiRoom>(buf, 'dormitoryRoom').map((r) => ({ ...r, __kind: 'ドミトリー' as const })),
+    ...pick(['singleRoom', 'singleRooms']).map((r) => ({ ...r, __kind: '個室' as const })),
+    ...pick(['dormitoryRoom', 'dormitoryRooms']).map((r) => ({ ...r, __kind: 'ドミトリー' as const })),
   ];
   // 兩個具名陣列都取不到時才退回錨點掃描，此時無法判斷房型
   const pool = tagged.length > 0 ? tagged : extractObjects<HitujiRoom>(buf, ROOM_ANCHOR);
@@ -203,51 +227,124 @@ function numField(raw: string | number | null | undefined, srcKey: string): Fiel
  *           但慣例不是這一頁的事實，不可據此填值。
  */
 function utilitiesBasisOf(r: HitujiRoom): UtilitiesBasis {
-  return r.variableCommonServiceFee.trim() !== '' ? 'excluded' : 'unknown';
+  return variableFeeOf(r) !== '' ? 'excluded' : 'unknown';
 }
 
-/** 把 HTML 標籤換成分隔符，取得可掃描的純文字。 */
-function htmlText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, '｜')
-    .replace(/｜{2,}/g, '｜');
+/** `/rooms` 頁的房間物件形狀尚未實測過，缺欄位時不可讓 `.trim()` 把整棟炸掉。 */
+function variableFeeOf(r: HitujiRoom): string {
+  return typeof r.variableCommonServiceFee === 'string' ? r.variableCommonServiceFee.trim() : '';
 }
 
-/** 詳情頁 payload 的 `townName` 是站方給的真實区名（例「港区」），優先於 URL 的 romaji slug。 */
-export function parseTownName(payload: string): string | null {
-  const m = /"townName":"((?:[^"\\]|\\.)*)"/.exec(reassembleFlight(payload));
-  if (m?.[1] === undefined || m[1] === '') return null;
+/** 詳情頁 `locations.stationData[]` 的一筆交通。 */
+type HitujiStation = {
+  trainStationName?: string;
+  primaryTrainLineName?: string;
+  methodCode?: string;
+  methodName?: string;
+  timeMinutes?: number;
+};
+
+/**
+ * 詳情頁 payload 裡屬於「這一棟」的結構化欄位。
+ *
+ * ⚠️ 地雷：詳情頁尾端的「類似物件」區塊帶著**列表摘要的完整 schema**
+ * （`totalRoomCount`、`availableRoomCount`、`nearestTrainStationName`、
+ * `hasAvailableRoomForForeigner`…）。對這些扁平鍵下 regex 抓到的是**別棟**的值——
+ * 2026-09-06 實測 1,244 頁，用第一個 `hasAvailableRoomForForeigner` 有 227 頁與本棟不符。
+ * 所以這裡只用「類似物件沒有的鍵」：`townName`、`constructionYear`、`stationData`、
+ * `singleRoomAvailability`／`dormitoryRoomAvailability`、`qualificationForeigner`、
+ * `tenancyPeriod`。這幾個鍵每頁各出現 2 次（同一份資料渲染兩遍），
+ * 實測 1,244 頁兩次的值完全相同，取第一個即可。
+ */
+type HitujiDetail = {
+  /** 站方給的真實区名（例「港区」），優先於 URL 的 romaji slug。 */
+  readonly townName: string | null;
+  /** 「建物の建築年」。null＝站方有這個欄位、但這一頁沒填（實測 477/1,244 頁）。 */
+  readonly constructionYear: number | null;
+  /** 去重後的交通清單，第 0 筆就是站方認定的最寄駅（實測 1,243/1,243 與列表摘要一致）。 */
+  readonly stations: readonly HitujiStation[];
+  /** 個室＋ドミトリー 的總室數；null＝兩個 availability 物件解不出來。 */
+  readonly totalRoomCount: number | null;
+  /** 入居条件「外国人」欄的原文。空字串＝站方有這個欄位、但這一頁沒寫（實測 128/1,244 頁）。 */
+  readonly qualificationForeigner: string;
+  /** 入居期間，例「長期」「長期・4〜6か月」。 */
+  readonly tenancyPeriod: string;
+};
+
+/** 取某個鍵之後的 JSON 字串值（第一個）。 */
+function stringAfterKey(buf: string, key: string): string | null {
+  const m = new RegExp(`"${key}":"((?:[^"\\\\]|\\\\.)*)"`).exec(buf);
+  if (m?.[1] === undefined) return null;
   try { return JSON.parse(`"${m[1]}"`) as string; } catch { return null; }
 }
 
 /**
- * 詳情頁的入居条件是渲染後的 HTML 文字，不在 RSC payload 裡（實測 2026-08-16：
- * payload 中「入居条件」「入居期間」零出現）。所以這兩項只能從 HTML 抽。
+ * `singleRoomAvailability`／`dormitoryRoomAvailability` 的 totalCount。
+ * 值為 `null`＝這一棟沒有這種房型 → 0 室；鍵不存在或解不出來 → null（不是 0，不可當 0 加）。
  */
-export function parseTenancyFromHtml(html: string): { foreignerReq: string; japaneseReq: string; term: string } {
-  const t = htmlText(html);
-  const fm = /外国人｜?：?｜?([^｜]{5,200})/.exec(t);
-  const jm = /日本人｜?：?｜?([^｜]{5,200})/.exec(t);
-  const tm = /入居期間｜([^｜]{1,20})/.exec(t);
+function availabilityTotal(buf: string, key: string): number | null {
+  const m = new RegExp(`"${key}":(null|\\{[^}]*\\})`).exec(buf);
+  if (m?.[1] === undefined) return null;
+  if (m[1] === 'null') return 0;
+  const t = /"totalCount":(\d+)/.exec(m[1]);
+  return t?.[1] === undefined ? null : Number(t[1]);
+}
+
+export function parseDetail(payload: string): HitujiDetail {
+  const buf = reassembleFlight(payload);
+  const town = stringAfterKey(buf, 'townName');
+  const single = availabilityTotal(buf, 'singleRoomAvailability');
+  const dorm = availabilityTotal(buf, 'dormitoryRoomAvailability');
+  const year = /"constructionYear":(\d+)/.exec(buf);
+  // stationData 在同一頁渲染兩遍，extractArrayAfterKey 會把兩份接起來 → 去重
+  const seen = new Set<string>();
+  const stations = extractArrayAfterKey<HitujiStation>(buf, 'stationData')
+    .filter((st) => {
+      const k = JSON.stringify(st);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
   return {
-    foreignerReq: fm?.[1]?.trim() ?? '',
-    japaneseReq: jm?.[1]?.trim() ?? '',
-    term: tm?.[1]?.trim() ?? '',
+    townName: town === null || town === '' ? null : town,
+    constructionYear: year?.[1] === undefined ? null : Number(year[1]),
+    stations,
+    totalRoomCount: single === null || dorm === null ? null : single + dorm,
+    qualificationForeigner: stringAfterKey(buf, 'qualificationForeigner') ?? '',
+    tenancyPeriod: [...new Set(extractArrayAfterKey<string>(buf, 'tenancyPeriod'))].join('・'),
   };
 }
 
-function foreignerPolicy(s: HitujiSummary, req: string): ForeignerPolicy {
-  const tags = s.tenancyConditionDescription ?? '';
+/**
+ * 「外国人可」旗標。
+ *
+ * 第一來源是列表摘要的 `hasAvailableRoomForForeigner`；2026-09 起該欄可能整個不見，
+ * 退回入居条件標籤列（`tenancyConditionDescription`）。實測 1,244 棟：
+ * 標籤列含「外国人」與該旗標為 true **完全一致（1,244/1,244）**，所以標籤列在的時候
+ * 可以雙向判定；標籤列也是空的才算未知。
+ * 詳情頁 payload 裡那個扁平的 `hasAvailableRoomForForeigner` **不可以用**——
+ * 它屬於頁尾的類似物件（實測 227/1,244 頁與本棟不符）。
+ */
+function welcomedOf(s: HitujiSummary, tags: string): Field<boolean> {
   const flag = s.hasAvailableRoomForForeigner;
+  if (typeof flag === 'boolean') return known(flag, 'measured', `hasAvailableRoomForForeigner=${flag}`);
+  if (tags === '') return notListed('');
+  return known(tags.includes('外国人'), 'measured', `tenancyConditionDescription=${tags}`);
+}
+
+function foreignerPolicy(s: HitujiSummary, d: HitujiDetail): ForeignerPolicy {
+  const tags = s.tenancyConditionDescription ?? '';
+  // 入居条件是 payload 的結構化欄位 `qualificationForeigner`，不是頁面文字。
+  // 2026-09-06 之前這裡用「整頁第一個『外国人』」的 regex 去撈，
+  // 介紹文裡先出現「外国人」的物件就會抓到招租文案而不是條件欄
+  // （實測 1,244 棟有 50 棟撈到的文字與結構化欄位不符），該棟的在留卡／日語／
+  // 保証会社需求也跟著掉成未知。
+  const req = d.qualificationForeigner;
   const sig = req === '' ? null : parseForeignerSignals(req);
   const boolField = (v: boolean | null | undefined): Field<boolean> =>
     typeof v === 'boolean' ? known(v, 'measured', req) : notListed(req);
   return {
-    welcomed: typeof flag === 'boolean'
-      ? known(flag, 'measured', `hasAvailableRoomForForeigner=${flag}`)
-      : notListed(tags),
+    welcomed: welcomedOf(s, tags),
     residenceCardRequired: sig === null ? notListed('') : boolField(sig.residenceCard),
     japaneseRequired: sig === null ? notListed('') : boolField(sig.japanese),
     guarantorCompanyRequired: sig === null ? notListed('') : boolField(sig.guarantorCompany),
@@ -256,7 +353,32 @@ function foreignerPolicy(s: HitujiSummary, req: string): ForeignerPolicy {
   };
 }
 
-function stationsOf(s: HitujiSummary): readonly Station[] {
+/**
+ * 最寄駅。
+ *
+ * 第一來源改成詳情頁的 `stationData`：那是唯一帶路線名的地方
+ * （列表摘要的 `transportationName` 是交通方式「徒歩／バス」，不是路線），
+ * 而且列表摘要的三個車站欄位 2026-09 起可能整組消失。
+ * 實測 1,243/1,243 棟 `stationData[0].trainStationName` 與列表摘要的
+ * `nearestTrainStationName` 完全相同，所以換來源不會換掉「哪一站」。
+ *
+ * stationData 每棟最多列到 5 站，這裡**仍然只輸出最寄的那一站**——
+ * 輸出全部會改變跨來源比對用的車站集合，不在這次修正的範圍內。
+ */
+function stationsOf(s: HitujiSummary, d: HitujiDetail): readonly Station[] {
+  const st = d.stations[0];
+  if (st !== undefined && typeof st.trainStationName === 'string' && st.trainStationName !== '') {
+    const mins = st.timeMinutes;
+    const method = st.methodName ?? '';
+    return [{
+      line: st.primaryTrainLineName ?? '',
+      station: st.trainStationName.replace(/駅$/, ''),
+      walkMinutes: st.methodCode === 'walk' && typeof mins === 'number'
+        ? known(mins, 'measured', `stationData[0].timeMinutes=${mins}`)
+        : notListed(`${method}${mins ?? ''}`),
+      rawText: `${st.trainStationName} ${method}${mins ?? ''}分${d.stations.length > 1 ? ' 他' : ''}`,
+    }];
+  }
   const name = s.nearestTrainStationName;
   if (typeof name !== 'string' || name === '') return [];
   const mins = s.transportationTimeMinutes;
@@ -278,7 +400,19 @@ export function keysFromUrl(url: string): { ward: string; slug: string } | null 
   return { ward: m[2], slug: m[3] };
 }
 
-function buildBuilding(s: HitujiSummary, raw: RawDoc, ctx: ExtractContext, townName: string | null): Building | null {
+/**
+ * 總戶數。列表摘要的 `totalRoomCount` 是第一來源；2026-09 起該欄可能不存在，
+ * 退回詳情頁的 singleRoomAvailability.totalCount + dormitoryRoomAvailability.totalCount。
+ * 實測 1,244 棟兩者完全相等（1,244/1,244），退路不會換來另一個口徑。
+ */
+function totalUnitsOf(s: HitujiSummary, d: HitujiDetail): Field<number> {
+  if (typeof s.totalRoomCount === 'number') return numField(s.totalRoomCount, 'totalRoomCount');
+  if (d.totalRoomCount === null) return notListed('');
+  return known(d.totalRoomCount, 'measured',
+    `singleRoomAvailability.totalCount+dormitoryRoomAvailability.totalCount=${d.totalRoomCount}`);
+}
+
+function buildBuilding(s: HitujiSummary, raw: RawDoc, ctx: ExtractContext, d: HitujiDetail): Building | null {
   const keys = keysFromUrl(s.webUrl);
   if (keys === null) return null;
   const images = s.eyecatchImageUrls ?? (s.eyecatchImageUrl !== undefined ? [s.eyecatchImageUrl] : []);
@@ -291,12 +425,17 @@ function buildBuilding(s: HitujiSummary, raw: RawDoc, ctx: ExtractContext, townN
     kind: 'sharehouse',
     addressRaw: '',
     prefecture: '東京都',
-    ward: townName ?? keys.ward,
-    stations: stationsOf(s),
+    ward: d.townName ?? keys.ward,
+    stations: stationsOf(s, d),
     structure: notOffered<string>(),
-    yearBuilt: notOffered<number>(),
+    // 站上有「建物の建築年」這個欄位（payload 的 constructionYear，實測 767/1,244 頁有值），
+    // 2026-09-06 之前這裡硬寫 notOffered＝「來源根本沒有這個欄位」，那是錯的 why：
+    // health 的填充率與 unparsed 告警都不會對 not_offered 出聲，缺口永遠不會浮出來。
+    yearBuilt: d.constructionYear === null
+      ? notListed('')
+      : known(d.constructionYear, 'measured', `constructionYear=${d.constructionYear}`),
     floorsAboveGround: notOffered<number>(),
-    totalUnits: numField(s.totalRoomCount, 'totalRoomCount'),
+    totalUnits: totalUnitsOf(s, d),
     imageUrls: images,
     fetchedAt: raw.fetchedAt,
     sourceUpdatedAt: notListed(''),
@@ -305,9 +444,28 @@ function buildBuilding(s: HitujiSummary, raw: RawDoc, ctx: ExtractContext, townN
   };
 }
 
+/**
+ * 空室 vs 空室予定。
+ *
+ * 實測 1,244 頁只出現兩種 code：`empty`→「空室」（現在可入住）、
+ * `scheduled`→「空室予定」（還沒空出來）。2026-09-06 之前寫成
+ * `availabilityCode !== 'occupied'`，把 128 間「空室予定」標成現在有空房，
+ * 與 tokyosharehouse／borderless 同義狀態標 false 的做法相反，
+ * 網站預設的「只看有空房」會把還沒空的房算進去。
+ * 沒見過的 code 標 unparsed（唯一會觸發 health 告警的狀態），不猜。
+ */
+function vacancyOf(r: HitujiRoom): Field<boolean> {
+  const src = `availabilityCode=${r.availabilityCode}`;
+  if (r.availabilityCode === 'empty') return known(true, 'measured', src);
+  if (r.availabilityCode === 'scheduled' || r.availabilityCode === 'occupied') {
+    return known(false, 'measured', src);
+  }
+  return unparsed<boolean>(src);
+}
+
 function buildUnit(
   buildingId: string, sourceUrl: string, s: HitujiSummary, r: HitujiRoom,
-  tenancy: { foreignerReq: string; term: string },
+  d: HitujiDetail,
 ): Unit {
   const basis = utilitiesBasisOf(r);
   const zeroNotOffered = notOffered<Yen>();
@@ -326,8 +484,8 @@ function buildUnit(
       rent: yenField(r.rent, 'rent'),
       adminFee: yenField(r.commonServiceFee, 'commonServiceFee'),
       utilities: basis === 'excluded'
-        ? { known: false, why: 'not_listed_on_page', basis: 'excluded_stated', srcText: `variableCommonServiceFee=${r.variableCommonServiceFee}` }
-        : notListed(`utilities=${r.utilities}`),
+        ? { known: false, why: 'not_listed_on_page', basis: 'excluded_stated', srcText: `variableCommonServiceFee=${variableFeeOf(r)}` }
+        : notListed(`utilities=${r.utilities ?? ''}`),
       internet: notOffered<Yen>(),
       otherMonthly: notOffered<Yen>(),
     },
@@ -352,19 +510,67 @@ function buildUnit(
     utilitiesBasis: basis,
     furnished: notListed(''),
     availableFrom: known(r.availabilityLabel, 'measured', `availabilityLabel=${r.availabilityLabel}`),
-    isVacant: known(r.availabilityCode !== 'occupied', 'measured', `availabilityCode=${r.availabilityCode}`),
+    isVacant: vacancyOf(r),
     contractType: 'unknown',
     contractMonths: notListed(''),
-    minStayMonths: notListed(tenancy.term),
+    // 入居期間是 payload 的結構化陣列 tenancyPeriod（實測 1,244/1,244 頁都有）。
+    // 之前用頁面文字的 regex 只撈得到第一個值，1,244 棟中有 76 棟因此漏掉
+    // 「長期・4〜6か月」這種複數值裡的短期選項。
+    minStayMonths: notListed(d.tenancyPeriod),
     genderRestriction: parseGenderTags(s.tenancyConditionDescription ?? ''),
     ageLimitRaw: notListed(''),
     petsAllowed: notOffered<boolean>(),
-    foreigner: foreignerPolicy(s, tenancy.foreignerReq),
+    foreigner: foreignerPolicy(s, d),
     notes: [
-      ...(r.variableCommonServiceFee.trim() !== '' ? [`共益費另有變動部分：${r.variableCommonServiceFee}`] : []),
-      ...(tenancy.term !== '' ? [`入居期間：${tenancy.term}`] : []),
+      ...(variableFeeOf(r) !== '' ? [`共益費另有變動部分：${variableFeeOf(r)}`] : []),
+      ...(d.tenancyPeriod !== '' ? [`入居期間：${d.tenancyPeriod}`] : []),
     ],
   };
+}
+
+/** discover 把完整房間清單放進 hint 的鍵名。 */
+const FULL_ROOMS = '__fullRooms';
+
+/**
+ * 這一棟要不要另外去拿完整房間清單 `{webUrl}/rooms`。
+ *
+ * 為什麼需要：詳情頁的 singleRoom／dormitoryRoom 只是**預覽**，各上限 2 筆。
+ * 實測 1,244 棟——站方自報的 availableRoomCount 合計 802 間，
+ * 從詳情頁只解得出 545 間，差 257 間（32% 的可申請房從來沒進過我們的資料）。
+ * 完整清單在 `{webUrl}/rooms`（1,244 頁的 payload 都寫了 roomsUrl，
+ * 且 1,244/1,244 恰好等於 webUrl + '/rooms'），鍵名是複數的
+ * `comretRooms.singleRooms`／`dormitoryRooms`。
+ *
+ * 為什麼不乾脆改抓 /rooms 取代詳情頁（那樣請求數不變）：
+ * `constructionYear`（767 棟的築年）、`stationData`（唯一有路線名的地方）、
+ * `qualificationForeigner`（入居条件）、`tenancyPeriod`（入居期間）都只在詳情頁，
+ * 換過去等於拿這四項去換那 257 間房。所以是「詳情頁照抓 + 有空房的再補一次 /rooms」。
+ *
+ * 判斷條件只用「站方明說沒有空房」這一個否定條件，不用
+ * 「availableRoomCount > 預覽上限」這種聰明版：實測有 2 棟
+ * （arakawa/access-higashi-ogu、itabashi/shintoshin-itabashi3）availableRoomCount=2
+ * 但詳情頁的預覽陣列整個不存在，聰明版會把它們漏掉。
+ * 舊版列表 schema 下要多抓 363 頁；新版 schema 沒有這兩個欄位時退為全部 1,244 頁。
+ */
+function needsFullRoomList(s: HitujiSummary): boolean {
+  return s.hasAvailableRoom !== false && s.availableRoomCount !== 0;
+}
+
+/**
+ * 完整清單優先、詳情頁預覽補位，以 room id 去重。
+ * 兩份都留是因為兩邊都可能缺：/rooms 取不到時預覽是唯一來源，
+ * 而預覽每種房型上限 2 筆、拿不到完整清單就一定不齊。
+ */
+function mergeRooms(full: unknown, preview: readonly HitujiRoom[]): HitujiRoom[] {
+  const list = Array.isArray(full) ? (full as HitujiRoom[]) : [];
+  const seen = new Set<number>();
+  const out: HitujiRoom[] = [];
+  for (const r of [...list, ...preview]) {
+    if (typeof r?.number !== 'string' || seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out;
 }
 
 export const adapter: SourceAdapter = {
@@ -386,19 +592,42 @@ export const adapter: SourceAdapter = {
       );
     }
 
+    let roomsFailed = 0;
+    let firstRoomsError = '';
     for (const s of summaries) {
-      yield { url: s.webUrl, hint: s as unknown as Record<string, unknown> };
+      const hint = { ...s } as unknown as Record<string, unknown>;
+      if (needsFullRoomList(s)) {
+        const url = `${s.webUrl.replace(/\/$/, '')}/rooms`;
+        try {
+          hint[FULL_ROOMS] = parseRooms((await fetcher.get(url)).body);
+        } catch (e) {
+          // 取不到就退回詳情頁的預覽（不齊，但是真的）。離線重解析時本機沒有
+          // /rooms 原始檔，會全部走這條路——所以要在最後把筆數講出來，
+          // 不能讓「房間變少」看起來像網站上真的沒房。
+          roomsFailed += 1;
+          if (firstRoomsError === '') {
+            firstRoomsError = `${url} — ${e instanceof Error ? e.message : String(e)}`;
+          }
+        }
+      }
+      yield { url: s.webUrl, hint };
+    }
+    if (roomsFailed > 0) {
+      console.warn(
+        `  ⚠ hituji：${roomsFailed} 棟拿不到完整房間清單（/rooms），` +
+        `這些棟只剩詳情頁預覽（每種房型最多 2 間）。首例：${firstRoomsError}`,
+      );
     }
   },
 
   extract(raw: RawDoc, ref: TargetRef, ctx: ExtractContext): Listing | null {
     const s = ref.hint as unknown as HitujiSummary | undefined;
     if (s === undefined || typeof s.webUrl !== 'string') return null;
-    const building = buildBuilding(s, raw, ctx, parseTownName(raw.body));
+    const detail = parseDetail(raw.body);
+    const building = buildBuilding(s, raw, ctx, detail);
     if (building === null) return null;
-    const rooms = parseRooms(raw.body);
-    const tenancy = parseTenancyFromHtml(raw.body);
-    const units = rooms.map((r) => buildUnit(building.id, s.webUrl, s, r, tenancy));
+    const rooms = mergeRooms(ref.hint?.[FULL_ROOMS], parseRooms(raw.body));
+    const units = rooms.map((r) => buildUnit(building.id, s.webUrl, s, r, detail));
     return { building, units };
   },
 };

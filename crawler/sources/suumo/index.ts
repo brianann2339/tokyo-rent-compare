@@ -57,7 +57,6 @@ import type {
 import { parseMoney, monthsToYen } from '../../../packages/jp-parse/src/money.ts';
 import { parseArea } from '../../../packages/jp-parse/src/area.ts';
 import { parseLayout } from '../../../packages/jp-parse/src/layout.ts';
-import { parseYearBuilt } from '../../../packages/jp-parse/src/contract.ts';
 
 const SITE = 'https://suumo.jp';
 
@@ -405,6 +404,95 @@ export function parseFloorLabel(text: string): Field<number> {
   return known(Number(m[1]), 'measured', `階 ${t}`);
 }
 
+/**
+ * 築年。**SUUMO 一覧頁不寫完工年，只寫屋齡**，所以這裡不能用 jp-parse 的 parseYearBuilt
+ * （它的「築N年」分支是 `now.getFullYear() - N`，對 SUUMO 會系統性推早一年）。
+ *
+ * ── SUUMO 的「築N年」到底是什麼（2026-09-06 兩組互相獨立的實測，逐字比對原始檔）──
+ *   N = (基準年 − 完工年) + (完工月 ≤ 基準月 ? 1 : 0)     ← 含月份的**進位**屋齡
+ *   (a) data/aliases/buildings.json 人審通過的 suumo×leopalace21 同棟共 775 組，
+ *       其中 773 組雙方都有築年；以各棟自己那頁的抓取時點（JST）代入上式，
+ *       **773/773** 與 SUUMO 印出的「築N年」完全相同，0 例外。
+ *   (b) data/raw/suumo 內另有 4 個物件詳情頁帶結構化的「築年月」欄
+ *       （jnc_000109161796＝2007年3月／jnc_000109148930＝2020年8月／
+ *         jnc_000107595656＝2022年3月／jnc_000108031279＝2026年7月），
+ *       與同批一覧頁的「築20年／築7年／築5年／新築」也 **4/4** 相符。
+ *   全 1,767 頁掃描結果：一覧頁的築年欄只有三種寫法——「築N年」（N=0〜99）、
+ *   「新築」3,849 次、「築99年以上」16 次；「築年月」只出現在上述 4 個詳情頁。
+ *
+ * ── 為什麼不是「加 1」──────────────────────────────────────
+ * 把上式反解，一個「築N年」對應的不是一個年份，而是一段 12 個月的完工區間，
+ * 它橫跨兩個西元年；完工年只可能是 Y−N 或 Y−N+1，我們無從分辨是哪一個
+ * （前述 773 組裡 175 組落在 Y−N、598 組落在 Y−N+1）。
+ * 「一律 +1」會有 22.6% 的筆數是錯的——那是猜一個年份，不是解析出一個年份。
+ *
+ * ── 所以存什麼 ────────────────────────────────────────────
+ * 存**區間的下界年**，並且 basis 用 'unstated' 而不是 'measured'：
+ * 這個年份是我們從屋齡推出來的，SUUMO 從來沒有寫過它，
+ * 而 'measured' 的定義是「原站明寫」（見 packages/schema/src/field.ts）。
+ * srcText 一律寫出推導過程與區間，讓任何人事後都看得出真值可能是下一年
+ * （「新築」只寫下界——它的完工日可能還在未來，寫上界會是假的）。
+ * 下界年還有一個好處：用該頁的抓取年回推屋齡（Y − 下界年）會剛好還原
+ * SUUMO 自己印的「築N年」，我們不會跟來源自相矛盾。
+ */
+function monthIndex(year: number, month: number): number { return year * 12 + (month - 1); }
+
+function fromMonthIndex(i: number): { year: number; month: number } {
+  return { year: Math.floor(i / 12), month: (i % 12) + 1 };
+}
+
+/** SUUMO 的頁面以日本時間渲染，基準月份要用 JST 取；用 UTC 會在月底跨月時整整差一個月。 */
+function jstYearMonth(at: Date): { year: number; month: number } {
+  const d = new Date(at.getTime() + 9 * 60 * 60 * 1000);
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
+}
+
+/**
+ * @param ageText  一覧頁 col3 的第一個 div（`築5年`／`新築`／`築99年以上`）
+ * @param listFetchedAt **那一頁**被抓下來的時間——不是重新解析的時間。
+ *   兩者不同就會整批位移一年，所以基準時間是從 hint 帶進來的（見 `__listFetchedAt`）。
+ */
+export function parseSuumoYearBuilt(ageText: string, listFetchedAt: Date): Field<number> {
+  const t = ageText.trim();
+  if (t === '') return notListed('');
+  const { year, month } = jstYearMonth(listFetchedAt);
+  const base = `該頁抓取於 ${year}年${month}月`;
+
+  // 「築99年以上」是 SUUMO 的封頂顯示：只說了屋齡 ≥99 年，換算成年份只有上界
+  // （完工不晚於某年），沒有下界可存——真值可能是 1890 年。
+  // 舊版把它當成「築99年」推出確切的 1927，是把一個界限當成值。
+  if (t.includes('以上')) {
+    return unparsed(`築年数 ${t}（${base}；封頂顯示，只給了屋齡下界，無法推出完工年下界）`);
+  }
+
+  // 新築＝完工未滿 1 年且未曾入居（品確法第2条）。SUUMO 對這種物件不印「築N年」，
+  // 而且**包含尚未完工的物件**（實測 jnc_000109467282 的 leopalace 原文是「2026年10月築」，
+  // SUUMO 一覧頁寫「新築」），所以完工日可能還在未來。
+  // 能保證的只有「完工不早於抓取日的一年前」——與「築1年」的區間下界完全相同。
+  const bucket = t === '新築' ? 1 : null;
+  const m = bucket === null ? /^築\s*(\d+)\s*年$/.exec(t) : null;
+  if (bucket === null && m?.[1] === undefined) {
+    return unparsed(`築年数 ${t}（${base}；不是「築N年」也不是「新築」，可能是版型改了）`);
+  }
+  const age = bucket ?? Number(m?.[1]);
+  if (!Number.isFinite(age) || age < 0 || age > 150) {
+    return unparsed(`築年数 ${t}（${base}；屋齡 ${age} 超出可信範圍）`);
+  }
+
+  const baseIdx = monthIndex(year, month);
+  const from = fromMonthIndex(baseIdx - 12 * age + 1);
+  const to = fromMonthIndex(baseIdx - 12 * age + 12);
+  // 「新築」只有下界：完工可能還在未來，寫出上界會是假的。
+  // 實例：jnc_000109467282（アルク中川コート）一覧頁寫「新築」，
+  // 人審同棟的 leopalace21 原文是「2026年10月築」，比 2026-09 的抓取日還晚。
+  const note = t === '新築'
+    ? `築年数 新築（${base}；未滿 1 年且未入居，SUUMO 對尚未完工的物件也標新築，`
+      + `故完工不早於 ${from.year}年${from.month}月、可能仍在未來，此處存下界年）`
+    : `築年数 ${t}（${base}；SUUMO 的築年数是含月份進位的屋齡，`
+      + `可推得完工 ∈ ${from.year}年${from.month}月〜${to.year}年${to.month}月，此處存區間下界年）`;
+  return known(from.year, 'unstated', note);
+}
+
 /** `13階建` → 13；`地下1地上14階建` → 14（地下不計入地上樓層數）。 */
 export function parseFloorsAboveGround(text: string): Field<number> {
   const t = text.trim();
@@ -477,6 +565,12 @@ type Hint = SuumoBuilding & {
   readonly __wardSlug: string;
   readonly __listUrl: string;
   readonly __listSha256: string;
+  /**
+   * 這一頁被抓下來的時間（ISO）。築年只能從屋齡回推，基準必須是**抓取時點**；
+   * SUUMO 的 fetchMode 是 'none'，extract 拿到的 raw.fetchedAt 是重新解析的當下，
+   * 拿它當基準會讓每次重跑都把全站築年往後推一年。
+   */
+  readonly __listFetchedAt: string;
 };
 
 export const adapter: SourceAdapter = {
@@ -495,7 +589,7 @@ export const adapter: SourceAdapter = {
       }
 
       for (const b of firstBuildings) {
-        yield refOf(b, ward.slug, first.url, first.sha256);
+        yield refOf(b, ward.slug, first.url, first.sha256, first.fetchedAt);
       }
 
       for (let page = 2; page <= Math.min(maxPage, MAX_PAGES_PER_WARD); page++) {
@@ -504,7 +598,7 @@ export const adapter: SourceAdapter = {
         // 超過最後一頁時 SUUMO 回一個 0 筆的頁面：這是正常終止，不是錯誤
         if (buildings.length === 0) break;
         for (const b of buildings) {
-          yield refOf(b, ward.slug, doc.url, doc.sha256);
+          yield refOf(b, ward.slug, doc.url, doc.sha256, doc.fetchedAt);
         }
       }
     }
@@ -518,11 +612,14 @@ export const adapter: SourceAdapter = {
     // 只收東京都物件。非東京都＝不在收錄範圍（回 null，不是錯誤）
     if (ward === null) return null;
 
+    // 基準時間：這一頁自己的抓取時點。hint 沒帶（例如手工組 hint）時才退回 ctx.now，
+    // 因為推早／推晚一年比解析不出來更難察覺。
+    const listFetchedAt = new Date(h.__listFetchedAt);
+    const ageBaseAt = Number.isNaN(listFetchedAt.getTime()) ? ctx.now : listFetchedAt;
+
     const buildingId = `suumo:${h.__wardSlug}/${sha256(`${h.name}|${h.addressRaw}`).slice(0, 12)}`;
     const firstRow = h.rows[0];
     if (firstRow === undefined) return null;
-
-    const yearBuilt = parseYearBuilt(h.ageText, ctx.now);
 
     const building: Building = {
       id: buildingId,
@@ -540,9 +637,7 @@ export const adapter: SourceAdapter = {
         .filter((s): s is Station => s !== null),
       // 「建物種別: マンション」是種別不是構造（RC造等），SUUMO 賃貸不刊構造
       structure: notListed(h.kindLabel),
-      yearBuilt: yearBuilt === null
-        ? notListed(h.ageText)
-        : known(yearBuilt, 'measured', `築年数 ${h.ageText}（以 ${ctx.now.getFullYear()} 年推算）`),
+      yearBuilt: parseSuumoYearBuilt(h.ageText, ageBaseAt),
       floorsAboveGround: parseFloorsAboveGround(h.floorsText),
       totalUnits: notListed('詳情頁有「総戸数」欄，首版只讀一覧頁'),
       imageUrls: h.imageUrl === '' ? [] : [h.imageUrl],
@@ -628,8 +723,10 @@ function buildUnit(buildingId: string, h: Hint, r: SuumoRow): Unit {
   };
 }
 
-function refOf(b: SuumoBuilding, wardSlug: string, url: string, hash: string): TargetRef {
-  const hint: Hint = { ...b, __wardSlug: wardSlug, __listUrl: url, __listSha256: hash };
+function refOf(b: SuumoBuilding, wardSlug: string, url: string, hash: string, fetchedAt: string): TargetRef {
+  const hint: Hint = {
+    ...b, __wardSlug: wardSlug, __listUrl: url, __listSha256: hash, __listFetchedAt: fetchedAt,
+  };
   return {
     url: b.rows[0]?.detailUrl ?? url,
     hint: hint as unknown as Record<string, unknown>,

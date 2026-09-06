@@ -72,24 +72,35 @@ export const manifest: SourceManifest = {
   },
 };
 
-/** 把 HTML 轉成以 ｜ 分隔的可掃描文字。 */
+/**
+ * 把 HTML 轉成以 ｜ 分隔的可掃描文字。
+ * 實體要還原：新版房間卡的面積寫成 `16.52m&sup2;`，不還原就整批解不出面積。
+ */
 function text(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, '｜')
     .replace(/｜+/g, '｜')
+    .replace(/&sup2;/g, '²')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
     .replace(/[ \t\r\n]+/g, ' ');
 }
 
-/** 取 `標籤｜…｜¥金額` 樣式的金額。Oak House 的 ¥ 與數字常被標籤切開。 */
+/**
+ * 取 `標籤｜…｜¥金額` 樣式的金額。Oak House 的 ¥ 與數字常被標籤切開。
+ * `label` 當正則片段用（共益費在兩種版型的寫法不同），srcText 存實際命中的那個標籤。
+ */
 function labelledMoney(t: string, label: string): { raw: string; jpy: number } | null {
-  const re = new RegExp(`${label}｜[^0-9]{0,40}([0-9,]{3,})`);
+  // 金額只要 1 位數就收：要求 3 位數會把原站白紙黑字的「共益費 ¥0」判成「頁面沒寫」。
+  // 前面有 `標籤｜` 錨點、且 [^0-9] 跨不過數字，抓到的必定是標籤後第一個數字串。
+  const re = new RegExp(`(${label})｜[^0-9]{0,40}([0-9,]+)`);
   const m = re.exec(t);
-  if (m?.[1] === undefined) return null;
-  const r = parseMoney(`${m[1]}円`);
+  if (m?.[1] === undefined || m[2] === undefined) return null;
+  const r = parseMoney(`${m[2]}円`);
   if (r.kind !== 'amount' && r.kind !== 'zero') return null;
-  return { raw: `${label} ¥${m[1]}`, jpy: r.kind === 'zero' ? 0 : r.jpy };
+  return { raw: `${m[1]} ¥${m[2]}`, jpy: r.kind === 'zero' ? 0 : r.jpy };
 }
 
 function moneyOf(t: string, label: string): Field<Yen> {
@@ -127,7 +138,7 @@ export function parseBadges(html: string): OakBadges {
 }
 
 export type OakRoom = {
-  id: string; number: string; vacant: boolean;
+  id: string; roomNo: Field<string>; vacant: boolean;
   rent: Field<Yen>; adminFee: Field<Yen>; contractFee: Field<Yen>;
   areaM2: Field<number>; layout: Field<string>; floor: Field<number>;
   kind: PropertyKind; gender: GenderRestriction;
@@ -138,12 +149,40 @@ const ROOM_KIND: Record<string, PropertyKind> = {
   apartment: 'apartment', sharehouse: 'sharehouse', social: 'social', dormitory: 'dormitory',
 };
 
+/**
+ * 房間表有兩種版型，同一站同時存在：
+ *   舊版 `<tr id="數字">` 表格列
+ *   新版 `<article class="p-room__caset">` 卡片
+ * data-* 屬性完全同構，差在外層標籤與幾個欄位標籤（広さ：／間取り：／共益費・管理費）。
+ * 只認舊版時，565 棟裡有 413 棟（978 張房間卡）整批掃不到——而且 0 間房被記成
+ * 「量測到 0 間」，失敗被當成事實（2026-09-06 稽核）。
+ */
+const ROOM_ROW_RE =
+  /<tr\s+id="\d+"[\s\S]*?<\/tr>|<article[^>]*class="[^"]*p-room__caset[^"]*"[\s\S]*?<\/article>/g;
+
+/** 新版卡片寫「共益費・管理費」，舊版表格寫「共益費」。 */
+const ADMIN_FEE_LABEL = '共益費(?:・管理費)?';
+
+/**
+ * 房號在原站是獨立元素（舊版 `<h3>`、新版 `<p class="p-room__caset__number">`），
+ * 不要從剝完標籤的整列文字裡猜位置——舊版就是這樣猜錯，退回去拿 `<tr id>` 當房號。
+ */
+function roomNumberSlot(row: string): string {
+  const m = /<div class="ext-spheader">\s*<h3>([\s\S]*?)<\/h3>/.exec(row)
+    ?? /<p class="p-room__caset__number[^"]*">([\s\S]*?)<\/p>/.exec(row);
+  return (m?.[1] ?? '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function parseRooms(html: string): OakRoom[] {
   const out: OakRoom[] = [];
-  for (const m of html.matchAll(/<tr\s+id="(\d+)"[\s\S]*?<\/tr>/g)) {
+  const usedKeys = new Set<string>();
+  for (const m of html.matchAll(ROOM_ROW_RE)) {
     const row = m[0];
-    const id = m[1];
-    if (id === undefined || !row.includes('data-sort_price')) continue;
+    if (!row.includes('data-sort_price')) continue;
     const t = text(row);
 
     const attr = (name: string): string | null => {
@@ -151,23 +190,36 @@ export function parseRooms(html: string): OakRoom[] {
       return a?.[1] ?? null;
     };
 
-    // 房號是列首第一個純數字／英數短字串
-    const numM = /^[｜\s]*([0-9A-Za-z-]{1,8})\s*｜\s*(?:満室|空室|入居|即入居)/.exec(t)
-      ?? /｜\s*([0-9A-Za-z-]{1,8})\s*｜\s*(?:満室|空室|即入居)/.exec(t);
+    const slot = roomNumberSlot(row);
+    // 新版卡片把狀態接在房號後面（「402 | 空室予定 2026/09/21 ~」），只取分隔符前那段。
+    const shown = (slot.split('|')[0] ?? '').trim();
+    // 原站偶爾在房號欄放房型文字（「シングル」「ツイン」）——那不是房號。
+    // 抓不到就是抓不到，不可以拿站內流水號充數；原文留在 srcText 供事後查。
+    const roomNo = /[0-9０-９]/.test(shown) ? known(shown, 'measured', slot) : notListed<string>(slot);
+
+    const trId = /^<tr\s+id="(\d+)"/.exec(row)?.[1] ?? null;
+    // 新版卡片沒有任何列 id，改用原站房號當鍵；同頁撞號時加序號後綴保證唯一。
+    const base = trId ?? (shown === '' ? `r${out.length + 1}` : shown);
+    let key = base;
+    for (let n = 2; usedKeys.has(key); n += 1) key = `${base}-${n}`;
+    usedKeys.add(key);
+
     const status = attr('status');
-    const area = parseArea((/広さ｜\s*([0-9.]+\s*(?:㎡|m2|m²))/.exec(t)?.[1]) ?? '');
-    const layoutRaw = /間取り｜[\s｜]*([0-9A-Za-z]{1,6})\s*｜/.exec(t)?.[1] ?? '';
+    const area = parseArea((/広さ[：:]?[｜\s]*([0-9.]+\s*(?:㎡|m2|m²))/.exec(t)?.[1]) ?? '');
+    const layoutRaw = /間取り[：:]?[｜\s]*([0-9A-Za-z]{1,6})\s*｜/.exec(t)?.[1] ?? '';
     const floorRaw = attr('floor');
     // ⚠️ 這裡只掃「房間列」的文字，不掃整頁——整頁的「入居条件」會先命中
     // 網站導覽選單的同名標題（那裡列的是全站篩選項目，不是這間房的條件）。
-    const cond = /入居条件｜([\s\S]{0,260}?)(?:｜内装|｜ 空室通知|$)/.exec(t)?.[1] ?? '';
+    // 終止詞要涵蓋兩種版型的下一個區塊，少一個就整段抓空（新版曾 782/978 抓空）。
+    const cond = /入居条件｜([\s\S]{0,260}?)(?:｜内装|｜ 空室通知|｜採光|｜こだわり条件|｜水回り|$)/
+      .exec(t)?.[1] ?? '';
 
     out.push({
-      id,
-      number: numM?.[1] ?? id,
+      id: key,
+      roomNo,
       vacant: status !== null && status !== 'novacancy',
       rent: moneyOf(t, '賃料'),
-      adminFee: moneyOf(t, '共益費'),
+      adminFee: moneyOf(t, ADMIN_FEE_LABEL),
       contractFee: moneyOf(t, '契約料'),
       areaM2: area.kind === 'exact'
         ? known(area.m2, 'measured', `広さ ${area.m2}㎡`)
@@ -298,7 +350,8 @@ export const adapter: SourceAdapter = {
     const isShareHouseLine = km?.[1] === 'house';
     const buildingId = `oakhouse:${key}`;
 
-    const structM = /建物概要｜\s*([^｜]{2,30}造[^｜]{0,12})/.exec(t);
+    // `建物概要` 與值之間還隔著一個空標籤產生的 ｜，用 \s* 跳不過去（實測 0/565 命中）。
+    const structM = /建物概要[｜\s]*([^｜]{2,30}造[^｜]{0,12})/.exec(t);
     const imgM = /<meta property="og:image" content="([^"]+)"/.exec(html);
 
     const building: Building = {
@@ -323,7 +376,11 @@ export const adapter: SourceAdapter = {
         : notListed(''),
       yearBuilt: notListed(''),
       floorsAboveGround: notListed(''),
-      totalUnits: known(rooms.length, 'measured', `房間列 ${rooms.length} 筆`),
+      // 0 筆不是量測值——解析失敗與「頁面真的沒列房」長得一樣，
+      // 把它記成 known(0,'measured') 等於宣稱「量到 0 間」，會把故障蓋掉。
+      totalUnits: rooms.length > 0
+        ? known(rooms.length, 'measured', `房間列 ${rooms.length} 筆`)
+        : notListed<number>(''),
       imageUrls: imgM?.[1] !== undefined ? [imgM[1]] : [],
       fetchedAt: raw.fetchedAt,
       sourceUpdatedAt: notOffered<string>(),
@@ -338,7 +395,7 @@ export const adapter: SourceAdapter = {
       buildingId,
       unitKey: r.id,
       sourceUrl: ref.url,
-      roomNo: known(r.number, 'measured', `房號 ${r.number}`),
+      roomNo: r.roomNo,
       layout: r.layout,
       areaM2: r.areaM2,
       floor: r.floor,

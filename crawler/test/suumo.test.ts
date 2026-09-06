@@ -21,7 +21,7 @@ import path from 'node:path';
 import {
   manifest, adapter, WARDS, listUrl, assertNoSortParam,
   parseListPage, parseMaxPage, parseSuumoStation, parseFloorLabel,
-  parseFloorsAboveGround, parseWard, moneyField,
+  parseFloorsAboveGround, parseWard, moneyField, parseSuumoYearBuilt,
   type SuumoBuilding,
 } from '../sources/suumo/index.ts';
 import { parseRobots, isAllowed } from '../src/robots.ts';
@@ -49,7 +49,10 @@ const CTX = { manifest, now: NOW };
 function extractAll(html: string, wardSlug: string): Listing[] {
   const out: Listing[] = [];
   for (const b of parseListPage(html)) {
-    const hint = { ...b, __wardSlug: wardSlug, __listUrl: 'fixture', __listSha256: 'fixturesha' };
+    const hint = {
+      ...b, __wardSlug: wardSlug, __listUrl: 'fixture', __listSha256: 'fixturesha',
+      __listFetchedAt: '2026-08-16T00:00:00Z', // fixture 的真實抓取日；築年以它為基準
+    };
     const l = adapter.extract(
       { url: 'fixture', body: '', fetchedAt: '2026-08-16T00:00:00Z', sha256: '', status: 200, notModified: false },
       { url: b.rows[0]?.detailUrl ?? 'fixture', hint: hint as unknown as Record<string, unknown> },
@@ -421,14 +424,52 @@ describe('欄位轉換', () => {
     assert.equal(l, null);
   });
 
-  test('築年：「築5年」以 now 推算；「新築」不猜年份', () => {
+  /**
+   * 這個測試在 2026-09-06 稽核後改寫。舊版斷言的是「築5年 → 2021（2026−5）當成完工年」
+   * 與「新築 → 不猜年份（known:false）」——兩條都是被稽核抓出來的錯誤行為：
+   *   - SUUMO 的「築N年」是**含月份進位的屋齡**，2026−N 是完工區間的下界年、不是完工年；
+   *     舊版把它標成 basis 'measured'（＝原站明寫），等於宣稱 SUUMO 寫了這個年份。
+   *   - 「新築」是原站白紙黑字的陳述，標成 not_listed_on_page（＝這頁沒寫）與事實不符，
+   *     還讓全站最新的一批房源在屋齡篩選中整批消失（稽核實測 9,416 間）。
+   * 真值就在本 repo 的 fixture 裡：同一棟的詳情頁印了結構化的「築年月 2022年3月」。
+   */
+  test('築年：SUUMO 只給進位屋齡，存的是完工區間的下界年而不是完工年', () => {
     const ls = extractAll(chiyodaP1, 'sc_chiyoda');
     const aged = ls.find((l) => l.building.name === 'アーバネックス千代田淡路町');
     assert.ok(aged);
-    assert.equal(aged.building.yearBuilt.known && aged.building.yearBuilt.v, 2021); // 2026 - 5
-    const brandNew = ls.find((l) => l.building.yearBuilt.srcText === '新築');
+    const yb = aged.building.yearBuilt;
+
+    // 詳情頁 fixture（同一棟、同一批抓取）是這題的答案：完工 2022年3月。
+    assert.match(detailHtml.replace(/\s+/g, ''), /築年月<\/th><td>2022年3月<\/td>/);
+    // 一覧頁只寫「築5年」，抓取月 2026-08 → 完工 ∈ 2021年9月〜2022年8月。
+    // 完工年是 2021 或 2022，一覧頁給不出是哪一個，所以存下界年。
+    assert.equal(yb.known && yb.v, 2021);
+    assert.ok(yb.srcText.includes('2021年9月〜2022年8月'), yb.srcText);
+    // 這個年份是我們從屋齡推的，不是原站寫的：不可以標 measured。
+    assert.notEqual(yb.basis, 'measured');
+
+    const brandNew = ls.find((l) => l.building.yearBuilt.srcText.includes('新築'));
     assert.ok(brandNew, 'fixture 裡應該有新築物件');
-    assert.equal(brandNew.building.yearBuilt.known, false);
+    const nb = brandNew.building.yearBuilt;
+    // 新築＝未滿 1 年且未入居，與「築1年」同一個區間；下界年＝抓取年 −1。
+    assert.equal(nb.known, true);
+    assert.equal(nb.known && nb.v, 2025);
+  });
+
+  test('築年：封頂顯示「築99年以上」只有上界，不可推出確切年份', () => {
+    // 舊版把它當「築99年」推出確切的 1927，是把界限當成值（稽核：全站 5 棟）。
+    const f = parseSuumoYearBuilt('築99年以上', NOW);
+    assert.equal(f.known, false);
+    assert.equal(f.known === false && f.why, 'unparsed');
+  });
+
+  test('築年的基準是那一頁的抓取時點，不是重新解析的時間', () => {
+    // fetchMode 'none' 讓 extract 拿到的 raw.fetchedAt 是重跑當下；用它當基準，
+    // 同一份原始檔每晚重新解析一次就會把全站築年往後推一年。
+    const atFetch = parseSuumoYearBuilt('築5年', NOW);
+    assert.equal(atFetch.known && atFetch.v, 2021);
+    const later = parseSuumoYearBuilt('築5年', new Date('2027-08-16T00:00:00Z'));
+    assert.equal(later.known && later.v, 2022);
   });
 
   test('間取り：parseLayout 認得的用 canonical，認不得的保留 SUUMO 原文', () => {

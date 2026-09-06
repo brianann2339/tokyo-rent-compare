@@ -429,8 +429,10 @@ export const adapter: SourceAdapter = {
         const utilities = moneyField(r.utilitiesRaw, 'Monthly Utilities and Internet');
         // 「Room for 2/4」是同一間房多張床，Size 是**整間**的面積不是一人份
         const shared = /Room for (\d+)/i.exec(r.roomType);
-        const notes = shared?.[1] !== undefined && shared[1] !== '1'
-          ? [...notesBase, `${r.roomType}：Size ${r.sizeRaw} は部屋全体の広さで、${shared[1]} 人で共有する`]
+        const occupancy = shared?.[1] === undefined ? 1 : Number(shared[1]);
+        const sharedRoom = Number.isFinite(occupancy) && occupancy > 1;
+        const notes = sharedRoom
+          ? [...notesBase, `${r.roomType}：Size ${r.sizeRaw} は部屋全体の広さで、${String(occupancy)} 人で共有する`]
           : notesBase;
         return {
           id: `${buildingId}#${r.bedNo}`,
@@ -439,9 +441,15 @@ export const adapter: SourceAdapter = {
           sourceUrl: ref.url,
           roomNo: known(r.bedNo, 'measured', `Bed No. ${r.bedNo}`),
           layout: r.roomType === '' ? notListed('') : known(r.roomType, 'measured', `Type(people): ${r.roomType}`),
-          areaM2: area.kind === 'exact' && area.m2 > 0
-            ? known(area.m2, 'measured', `Size: ${r.sizeRaw}`)
-            : notListed(r.sizeRaw),
+          // 多人部屋のベッドには専有面積が無い。Size は部屋全体、賃料はベッド 1 台分なので、
+          // ここに部屋全体の㎡を入れると「1 人あたり単価が半額」という嘘の比較が成立してしまう
+          // （KUGAHARA1 1B-1：16.5㎡ / ¥52,000 の 2 人部屋 vs 同棟の 1 人部屋 11.6㎡ / ¥69,000）。
+          // sakurahouse が dormitory のベッドに対して既にやっている処置と同じ扱いにする。
+          areaM2: sharedRoom
+            ? notListed(`Size: ${r.sizeRaw} は ${String(occupancy)} 人で共有する部屋全体の広さ。ベッド 1 台分の専有面積は原站に記載なし`)
+            : area.kind === 'exact' && area.m2 > 0
+              ? known(area.m2, 'measured', `Size: ${r.sizeRaw}`)
+              : notListed(r.sizeRaw),
           floor: notOffered<number>(),
           monthly: {
             rent: moneyField(r.rentRaw, 'Rent'),

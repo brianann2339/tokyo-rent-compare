@@ -13,7 +13,7 @@ import { gunzipSync } from 'node:zlib';
 import path from 'node:path';
 
 import {
-  parseSummaries, parseRooms, keysFromUrl, adapter, parseComretCount, pageForCount,
+  parseSummaries, parseRooms, parseDetail, keysFromUrl, adapter, parseComretCount, pageForCount,
 } from '../sources/hituji/index.ts';
 import { reassembleFlight, sliceBalanced } from '../src/rsc.ts';
 import { monthlyCost, initialCash, tierOf } from '../../packages/cost-model/src/index.ts';
@@ -26,6 +26,9 @@ function fixture(name: string): string {
 
 const listHtml = fixture('list-tokyo-page1.html.gz');
 const akasakaHtml = fixture('detail-tokyo-sync-akasaka.html.gz');
+// 府中 WILL：介紹文裡「外国人講師…」比入居条件欄更早出現，
+// 是 2026-09-06 稽核抓到的「行銷文案劫持入居条件」那一棟。
+const willFuchuHtml = fixture('detail-will-fuchu.html.gz');
 
 describe('RSC payload 重組', () => {
   test('重組出可掃描的 buffer', () => {
@@ -206,6 +209,156 @@ describe('水電基準判定（抽樣 7 個物件所得的規則）', () => {
           `${n} 号${r.number}`);
       }
     }
+  });
+});
+
+describe('詳情頁結構化欄位（parseDetail）', () => {
+  test('建物の建築年來自 payload 的 constructionYear，不是「來源沒有這個欄位」', () => {
+    // 原始頁面：<b>建物の建築年</b> <!-- -->1977<!-- -->年
+    assert.equal(parseDetail(fixture('detail-sample1.html.gz')).constructionYear, 1977);
+    // 赤坂這一頁站方沒填 → null（在 Building 上是 not_listed_on_page，不是 not_offered_by_source）
+    assert.equal(parseDetail(akasakaHtml).constructionYear, null);
+  });
+
+  test('入居条件的「外国人」欄取結構化欄位，不會被介紹文劫持', () => {
+    // 原站入居条件：「外国人｜：パスポート、ビザ、外国人登録証明書。」
+    // 舊解析器用整頁第一個「外国人」，抓到的是介紹文「…外国人講師が英会話レッスンを…」
+    const d = parseDetail(willFuchuHtml);
+    assert.equal(d.qualificationForeigner, 'パスポート、ビザ、外国人登録証明書。');
+    assert.ok(!d.qualificationForeigner.includes('英会話'), '抓到的是招租文案而不是條件欄');
+  });
+
+  test('車站帶路線名，且第一筆就是最寄駅', () => {
+    const d = parseDetail(akasakaHtml);
+    assert.equal(d.stations[0]?.primaryTrainLineName, '東京メトロ千代田線');
+    assert.equal(d.stations[0]?.trainStationName, '赤坂駅');
+    assert.equal(d.stations[0]?.timeMinutes, 4);
+    // 同一份 payload 把 stationData 渲染兩遍，去重後才是真的站數
+    assert.equal(d.stations.length, 3);
+  });
+
+  test('總室數＝個室＋ドミトリー 的 totalCount，與列表摘要的 totalRoomCount 同一個口徑', () => {
+    assert.equal(parseDetail(akasakaHtml).totalRoomCount, 23);
+    assert.equal(parseDetail(fixture('detail-sample6.html.gz')).totalRoomCount, 164);
+  });
+
+  test('区名與入居期間都在 payload 裡', () => {
+    assert.equal(parseDetail(akasakaHtml).townName, '港区');
+    assert.equal(parseDetail(akasakaHtml).tenancyPeriod, '長期');
+  });
+
+  test('詳情頁尾端「類似物件」的扁平欄位不可以被當成本棟的值', () => {
+    // 類似物件帶著列表摘要的完整 schema；本棟的總室數是 23，
+    // 但整頁第一個 "totalRoomCount" 屬於別棟。parseDetail 只能回 23。
+    assert.equal(parseDetail(akasakaHtml).totalRoomCount, 23);
+    const flat = /"totalRoomCount":(\d+)/.exec(akasakaHtml.replace(/\\"/g, '"'))?.[1];
+    assert.ok(flat !== undefined && flat !== '23', `扁平鍵抓到的是 ${String(flat)}，正是不能用的那個值`);
+  });
+});
+
+describe('空室 vs 空室予定', () => {
+  test('「空室予定」是還沒空出來 → isVacant = false', () => {
+    const listing = adapter.extract(
+      { url: 'https://www.hituji.jp/comret/info/tokyo/minato/tokyo-sync-akasaka', body: akasakaHtml, fetchedAt: '2026-08-16T00:00:00Z', sha256: 'x', status: 200, notModified: false },
+      { url: 'https://www.hituji.jp/comret/info/tokyo/minato/tokyo-sync-akasaka', hint: { id: 1, name: 'x', webUrl: 'https://www.hituji.jp/comret/info/tokyo/minato/tokyo-sync-akasaka' } as Record<string, unknown> },
+      { manifest: adapter.manifest, now: new Date('2026-08-16T00:00:00Z') },
+    );
+    const u = listing?.units[0];
+    assert.ok(u);
+    assert.equal(u.availableFrom.known && u.availableFrom.v, '空室予定');
+    assert.equal(u.isVacant.known && u.isVacant.v, false);
+    assert.equal(u.isVacant.srcText, 'availabilityCode=scheduled');
+  });
+
+  test('「空室」才是現在可入住 → isVacant = true', () => {
+    const html = fixture('detail-sample1.html.gz');
+    const listing = adapter.extract(
+      { url: 'https://x/', body: html, fetchedAt: '2026-08-16T00:00:00Z', sha256: 'x', status: 200, notModified: false },
+      { url: 'https://www.hituji.jp/comret/info/tokyo/adachi/x', hint: { id: 1, name: 'x', webUrl: 'https://www.hituji.jp/comret/info/tokyo/adachi/x' } as Record<string, unknown> },
+      { manifest: adapter.manifest, now: new Date('2026-08-16T00:00:00Z') },
+    );
+    assert.ok(listing);
+    assert.ok(listing.units.length > 0);
+    for (const u of listing.units) assert.equal(u.isVacant.known && u.isVacant.v, true);
+  });
+});
+
+describe('列表 payload 掉欄位時仍要解得出建物', () => {
+  // 2026-09-06 覆蓋調查：站方已把 totalRoomCount／availableRoomCount／
+  // nearestTrainStationName／transportationName／transportationTimeMinutes／
+  // hasAvailableRoomForForeigner 從列表 payload 拿掉。
+  const bare = {
+    id: 596, name: 'TOKYO SYNC 赤坂',
+    webUrl: 'https://www.hituji.jp/comret/info/tokyo/minato/tokyo-sync-akasaka',
+    tenancyConditionDescription: '男性 女性 外国人歓迎',
+  } as Record<string, unknown>;
+  const listing = adapter.extract(
+    { url: 'https://www.hituji.jp/comret/info/tokyo/minato/tokyo-sync-akasaka', body: akasakaHtml, fetchedAt: '2026-08-16T00:00:00Z', sha256: 'x', status: 200, notModified: false },
+    { url: 'https://www.hituji.jp/comret/info/tokyo/minato/tokyo-sync-akasaka', hint: bare },
+    { manifest: adapter.manifest, now: new Date('2026-08-16T00:00:00Z') },
+  );
+
+  test('車站不會歸零，而且補上了路線名', () => {
+    const st = listing?.building.stations[0];
+    assert.ok(st);
+    assert.equal(st.station, '赤坂');
+    assert.equal(st.line, '東京メトロ千代田線');
+    assert.equal(st.walkMinutes.known && st.walkMinutes.v, 4);
+  });
+
+  test('總戶數不會歸零（退回詳情頁的 availability totalCount）', () => {
+    const t = listing?.building.totalUnits;
+    assert.ok(t?.known === true);
+    assert.equal(t.v, 23);
+  });
+
+  test('外国人可租旗標退回入居条件標籤列', () => {
+    const w = listing?.units[0]?.foreigner.welcomed;
+    assert.ok(w?.known === true);
+    assert.equal(w.v, true);
+  });
+});
+
+describe('完整房間清單（/rooms）', () => {
+  test('複數鍵 singleRooms／dormitoryRooms 也要收得到', () => {
+    // /rooms 頁把完整清單放在 comretRooms.singleRooms／dormitoryRooms（複數）。
+    // extractArrayAfterKey 是精確鍵比對，只餵單數鍵就永遠只撿得到詳情頁那 2 筆預覽。
+    const payload = '{"comretRooms":{"singleRooms":['
+      + '{"id":1,"number":"101","sizeSquareMeter":"10","sizeJou":"6","rent":50000,"commonServiceFee":10000,'
+      + '"variableCommonServiceFee":"","utilities":"10000","deposit":0,"keyMoney":0,'
+      + '"availabilityCode":"empty","availabilityLabel":"空室"},'
+      + '{"id":2,"number":"102","sizeSquareMeter":"10","sizeJou":"6","rent":51000,"commonServiceFee":10000,'
+      + '"variableCommonServiceFee":"","utilities":"10000","deposit":0,"keyMoney":0,'
+      + '"availabilityCode":"empty","availabilityLabel":"空室"}],'
+      + '"dormitoryRooms":[{"id":3,"number":"201a","sizeSquareMeter":"12","sizeJou":"7","rent":30000,'
+      + '"commonServiceFee":10000,"variableCommonServiceFee":"","utilities":"10000","deposit":0,"keyMoney":0,'
+      + '"availabilityCode":"empty","availabilityLabel":"空室"}]}}';
+    const rooms = parseRooms(payload);
+    assert.deepEqual(rooms.map((r) => r.number), ['101', '102', '201a']);
+    assert.deepEqual(rooms.map((r) => r.__kind), ['個室', '個室', 'ドミトリー']);
+  });
+
+  test('discover 把完整清單放進 hint，extract 會與詳情頁預覽合併去重', () => {
+    // 預覽只有 409；假設 /rooms 另外給了 409（重複）與 410
+    const room = (id: number, number: string): Record<string, unknown> => ({
+      id, number, sizeSquareMeter: '9.8', sizeJou: '6', rent: 95000, commonServiceFee: 20000,
+      variableCommonServiceFee: '', utilities: '20000', deposit: 50000, keyMoney: 95000,
+      availabilityCode: 'empty', availabilityLabel: '空室', __kind: '個室',
+    });
+    const preview = parseRooms(akasakaHtml);
+    assert.equal(preview.length, 1);
+    const listing = adapter.extract(
+      { url: 'https://www.hituji.jp/comret/info/tokyo/minato/tokyo-sync-akasaka', body: akasakaHtml, fetchedAt: '2026-08-16T00:00:00Z', sha256: 'x', status: 200, notModified: false },
+      {
+        url: 'https://www.hituji.jp/comret/info/tokyo/minato/tokyo-sync-akasaka',
+        hint: {
+          id: 1, name: 'x', webUrl: 'https://www.hituji.jp/comret/info/tokyo/minato/tokyo-sync-akasaka',
+          __fullRooms: [room(preview[0]?.id ?? 0, '409'), room(999_999, '410')],
+        } as Record<string, unknown>,
+      },
+      { manifest: adapter.manifest, now: new Date('2026-08-16T00:00:00Z') },
+    );
+    assert.deepEqual(listing?.units.map((u) => u.roomNo.known && u.roomNo.v), ['409', '410']);
   });
 });
 
