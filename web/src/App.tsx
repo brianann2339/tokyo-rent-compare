@@ -9,6 +9,7 @@ import { summary, percentileRank, sortedAsc } from './stats.ts';
 import { rowsToCsv, csvFileName, downloadCsv } from './csv.ts';
 import { Histogram } from './Histogram.tsx';
 import { layoutSizeRank } from '../../packages/jp-parse/src/layout.ts';
+import { isGeneratedBuildingName } from '../../packages/jp-parse/src/name.ts';
 
 const GENDER_ZH: Record<string, string> = {
   unknown: '未提供', mixed: '男女皆可', female_only: '女性專用', male_only: '男性專用',
@@ -661,10 +662,19 @@ export default function App() {
               const ads = u.ads[i] as number;
               const alsoMask = b.also[bi] as number;
               const alsoNames = dict.sources.filter((_, k) => (alsoMask & (1 << k)) !== 0).map((sid) => dict.sourceMeta[sid]?.nameZh ?? sid);
+              // 屋主不公開物件名時，SUUMO 用樣板生一個描述填在名稱欄
+              // （「東急田園都市線 駒沢大学駅 3階建 新築」，全量 38.2%）。
+              // 照原文印會讓使用者以為那是樓的名字，而且十幾棟會長得一模一樣。
+              const name = b.name[bi] ?? '';
+              const generatedName = isGeneratedBuildingName(name);
               return (
                 <li key={i} className={`card t${tier}`}>
                   <div className="head">
-                    <h3>{b.name[bi]}</h3>
+                    <h3>
+                      {generatedName
+                        ? <>物件名非公開<span className="gen-name">{name}</span></>
+                        : name}
+                    </h3>
                     <span className="ward">
                       {dict.wards[b.ward[bi] as number] || '区未提供'}
                       <span className="src">{srcName(dict, b.src[bi] as number)}</span>

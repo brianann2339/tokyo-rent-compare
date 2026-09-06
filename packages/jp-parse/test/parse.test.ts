@@ -10,7 +10,7 @@ import { parseMoney, parseMoneyRange, monthsToYen } from '../src/money.ts';
 import { parseArea } from '../src/area.ts';
 import { parseWalk, parseStations } from '../src/station.ts';
 import { parseLayout, layoutSizeRank } from '../src/layout.ts';
-import { normalizeBuildingName, buildingMatchKey } from '../src/name.ts';
+import { normalizeBuildingName, buildingMatchKey, isGeneratedBuildingName } from '../src/name.ts';
 import {
   parseContractType, parseContractMonths, parseMinStayMonths, parseStayBucketsMinMonths,
   parseEarlyTermination, parseYearBuilt, parseGender, parseGenderTags, parseForeignerSignals,
@@ -353,5 +353,33 @@ describe('文字正規化', () => {
     assert.equal(isNegotiable('なし'), false);
     assert.equal(isNegotiable('応相談'), true);
     assert.equal(isExplicitZero('応相談'), false);
+  });
+});
+
+describe('SUUMO 代替名稱的樣板字串', () => {
+  test('屋主不公開名稱時的樣板一律認得出來', () => {
+    for (const s of [
+      '東急田園都市線 駒沢大学駅 3階建 新築',
+      '東京メトロ有楽町線 護国寺駅 地下1地上11階建 築27年',
+      '都営大江戸線 春日駅 地下2地上40階建 築6年',
+      '東京都台東区清川１ 10階建 築2年',
+      '京成押上線 四ツ木駅 2階建 築99年以上',
+      'ＪＲ山手線 駒込駅 地下1地上12階建 築5年',
+      '西武池袋線 大泉学園駅 地上2階建 新築',
+    ]) {
+      assert.equal(isGeneratedBuildingName(s), true, `${s} 應判為樣板字串`);
+    }
+  });
+
+  test('真的有名字的物件不可以被誤判（實測過的兩個邊界例）', () => {
+    for (const s of [
+      'エスト・フォンティーヌ　ＳＲＣ造１０階建て賃貸マンション',
+      '東新小岩3階建て一軒家',
+      'レオパレス翔',
+      'クランテラス 品川',
+      '',
+    ]) {
+      assert.equal(isGeneratedBuildingName(s), false, `${s} 不該被判為樣板字串`);
+    }
   });
 });
