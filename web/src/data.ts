@@ -6,6 +6,7 @@
  */
 
 import { decodeIndex, type EncodedIndex, type ColumnIndex } from '../../packages/wire-codec/src/index.ts';
+import { decodeNames, type EncodedNames } from '../../packages/wire-codec/src/names.ts';
 
 export const UTIL_BASIS = ['unknown', 'included', 'excluded'] as const;
 export const GENDER = ['unknown', 'mixed', 'female_only', 'male_only'] as const;
@@ -13,8 +14,16 @@ export const TIER = ['A', 'B', 'C'] as const;
 
 export type Wire = {
   meta: {
-    generatedAt: string; buildings: number; units: number;
+    generatedAt: string;
+    /**
+     * 這次建置的資料指紋。index.json 與 names.json.gz 以建物序號互相對齊，
+     * 這個字串是「兩個檔案來自同一次建置」的唯一證明——見 loadNames()。
+     */
+    buildId: string;
+    buildings: number; units: number;
     provBucket: number;
+    /** provenance 桶所在的子目錄（＝buildId）。舊索引要的目錄在新部署裡不存在 → 404。 */
+    provDir: string;
     sources: Array<{ id: string }>; missingBits: string[]; violations: number;
     /** 稀疏屬性位元名 → 位元值（由 build-data 的 FLAG 產生，UI 不另外硬編碼） */
     flagBits: Record<string, number>;
@@ -31,7 +40,9 @@ export type Wire = {
     pairs: Array<[number, number]>;
   };
   b: {
-    name: string[]; url: string[]; ward: number[]; src: number[];
+    // name／url 不在索引裡：它們佔了 46% 的位元組卻不參與篩選排序，
+    // 改由 names.json.gz 依建物序號供應（Names 型別）。
+    ward: number[]; src: number[];
     /** 車站扁平化：stn／stw 連續存所有站，stc 是每棟站數；offset 由前綴和算 */
     stn: number[]; stw: (number | null)[]; stc: number[];
     total: (number | null)[]; fetchedAt: string[]; kind: number[];
@@ -77,6 +88,9 @@ export type Prov = {
 const base = (): string => (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
 
 /** 下載進度。`total` 在伺服器沒給 content-length 時是 null，此時只有已下載量可報。 */
+/** 顯示用字串，以建物序號與索引對齊。 */
+export type Names = { name: string[]; url: string[] };
+
 export type LoadProgress = { loaded: number; total: number | null; phase: 'download' | 'parse' };
 
 /**
@@ -115,13 +129,45 @@ export async function loadWire(onProgress?: (p: LoadProgress) => void): Promise<
 }
 
 /**
- * 索引是壓縮編碼格式（頂層 `v: 'C2'`）。舊格式沒有 `v`，原樣回傳——
- * 這讓新前端讀得懂新舊兩種檔，部署當下 GitHub Pages 那 10 分鐘的快取窗口才不會開天窗。
+ * 索引是壓縮編碼格式，目前是 `v: 'C3'`（C3 起 name／url 不在索引裡）。
+ *
+ * 認不得的版本一律**丟例外**，不再像 C2 時代那樣「沒有 v 就原樣回傳」——
+ * 拿一個舊格式當新格式用，會得到一個少了兩整欄的索引然後在畫面上到處是空白，
+ * 那比直接顯示「請重新整理」更難懂。GitHub Pages 的 10 分鐘快取窗口內
+ * 舊 JS 可能拿到新資料檔，這時停下來報錯是正確行為。
  */
 function hydrate(parsed: unknown): Wire {
   const o = parsed as { v?: string };
-  if (o.v !== 'C2') return parsed as Wire;
+  if (o.v !== 'C3') {
+    throw new Error(`資料檔版本是 ${JSON.stringify(o.v ?? '(無)')}，這個版本的網站讀不懂（請重新整理頁面取得新版）`);
+  }
   return decodeIndex(parsed as EncodedIndex) as unknown as Wire;
+}
+
+/**
+ * 建物名與原站 URL。首屏**不等它**——篩選、排序、行情分佈都不需要名字，
+ * 索引少載 46% 就能先用起來。
+ *
+ * ⚠️ 這個檔案以建物序號與索引對齊，錯開一格就是「每張卡片掛上別棟的名字、
+ * 前往原站連到別棟」。GitHub Pages 的 `max-age=600` 不可調、檔名又固定，
+ * 瀏覽器完全可能一新一舊。兩道防線：
+ *   1. 網址帶 `?v=<buildId>`：索引一換，names 的 URL 就跟著換，繞開舊快取。
+ *   2. 載回來再比一次 buildId 與筆數，對不上就丟例外——
+ *      **寧可沒有名字，也不可以有錯的名字**。
+ */
+export async function loadNames(w: Wire): Promise<Names> {
+  const res = await fetch(`${base()}data/names.json.gz?v=${encodeURIComponent(w.meta.buildId)}`);
+  if (!res.ok) throw new Error(`載入建物名稱失敗：HTTP ${res.status}`);
+  const enc = await readMaybeGzipped<EncodedNames>(res);
+  if (enc.buildId !== w.meta.buildId) {
+    throw new Error(`建物名稱檔與索引不是同一次建置（索引 ${w.meta.buildId}／名稱 ${enc.buildId}）——`
+      + '若顯示名稱就會張冠李戴，所以停在這裡。請重新整理頁面。');
+  }
+  const t = decodeNames(enc);
+  if (t.name.length !== w.meta.buildings) {
+    throw new Error(`建物名稱有 ${t.name.length} 筆，索引有 ${w.meta.buildings} 棟——序號對不上，不顯示名稱`);
+  }
+  return { name: t.name as string[], url: t.url as string[] };
 }
 
 const provCache = new Map<string, Record<string, Prov>>();
@@ -136,12 +182,24 @@ const provCache = new Map<string, Record<string, Prov>>();
  */
 export async function loadProv(w: Wire, unitIdx: number): Promise<Prov | null> {
   const bucket = `p${Math.floor(unitIdx / w.meta.provBucket)}`;
-  let obj = provCache.get(bucket);
+  const cacheKey = `${w.meta.provDir}/${bucket}`;
+  let obj = provCache.get(cacheKey);
   if (obj === undefined) {
-    const res = await fetch(`${base()}data/prov/${bucket}.json.gz`);
+    // 桶在 prov/<buildId>/ 底下。查詢字串只換瀏覽器的快取鍵、換不掉伺服器上的檔案，
+    // 所以「分頁停在舊建置、伺服器已換新」時 `?v=舊` 反而一定回源、拿到**新**建置的桶，
+    // 費用明細與「前往原站查看」就接到別間房上了。放進路徑之後，舊索引要的目錄
+    // 在新部署裡不存在 → 404 → 這裡回 null → 面板顯示載入失敗。錯的資料變成沒有資料。
+    const res = await fetch(`${base()}data/prov/${encodeURIComponent(w.meta.provDir)}/${bucket}.json.gz`);
     if (!res.ok) return null;
-    obj = await readMaybeGzipped<Record<string, Prov>>(res);
-    provCache.set(bucket, obj);
+    try {
+      obj = await readMaybeGzipped<Record<string, Prov>>(res);
+    } catch {
+      // 桶不存在時，靜態主機不一定回 404——有些設定（含 Vite 的 dev server）
+      // 會回 200 加一份 HTML。那份 HTML 解不成 JSON，這裡必須收斂成「沒有明細」，
+      // 而不是讓 promise 未處理地 reject、把面板卡在「載入中…」。
+      return null;
+    }
+    provCache.set(cacheKey, obj);
   }
   return obj[String(unitIdx)] ?? null;
 }
@@ -151,7 +209,8 @@ async function readMaybeGzipped<T>(res: Response): Promise<T> {
   const alreadyDecoded = res.headers.get('content-encoding') !== null;
   if (alreadyDecoded || res.body === null || typeof DecompressionStream === 'undefined') {
     if (!alreadyDecoded && typeof DecompressionStream === 'undefined') {
-      throw new Error('這個瀏覽器不支援 DecompressionStream，無法讀取費用明細（需要 Chrome 80+／Safari 16.4+／Firefox 113+）');
+      // 這條路徑現在同時服務費用明細與**建物名稱**，訊息不可以只講其中一個
+      throw new Error('這個瀏覽器不支援 DecompressionStream，無法讀取建物名稱與費用明細（需要 Chrome 80+／Safari 16.4+／Firefox 113+）');
     }
     return (await res.json()) as T;
   }
@@ -313,6 +372,14 @@ export function queryToFilters(qs: string): Filters {
 export type Row = { i: number; tier: number; key: number };
 
 export type QueryResult = {
+  /**
+   * 關鍵字有填、但名稱檔還沒到。
+   *
+   * 這時**不可以**直接跳過名稱比對——那會回一個「只比了区與車站」的結果集，
+   * 筆數與行情數字看起來都很正常，卻少了所有靠物件名命中的房。
+   * 使用者無從得知答案是錯的。所以整個結果標成待定，由 UI 說明原因。
+   */
+  pendingNames: boolean;
   rows: Row[];
   counts: [number, number, number];
   /** 被「種類／屋齡」條件排除、但其實是資料未知而非不符的房間數——UI 必須顯示，否則使用者以為市場上沒有 */
@@ -357,7 +424,10 @@ export function monthlyWithAssumption(w: Wire, i: number, assumeUtil: number | n
  * 排序的核心規則：A/B/C 三區**不混算**。
  * 缺值物件永遠排在資料完整物件之後，缺值是降級而不是取得排序優勢。
  */
-export function query(w: Wire, f: Filters, now: Date = new Date()): QueryResult {
+export function query(w: Wire, f: Filters, now: Date = new Date(), names: Names | null = null): QueryResult {
+  if (f.q.trim() !== '' && names === null) {
+    return { pendingNames: true, rows: [], counts: [0, 0, 0], excluded: { kindUnknown: 0, ageUnknown: 0, floorUnknown: 0 } };
+  }
   const { u, b, dict } = w;
   const n = u.bid.length;
   // 「有沒有選」與「選到的值在不在字典裡」是兩件事。
@@ -423,7 +493,8 @@ export function query(w: Wire, f: Filters, now: Date = new Date()): QueryResult 
       }
     }
     if (ok && q !== '') {
-      const name = (b.name[bi] ?? '').toLowerCase();
+      // names === null 時上面已經整個回 pendingNames，走不到這裡
+      const name = (names?.name[bi] ?? '').toLowerCase();
       const ward = dict.wards[b.ward[bi] as number] ?? '';
       let hit = name.includes(q) || ward.includes(q);
       for (let k = off[bi] as number; !hit && k < (off[bi + 1] as number); k++) {
@@ -503,7 +574,7 @@ export function query(w: Wire, f: Filters, now: Date = new Date()): QueryResult 
   }
 
   rows.sort((x, y) => (x.tier !== y.tier ? x.tier - y.tier : x.tier === 2 ? 0 : x.key - y.key));
-  return { rows, counts, excluded };
+  return { pendingNames: false, rows, counts, excluded };
 }
 
 /** 顯示金額。undefined 與 null 都代表「未提供」——刻意不提供預設值參數。 */

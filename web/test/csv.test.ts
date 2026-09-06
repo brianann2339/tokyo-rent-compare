@@ -1,12 +1,20 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { Wire } from '../src/data.ts';
+import type { Wire, Names } from '../src/data.ts';
 import { rowsToCsv, csvFileName } from '../src/csv.ts';
 import { floorLabel } from '../src/data.ts';
 
+/**
+ * 最小 Names：建物名與原站 URL 走第二個檔案，以建物序號對齊。
+ * CSV 匯出在型別上就要求它——一份沒有物件名與原站連結的 CSV
+ * 每列都有數字、看起來完整，使用者不會發現少了什麼。
+ */
+const makeNames = (name = '測試ハウス'): Names => ({ name: [name], url: ['https://example.test/1'] });
+const NAMES = makeNames();
+
 /** 最小 Wire：一棟一間。預設這一間賃料未知（rent=null），其餘可用 over 覆蓋。 */
-function makeWire(over: Partial<Wire['u']> = {}, name = '測試ハウス'): Wire {
+function makeWire(over: Partial<Wire['u']> = {}): Wire {
   const u: Wire['u'] = {
     bid: [0], room: [null], layout: [-1], area: [null], floor: [null], rent: [null], admin: [null],
     util: [null], utilBasis: [0], key: [null], dep: [null], depNR: [null],
@@ -17,7 +25,7 @@ function makeWire(over: Partial<Wire['u']> = {}, name = '測試ハウス'): Wire
   };
   return {
     meta: {
-      generatedAt: '2026-08-23T00:00:00Z', buildings: 1, units: 1, provBucket: 500,
+      generatedAt: '2026-08-23T00:00:00Z', buildId: 'testbuild0000001', buildings: 1, units: 1, provBucket: 500, provDir: 'testbuild0000001',
       sources: [{ id: 'testsrc' }],
       missingBits: ['rent', 'adminFee', 'utilities', 'keyMoney', 'deposit', 'depositNonRefundable',
         'agencyFee', 'guarantorInitialFee', 'fireInsurance', 'renewalFee'],
@@ -34,7 +42,7 @@ function makeWire(over: Partial<Wire['u']> = {}, name = '測試ハウス'): Wire
       layouts: ['1K'], lines: ['JR山手線'], buildingTypes: ['マンション'], pairs: [[0, 0], [0, 1]],
     },
     b: {
-      name: [name], url: ['https://example.test/1'], ward: [0], src: [0],
+      ward: [0], src: [0],
       stn: [0, 1], stw: [5, null], stc: [2], total: [1], fetchedAt: ['2026-08-22'], kind: [1],
       yearBuilt: [2010], also: [0], btype: [0],
     },
@@ -43,7 +51,7 @@ function makeWire(over: Partial<Wire['u']> = {}, name = '測試ハウス'): Wire
 }
 
 const HEADER = [
-  '來源', '物件名', '区', '種類', '房型', '面積㎡', '樓層（地下為負數）', '築年',
+  '來源', '物件名', '物件名為原站自動生成', '区', '種類', '房型', '面積㎡', '樓層（地下為負數）', '築年',
   '車站1', '徒歩1', '車站2', '徒歩2', '車站3', '徒歩3',
   '賃料', '管理費', '水電', '水電基準',
   '禮金', '敷金', '敷引', '月額下限', '月額區', '初期現金', '初期現金區', '沉沒成本',
@@ -71,14 +79,14 @@ function rec(cols: string[]): Record<string, string> {
 
 describe('rowsToCsv', () => {
   test('BOM 開頭、CRLF、表頭欄序正確', () => {
-    const text = rowsToCsv(makeWire(), [{ i: 0, tier: 2, key: 0 }], { assumeUtil: null });
+    const text = rowsToCsv(makeWire(), NAMES, [{ i: 0, tier: 2, key: 0 }], { assumeUtil: null });
     const lines = parseCsv(text);
     assert.equal(lines.length, 2);
     assert.deepEqual(lines[0], HEADER);
   });
 
   test('rent=null：所有金額欄空字串，不是 0', () => {
-    const text = rowsToCsv(makeWire(), [{ i: 0, tier: 2, key: 0 }], { assumeUtil: 5000 });
+    const text = rowsToCsv(makeWire(), NAMES, [{ i: 0, tier: 2, key: 0 }], { assumeUtil: 5000 });
     const r = rec(parseCsv(text)[1] as string[]);
     for (const k of ['面積㎡', '樓層（地下為負數）', '賃料', '管理費', '水電', '水電基準', '禮金', '敷金', '敷引', '月額下限',
       '初期現金', '沉沒成本', '實質月成本12', '每㎡單價', '外國人可租', '性別', '空室', '房型', '車站3', '徒歩3', '徒歩2']) {
@@ -107,7 +115,7 @@ describe('rowsToCsv', () => {
       monthlyLower: [85000], monthlyTier: [0], initCash: [165000], initCashTier: [0],
       initSunk: [0], effMonthly12: [85000], missing: [0], ads: [3],
     });
-    const r = rec(parseCsv(rowsToCsv(w, [{ i: 0, tier: 0, key: 85000 }], { assumeUtil: null }))[1] as string[]);
+    const r = rec(parseCsv(rowsToCsv(w, NAMES, [{ i: 0, tier: 0, key: 85000 }], { assumeUtil: null }))[1] as string[]);
     assert.equal(r['房型'], '1K');
     assert.equal(r['樓層（地下為負數）'], '3');
     assert.equal(r['仲介數'], '3');
@@ -138,7 +146,7 @@ describe('rowsToCsv', () => {
       monthlyLower: [85000], monthlyTier: [0], initCash: [85000], initCashTier: [0],
       initSunk: [0], effMonthly12: [85000],
     });
-    const r = rec(parseCsv(rowsToCsv(w, [{ i: 0, tier: 0, key: 0 }], { assumeUtil: 10000 }))[1] as string[]);
+    const r = rec(parseCsv(rowsToCsv(w, NAMES, [{ i: 0, tier: 0, key: 0 }], { assumeUtil: 10000 }))[1] as string[]);
     assert.equal(r['月額下限'], '95000');
     assert.equal(r['每㎡單價'], '4750');
     const incl = makeWire({
@@ -146,7 +154,7 @@ describe('rowsToCsv', () => {
       monthlyLower: [85000], monthlyTier: [0], initCash: [85000], initCashTier: [0],
       initSunk: [0], effMonthly12: [85000],
     });
-    const r2 = rec(parseCsv(rowsToCsv(incl, [{ i: 0, tier: 0, key: 0 }], { assumeUtil: 10000 }))[1] as string[]);
+    const r2 = rec(parseCsv(rowsToCsv(incl, NAMES, [{ i: 0, tier: 0, key: 0 }], { assumeUtil: 10000 }))[1] as string[]);
     assert.equal(r2['月額下限'], '85000');
     assert.equal(r2['水電基準'], '含');
   });
@@ -157,7 +165,7 @@ describe('rowsToCsv', () => {
       monthlyLower: [80000], monthlyTier: [1], initCash: [80000], initCashTier: [1],
       initSunk: [0], effMonthly12: [80000],
     });
-    const r = rec(parseCsv(rowsToCsv(w, [{ i: 0, tier: 1, key: 0 }], { assumeUtil: null }))[1] as string[]);
+    const r = rec(parseCsv(rowsToCsv(w, NAMES, [{ i: 0, tier: 1, key: 0 }], { assumeUtil: null }))[1] as string[]);
     assert.equal(r['月額下限'], '80000');
     assert.equal(r['月額區'], 'B');
     assert.equal(r['每㎡單價'], '');
@@ -165,15 +173,15 @@ describe('rowsToCsv', () => {
   });
 
   test('欄內 " 加倍、逗號與換行被引號包住', () => {
-    const w = makeWire({}, 'He said "hi", ok\nnext');
-    const text = rowsToCsv(w, [{ i: 0, tier: 2, key: 0 }], { assumeUtil: null });
+    const w = makeWire();
+    const text = rowsToCsv(w, makeNames('He said "hi", ok\nnext'), [{ i: 0, tier: 2, key: 0 }], { assumeUtil: null });
     assert.ok(text.includes('"He said ""hi"", ok\nnext"'));
     const r = rec(parseCsv(text.replace('ok\nnext', 'ok next'))[1] as string[]);
     assert.equal(r['物件名'], 'He said "hi", ok next');
   });
 
   test('rows 為空：只有表頭', () => {
-    const lines = parseCsv(rowsToCsv(makeWire(), [], { assumeUtil: null }));
+    const lines = parseCsv(rowsToCsv(makeWire(), NAMES, [], { assumeUtil: null }));
     assert.equal(lines.length, 1);
   });
 });
@@ -197,5 +205,21 @@ describe('樓層顯示', () => {
   });
   test('0 不會變成 B0F', () => {
     assert.equal(floorLabel(0), '0F');
+  });
+});
+
+describe('SUUMO 的樣板名稱在 CSV 裡要標出來', () => {
+  test('樣板名：原文照留，另一欄標 Y', () => {
+    const w = makeWire();
+    const n = makeNames('東急田園都市線 二子玉川駅 地下1地上3階建 築21年');
+    const r = rec(parseCsv(rowsToCsv(w, n, [{ i: 0, tier: 2, key: 0 }], { assumeUtil: null }))[1] as string[]);
+    assert.equal(r['物件名'], '東急田園都市線 二子玉川駅 地下1地上3階建 築21年', '原文不可以被改寫');
+    assert.equal(r['物件名為原站自動生成'], 'Y');
+  });
+
+  test('真名：那一欄留空', () => {
+    const r = rec(parseCsv(rowsToCsv(makeWire(), makeNames('レオパレス翔'), [{ i: 0, tier: 2, key: 0 }], { assumeUtil: null }))[1] as string[]);
+    assert.equal(r['物件名'], 'レオパレス翔');
+    assert.equal(r['物件名為原站自動生成'], '');
   });
 });

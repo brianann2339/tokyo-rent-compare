@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   query, queryToFilters, filtersToQuery, DEFAULT_FILTERS, buildingStations, lineBuildingCounts,
-  perM2Comparable, type Wire, type Filters,
+  perM2Comparable, type Wire, type Filters, type Names,
 } from '../src/data.ts';
 
 /**
@@ -11,10 +11,13 @@ import {
  *   棟 0「甲」新宿区 apartment 2015 年築，站 [新宿 10 分, 代々木 3 分]；間 0（1K 20㎡ 3F ¥80,000 A 區）、間 1（1LDK 40㎡ 樓層未知 ¥150,000 A 區）
  *   棟 1「乙」渋谷区 kind 未知 築年未知，站 [渋谷 5 分]；間 2（個室 ¥70,000 A 區）
  */
+/** 名稱走第二個檔案，以建物序號對齊（見 data.ts 的 loadNames）。 */
+const NAMES: Names = { name: ['甲', '乙'], url: ['u0', 'u1'] };
+
 function makeWire(): Wire {
   return {
     meta: {
-      generatedAt: '2026-08-23T00:00:00Z', buildings: 2, units: 3, provBucket: 400,
+      generatedAt: '2026-08-23T00:00:00Z', buildId: 'testbuild0000002', buildings: 2, units: 3, provBucket: 400, provDir: 'testbuild0000002',
       sources: [{ id: 's1' }, { id: 's2' }], missingBits: [], violations: 0, flagBits: {},
       dedup: { suumoWithin: { before: 3, after: 3, groups: 0, removed: 0, suspectOnly: 0 }, crossSource: { groups: 0, removedUnits: 0, buildingOnlyCandidates: 0 } },
     },
@@ -27,7 +30,7 @@ function makeWire(): Wire {
       pairs: [[0, 0], [0, 1], [0, 2], [1, 0]],
     },
     b: {
-      name: ['甲', '乙'], url: ['u0', 'u1'], ward: [0, 1], src: [0, 1],
+      ward: [0, 1], src: [0, 1],
       stn: [0, 1, 2], stw: [10, 3, 5], stc: [2, 1], total: [null, null], fetchedAt: ['2026-08-22', '2026-08-22'],
       kind: [1, 0], yearBuilt: [2015, null], also: [0, 0], btype: [0, 1],
     },
@@ -42,7 +45,7 @@ function makeWire(): Wire {
 }
 
 const F = (over: Partial<Filters>): Filters => ({ ...DEFAULT_FILTERS, ...over });
-const ids = (w: Wire, f: Filters): number[] => query(w, f, new Date(2026, 7, 23)).rows.map((r) => r.i).sort();
+const ids = (w: Wire, f: Filters): number[] => query(w, f, new Date(2026, 7, 23), NAMES).rows.map((r) => r.i).sort();
 
 describe('query：車站新語意', () => {
   test('未選站：任一站 ≤ N 分即命中（第二站較近的棟可見）', () => {
@@ -178,5 +181,43 @@ describe('每㎡單價的可比性（多人房不計）', () => {
     const r = query(w, F({ sort: 'monthly' }));
     assert.deepEqual(r.rows.map((x) => x.i), [1, 0, 2]);
     assert.deepEqual(r.rows.map((x) => x.tier), [0, 0, 0]);
+  });
+});
+
+describe('關鍵字搜尋要比對建物名稱，而名稱在第二個檔案裡', () => {
+  const w = makeWire();
+
+  test('名稱到齊時，關鍵字比得到物件名', () => {
+    const r = query(w, F({ q: '甲' }), new Date(2026, 7, 23), NAMES);
+    assert.equal(r.pendingNames, false);
+    assert.deepEqual(r.rows.map((x) => x.i).sort(), [0, 1], '棟 0 的兩間都該命中');
+  });
+
+  test('名稱到齊時，關鍵字也照樣比得到区與車站', () => {
+    assert.deepEqual(
+      query(w, F({ q: '渋谷' }), new Date(2026, 7, 23), NAMES).rows.map((x) => x.i),
+      [2],
+    );
+  });
+
+  test('名稱還沒到 → 整個結果標成待定，不可以回一個「只比了区與車站」的答案', () => {
+    // 這是本次拆檔最危險的靜默錯誤：跳過名稱比對會回一個筆數與行情
+    // 看起來都很正常、卻少了所有靠物件名命中的房，使用者無從得知答案是錯的。
+    const r = query(w, F({ q: '甲' }), new Date(2026, 7, 23), null);
+    assert.equal(r.pendingNames, true);
+    assert.deepEqual(r.rows, [], '待定時不可以給出任何一列');
+    assert.deepEqual(r.counts, [0, 0, 0]);
+  });
+
+  test('沒填關鍵字時不需要名稱，照常查', () => {
+    const r = query(w, F({}), new Date(2026, 7, 23), null);
+    assert.equal(r.pendingNames, false);
+    assert.equal(r.rows.length, 3);
+  });
+
+  test('只有空白的關鍵字等於沒填', () => {
+    const r = query(w, F({ q: '   ' }), new Date(2026, 7, 23), null);
+    assert.equal(r.pendingNames, false);
+    assert.equal(r.rows.length, 3);
   });
 });

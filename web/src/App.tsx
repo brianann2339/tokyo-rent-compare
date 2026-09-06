@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  loadWire, loadProv, query, queryToFilters, filtersToQuery, yen, floorLabel,
+  loadWire, loadNames, loadProv, query, queryToFilters, filtersToQuery, yen, floorLabel,
   type LoadProgress,
   buildingStations, lineBuildingCounts, kindGroup, monthlyWithAssumption, perM2Comparable,
-  GENDER, type Wire, type Filters, type Prov, type MyProperty,
+  GENDER, type Wire, type Filters, type Prov, type MyProperty, type Names,
 } from './data.ts';
 import { summary, percentileRank, sortedAsc } from './stats.ts';
 import { rowsToCsv, csvFileName, downloadCsv } from './csv.ts';
@@ -287,6 +287,13 @@ export default function App() {
   const [wire, setWire] = useState<Wire | null>(null);
   const [prog, setProg] = useState<LoadProgress | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  /**
+   * 建物名與原站 URL 走第二個檔案（見 data.ts 的 loadNames）。
+   * 索引一到就能篩選、排序、看行情；名字晚 0.x 秒到。
+   * `namesErr` 不吞：名稱檔壞掉要講出來，否則卡片會永遠停在佔位字而沒人知道為什麼。
+   */
+  const [names, setNames] = useState<Names | null>(null);
+  const [namesErr, setNamesErr] = useState<string | null>(null);
   const [f, setF] = useHashFilters();
   const [open, setOpen] = useState<number | null>(null);
   const [limit, setLimit] = useState(60);
@@ -296,10 +303,23 @@ export default function App() {
   useEffect(() => {
     void loadWire(setProg).then(setWire).catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
   }, []);
+  useEffect(() => {
+    if (wire === null) return;
+    setNames(null);
+    setNamesErr(null);
+    void loadNames(wire)
+      .then(setNames)
+      .catch((e: unknown) => setNamesErr(e instanceof Error ? e.message : String(e)));
+  }, [wire]);
   useEffect(() => setLimit(60), [f]);
   useEffect(() => { if (f.my !== null) setShowMy(true); }, [f.my]);
 
-  const result = useMemo(() => (wire === null ? null : query(wire, f)), [wire, f]);
+  // names 必須在依賴陣列裡：名稱檔晚到時若不重算，關鍵字搜尋會永遠停在
+  // 「還沒有名字」的那個結果集，而畫面上看起來是一個正常的答案。
+  const result = useMemo(
+    () => (wire === null ? null : query(wire, f, new Date(), names)),
+    [wire, f, names],
+  );
 
   // 路線依棟數排序；車站清單依所選路線過濾
   const lineOrder = useMemo(() => {
@@ -409,7 +429,8 @@ export default function App() {
     set({ layouts: f.layouts.includes(l) ? f.layouts.filter((x) => x !== l) : [...f.layouts, l] });
   };
   const exportCsv = (): void => {
-    downloadCsv(rowsToCsv(wire, rows, { assumeUtil: f.assumeUtil }), csvFileName(rows.length));
+    if (names === null) return; // 按鈕在名稱檔到齊前是 disabled，這裡只是型別上的把關
+    downloadCsv(rowsToCsv(wire, names, rows, { assumeUtil: f.assumeUtil }), csvFileName(rows.length));
   };
 
   return (
@@ -594,6 +615,14 @@ export default function App() {
               </button>
             </div>
           )}
+          {/* 名稱檔還沒到而使用者又用了關鍵字時，結果是「待定」不是「0 筆」。
+              下面的筆數、行情、分佈全部由這個空結果集算出來，照常印會變成
+              一組看起來很篤定、實際上沒有意義的數字。 */}
+          {result.pendingNames ? (
+            <div className="tiers">
+              <span>關鍵字要比對建物名稱，<b>正在載入名稱檔</b>——筆數與行情等載完才算得準</span>
+            </div>
+          ) : (
           <div className="tiers">
             {/* 三區是「目前排序鍵」的完整度，不是月額的——按每㎡單價排序時，
                 月額已知但算不出單價的房也會落在資料不足區。標籤要講清楚是哪個指標，
@@ -603,10 +632,18 @@ export default function App() {
             <span><b>{counts[2]}</b> 筆{TIER_LABEL[f.sort][2]}</span>
             <span className="tools">
               <button type="button" onClick={() => setShowMy(!showMy)}>{showMy ? '收起' : '我的房子定位'}</button>
-              <button type="button" onClick={exportCsv} disabled={rows.length === 0}>匯出 CSV（{rows.length} 筆）</button>
+              <button
+                type="button"
+                onClick={exportCsv}
+                disabled={rows.length === 0 || names === null}
+                title={names === null ? '等建物名稱載入完才能匯出——少了名稱與原站連結的 CSV 看起來仍然完整，但不是' : undefined}
+              >
+                匯出 CSV（{rows.length} 筆）{names === null && ' · 名稱載入中'}
+              </button>
             </span>
           </div>
-          {(excluded.kindUnknown > 0 || excluded.ageUnknown > 0 || excluded.floorUnknown > 0) && (
+          )}
+          {!result.pendingNames && (excluded.kindUnknown > 0 || excluded.ageUnknown > 0 || excluded.floorUnknown > 0) && (
             <p className="notice">
               {excluded.kindUnknown > 0 && <>另有 {excluded.kindUnknown.toLocaleString()} 間<b>種類未知</b>未計入（來源沒寫，不代表不符）。</>}
               {excluded.ageUnknown > 0 && <>另有 {excluded.ageUnknown.toLocaleString()} 間<b>築年未提供</b>未計入；屋齡以瀏覽器當年計，可能跨年差 1。</>}
@@ -622,7 +659,11 @@ export default function App() {
               )}
             </p>
           )}
-          {showMy && <MyPropertyPanel wire={wire} f={f} set={set} monthlies={stats.monthlies} perM2s={stats.perM2} />}
+          {/* 待定時 rows 是空的，百分位面板會印「樣本不足」——那是對一個
+              還沒算出來的結果集下結論，不是事實。 */}
+          {showMy && (result.pendingNames
+            ? <p className="pending-names">等建物名稱載入完才算得出百分位。</p>
+            : <MyPropertyPanel wire={wire} f={f} set={set} monthlies={stats.monthlies} perM2s={stats.perM2} />)}
           {mixedBasis && (
             <p className="banner">
               結果同時包含「月額含水電」與「水電另計」的房源，直接比較會低估後者。
@@ -630,7 +671,13 @@ export default function App() {
             </p>
           )}
 
-          {rows.length === 0 && <p>沒有符合條件的房源。</p>}
+          {result.pendingNames && (
+            <p className="pending-names">
+              關鍵字要比對建物名稱，正在載入名稱檔（約 1 MB，只載一次）……
+              {namesErr !== null && <><br /><b>載入失敗：</b>{namesErr}</>}
+            </p>
+          )}
+          {!result.pendingNames && rows.length === 0 && <p>沒有符合條件的房源。</p>}
 
           <ul className="cards">
             {rows.slice(0, limit).map((r) => {
@@ -654,18 +701,23 @@ export default function App() {
               const ads = u.ads[i] as number;
               const alsoMask = b.also[bi] as number;
               const alsoNames = dict.sources.filter((_, k) => (alsoMask & (1 << k)) !== 0).map((sid) => dict.sourceMeta[sid]?.nameZh ?? sid);
+              // 名稱走第二個檔案，可能還沒到（也可能載入失敗）。
+              // 兩種情況都**不可以**印一個空字串了事——那看起來像「這棟沒有名字」。
+              const name = names === null ? null : (names.name[bi] ?? '');
               // 屋主不公開物件名時，SUUMO 用樣板生一個描述填在名稱欄
               // （「東急田園都市線 駒沢大学駅 3階建 新築」，全量 38.2%）。
               // 照原文印會讓使用者以為那是樓的名字，而且十幾棟會長得一模一樣。
-              const name = b.name[bi] ?? '';
-              const generatedName = isGeneratedBuildingName(name);
+              const generatedName = name !== null && isGeneratedBuildingName(name);
+              const url = names === null ? null : names.url[bi];
               return (
                 <li key={i} className={`card t${tier}`}>
                   <div className="head">
                     <h3>
-                      {generatedName
-                        ? <>物件名非公開<span className="gen-name">{name}</span></>
-                        : name}
+                      {name === null
+                        ? <span className="name-pending">{namesErr === null ? '名稱載入中…' : '名稱無法載入'}</span>
+                        : generatedName
+                          ? <>物件名非公開<span className="gen-name">{name}</span></>
+                          : name}
                     </h3>
                     <span className="ward">
                       {dict.wards[b.ward[bi] as number] || '区未提供'}
@@ -728,9 +780,15 @@ export default function App() {
 
                   <div className="actions">
                     <button type="button" onClick={() => setOpen(i)}>費用拆解</button>
-                    <a href={b.url[bi]} target="_blank" rel="noreferrer noopener" className="primary">
-                      前往原站 ↗
-                    </a>
+                    {url === undefined || url === null
+                      // 沒有 URL 時給一個 disabled 的 span，不是 <a href="">——
+                      // 空 href 會把使用者現有的篩選條件整個洗掉
+                      ? <span className="primary disabled" aria-disabled="true">前往原站 ↗</span>
+                      : (
+                        <a href={url} target="_blank" rel="noreferrer noopener" className="primary">
+                          前往原站 ↗
+                        </a>
+                      )}
                     <span className="fresh">確認於 {b.fetchedAt[bi]}</span>
                   </div>
                 </li>

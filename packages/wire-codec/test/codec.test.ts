@@ -32,7 +32,8 @@ function makeIndex(over: Partial<Record<string, unknown[]>> = {}): ColumnIndex {
     meta: { units: 2, buildings: 1, provBucket: 400 },
     dict: { wards: ['文京区'], stations: ['本郷三丁目', '春日'], sources: ['suumo'], kinds: ['unknown', 'apartment'], layouts: ['1K', '1LDK'], lines: ['丸ノ内線'], pairs: [[0, 0]] },
     b: {
-      name: ['テスト荘'], url: ['https://example.test/1'], ward: [0], src: [0],
+      // name／url 自 C3 起不在索引裡，改由 names.json.gz 供應（見 names.test.ts）
+      ward: [0], src: [0],
       stn: [0, 1], stw: [5, null], stc: [2], total: [10], fetchedAt: ['2026-09-06'],
       kind: [1], yearBuilt: [2015], also: [0], btype: [0],
     },
@@ -46,7 +47,7 @@ describe('無損往返', () => {
   test('每一格都用 Object.is 比對（分得出 0 與 −0）', () => {
     const idx = makeIndex();
     const { cells } = assertLossless(idx, roundTrip(idx));
-    assert.ok(cells > 40, `應該比對到所有格，實際 ${cells}`);
+    assert.ok(cells > 30, `應該比對到所有格，實際 ${cells}`);
   });
 
   test('null 與 0 是兩件事，不可互換', () => {
@@ -89,8 +90,7 @@ describe('無損往返', () => {
 
   test('bid 非遞增時退回原樣存整欄', () => {
     const idx = makeIndex({ bid: [1, 0] });
-    idx.b['name'] = ['A', 'B'];
-    idx.b['url'] = ['u1', 'u2']; idx.b['ward'] = [0, 0]; idx.b['src'] = [0, 0];
+    idx.b['ward'] = [0, 0]; idx.b['src'] = [0, 0];
     idx.b['stn'] = [0, 1]; idx.b['stw'] = [5, 5]; idx.b['stc'] = [1, 1];
     idx.b['total'] = [1, 1]; idx.b['fetchedAt'] = ['2026-09-06', '2026-09-06'];
     idx.b['kind'] = [1, 1]; idx.b['yearBuilt'] = [2015, 2016]; idx.b['also'] = [0, 0];
@@ -141,6 +141,23 @@ describe('危險形狀一律大聲失敗，絕不靜默改值', () => {
     idx.u['effMonthly12'] = arr((i) => 80000 + Math.round((1 + i) / 12));
     idx.meta['units'] = n;
     assert.throws(() => encodeIndex(idx), /已失去意義/);
+  });
+
+  test('把 name／url 塞回索引 → 拒絕編碼（它們自 C3 起屬於 names.json.gz）', () => {
+    const idx = makeIndex();
+    idx.b['name'] = ['テスト荘'];
+    assert.throws(() => encodeIndex(idx), /自 C3 起不進索引/);
+  });
+
+  test('棟層欄位長度不一致 → 拒絕編碼（那是序號錯位的源頭）', () => {
+    const idx = makeIndex();
+    idx.b['ward'] = [0, 0];
+    assert.throws(() => encodeIndex(idx), /棟層欄位必須等長/);
+  });
+
+  test('解碼器只讀 C3，認不得的版本要停下來而不是解出半個索引', () => {
+    const e = encodeIndex(makeIndex());
+    assert.throws(() => decodeIndex({ ...e, v: 'C2' as 'C3' }), /只讀 C3/);
   });
 
   test('assertLossless 抓得到被竄改的一格', () => {

@@ -16,9 +16,12 @@ import { mkdir, readFile, writeFile, rm, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 
 import { readNdjsonGz } from '../ndjson.ts';
 import { encodeIndex, decodeIndex, assertLossless, type ColumnIndex } from '../../../packages/wire-codec/src/index.ts';
+import { encodeNames, decodeNames, assertNamesLossless, type NamesTable, type EncodedNames }
+  from '../../../packages/wire-codec/src/names.ts';
 
 import { DATA_ROOT } from '../http.ts';
 import { loadSourceIds } from '../registry.ts';
@@ -421,8 +424,11 @@ async function main(): Promise<void> {
   // 10 万級的 unit id 字串（每個 ~40 字元）光自己就吃掉數百 KB gzip，
   // 而它只在點開詳情時才需要。
   // 車站扁平化：B.stn／B.stw 連續存所有站，B.stc 是每棟站數（offset 由前綴和算）。
+  // 顯示用字串（名稱、原站 URL）不進索引——它們佔 index.json 的 46%，
+  // 卻完全不參與篩選與排序。以**同一個建物序號**寫進 names.json.gz。
+  const NAMES: { name: string[]; url: string[] } = { name: [], url: [] };
   const B = {
-    name: [] as string[], url: [] as string[], ward: [] as number[], src: [] as number[],
+    ward: [] as number[], src: [] as number[],
     stn: [] as number[], stw: [] as (number | null)[], stc: [] as number[],
     total: [] as (number | null)[], fetchedAt: [] as string[], kind: [] as number[],
     yearBuilt: [] as (number | null)[], also: [] as number[],
@@ -450,6 +456,10 @@ async function main(): Promise<void> {
   const PROV_TMP = path.join(OUT_DIR, 'prov.tmp');
   await rm(PROV_TMP, { recursive: true, force: true });
   await mkdir(PROV_TMP, { recursive: true });
+  // 上一次跑到一半留下的暫存檔要先清掉：Vite 會把 web/public/ 原樣複製進 dist，
+  // 一個殘留的 index.json.tmp 會跟著部署上線。
+  await rm(path.join(OUT_DIR, 'index.json.tmp'), { force: true });
+  await rm(path.join(OUT_DIR, 'names.json.gz.tmp'), { force: true });
   let provBucketNo = -1;
   let provBucket: Record<string, unknown> = {};
   let provBucketCount = 0;
@@ -473,9 +483,9 @@ async function main(): Promise<void> {
   for (const { b, units } of work) {
     if (units.length === 0) { emptyBuildings += 1; continue; } // 房間全被併到別的來源，卡片沒東西可顯示
     const provided = providesOf.get(b.sourceId) ?? new Set<string>();
-    const bi = B.name.length;
-    B.name.push(b.name);
-    B.url.push(b.sourceUrl);
+    const bi = NAMES.name.length;
+    NAMES.name.push(b.name);
+    NAMES.url.push(b.sourceUrl);
     B.ward.push(wards.idx(b.ward));
     B.src.push(sources.idx(b.sourceId));
     for (const st of b.stations) {
@@ -554,7 +564,11 @@ async function main(): Promise<void> {
 
   // ── 閘門結果 ─────────────────────────────────────────────
   if (g.errors.length > 0) {
-    await rm(PROV_TMP, { recursive: true, force: true }); // 閘門失敗＝不留下任何產出
+    // 閘門失敗＝不留下任何產出。三個暫存位置都要清：殘留的 .tmp 會被 Vite
+    // 原樣複製進 web/dist，跟著部署上線。
+    await rm(PROV_TMP, { recursive: true, force: true });
+    await rm(path.join(OUT_DIR, 'index.json.tmp'), { force: true });
+    await rm(path.join(OUT_DIR, 'names.json.gz.tmp'), { force: true });
     console.error(`\n⛔ 建置閘門失敗（${g.errors.length} 項），未產出任何檔案：\n`);
     for (const e of g.errors.slice(0, 20)) console.error('  ' + e);
     if (g.errors.length > 20) console.error(`  …另有 ${g.errors.length - 20} 項`);
@@ -563,11 +577,40 @@ async function main(): Promise<void> {
   }
 
   const pairs = [...pairSet].map((p) => p.split(',').map(Number) as [number, number]);
+
+  /**
+   * 兩個檔案「來自同一次建置」的唯一證明。
+   *
+   * index.json 與 names.json.gz 以建物序號互相對齊，但 GitHub Pages 的
+   * `cache-control: max-age=600` 不可調、檔名又是固定的——瀏覽器完全可能
+   * 手上拿著舊的一個、剛抓到新的另一個。那會讓每張卡片掛上**別棟**的名字、
+   * 「前往原站」連到**別棟**的頁面，而且不會有任何錯誤訊息。
+   *
+   * 所以雜湊只吃資料（dict / b / u），**不吃 meta**：
+   * 資料沒變時 buildId 就不變，瀏覽器的快取才能繼續命中；
+   * 資料一變 buildId 就變，前端據此換 URL 查詢字串把舊快取繞開，
+   * 並在載入後再比對一次，對不上寧可不顯示名字也不顯示錯的名字。
+   */
+  const dictObj = {
+    wards: wards.list, stations: stations.list, sources: sources.list, sourceMeta,
+    kinds: KINDS, layouts: layouts.list, lines: lines.list, pairs,
+    buildingTypes: btypes.list,
+  };
+  // 雜湊吃的是**真正要輸出的那個 dict 物件**，不是另外手抄一份——
+  // 手抄的版本漏了 sourceMeta，那會讓「只有 sourceMeta 變了」的建置沿用舊 buildId。
+  const buildId = createHash('sha256')
+    .update(JSON.stringify({ dict: dictObj, b: B, u: U, names: NAMES }))
+    .digest('hex')
+    .slice(0, 16);
+
   const meta = {
     generatedAt: new Date().toISOString(),
-    buildings: B.name.length,
+    buildId,
+    buildings: NAMES.name.length,
     units: U.bid.length,
     provBucket: PROV_BUCKET,
+    /** provenance 桶的目錄名＝buildId；舊索引要的目錄在新部署裡不存在，會 404 而不是拿到別人的桶 */
+    provDir: buildId,
     sources: sources.list.map((id) => ({ id })),
     missingBits: MISSING_BITS,
     flagBits: FLAG,
@@ -587,15 +630,7 @@ async function main(): Promise<void> {
     },
   };
 
-  const index = {
-    meta,
-    dict: {
-      wards: wards.list, stations: stations.list, sources: sources.list, sourceMeta,
-      kinds: KINDS, layouts: layouts.list, lines: lines.list, pairs,
-      buildingTypes: btypes.list,
-    },
-    b: B, u: U,
-  };
+  const index = { meta, dict: dictObj, b: B, u: U };
   const plainJson = JSON.stringify(index);
 
   // ── 閘門 5：壓縮不得改變任何一個數字 ────────────────────────────
@@ -608,14 +643,49 @@ async function main(): Promise<void> {
   const roundTrip = decodeIndex(JSON.parse(encodedJson) as typeof encoded);
   const { cells } = assertLossless(index as unknown as ColumnIndex, roundTrip);
 
-  await writeFile(path.join(OUT_DIR, 'index.json'), encodedJson, 'utf8');
+  // 同一道閘門也要蓋住拆出去的顯示字串。name／url 離開索引之後就離開了
+  // assertLossless 的覆蓋範圍——少了這一段，46% 的資料等於沒有任何無損保證。
+  const namesTable: NamesTable = { name: NAMES.name, url: NAMES.url };
+  const encodedNames = encodeNames(namesTable, buildId);
+  const namesJson = JSON.stringify(encodedNames);
+  const namesBack = decodeNames(JSON.parse(namesJson) as EncodedNames);
+  const { cells: nameCells } = assertNamesLossless(namesTable, namesBack);
+  // 真正要驗的是「names 與索引的棟層欄位等長」。
+  // 拿 meta.buildings 比是恆真的——它本身就是 NAMES.name.length 算出來的，
+  // 一個永遠成立的斷言擋不住任何東西。
+  if (NAMES.name.length !== B.fetchedAt.length) {
+    throw new Error(`[build] names 有 ${NAMES.name.length} 筆、索引的棟層欄位有 ${B.fetchedAt.length} 格——序號對不上`);
+  }
+  if (encodedNames.n !== B.fetchedAt.length) {
+    throw new Error(`[build] 編碼後的 names n=${encodedNames.n} 與索引棟數 ${B.fetchedAt.length} 不符`);
+  }
 
-  // 舊桶整個換掉：桶的鍵與數量會隨資料變動，殘留的舊桶會被誤讀
+  // ── 產出：三份檔案必須一起換掉 ────────────────────────────────
+  // index.json、names.json.gz、prov/ 三者以建物／房間序號互相對齊。
+  // 先全部寫到 .tmp 再一次 rename，中途失敗就不會留下「新索引配舊名稱」的組合。
+  const namesGz = gzipSync(Buffer.from(namesJson, 'utf8'));
+  const indexTmp = path.join(OUT_DIR, 'index.json.tmp');
+  const namesTmp = path.join(OUT_DIR, 'names.json.gz.tmp');
+  await writeFile(indexTmp, encodedJson, 'utf8');
+  await writeFile(namesTmp, namesGz);
+
+  // provenance 桶放在 **prov/<buildId>/** 底下，不是 prov/ 根目錄。
+  //
+  // 為什麼不能只靠網址上的 `?v=`：查詢字串只換瀏覽器的快取鍵，換不掉伺服器上的檔案。
+  // 一個開著的分頁停在舊建置、伺服器已經換成新建置時，`prov/p3.json.gz?v=舊` 這個網址
+  // 從來沒被快取過 → 一定回源 → 拿到的是**新**建置的 p3。unit 序號只要位移一格，
+  // 費用拆解、原文出處、「前往原站查看」就全部接到別間房上，而且不會有任何錯誤訊息。
+  // 把 buildId 放進路徑，舊索引要的目錄在新部署裡根本不存在 → 404 →
+  // 明細顯示「載入失敗」。**錯的資料變成沒有資料**，而且是伺服器強制的，不是前端自律。
   await rm(path.join(OUT_DIR, 'prov'), { recursive: true, force: true });
-  await rename(PROV_TMP, path.join(OUT_DIR, 'prov'));
+  await mkdir(path.join(OUT_DIR, 'prov'), { recursive: true });
+  await rename(PROV_TMP, path.join(OUT_DIR, 'prov', buildId));
+  await rename(indexTmp, path.join(OUT_DIR, 'index.json'));
+  await rename(namesTmp, path.join(OUT_DIR, 'names.json.gz'));
 
   const gz = gzipSync(Buffer.from(encodedJson, 'utf8')).length;
   const gzPlain = gzipSync(Buffer.from(plainJson, 'utf8')).length;
+  const gzNames = namesGz.length;
   console.log(`✔ 建置完成`);
   console.log(`  建物 ${meta.buildings} 棟 / 房間 ${meta.units} 間（空棟略過 ${emptyBuildings}；`
     + `同棟被拆成多行而合併 ${mergedLines} 行、同一刊登被重複抓取而丟棄 ${dupKeyRows} 列）`);
@@ -625,6 +695,9 @@ async function main(): Promise<void> {
   console.log(`  index.json ${(encodedJson.length / 1024).toFixed(0)} KB raw → ${(gz / 1024).toFixed(0)} KB gzip`);
   console.log(`    （未編碼會是 ${(gzPlain / 1024).toFixed(0)} KB gzip，壓縮省下 ${(100 * (gzPlain - gz) / gzPlain).toFixed(1)}%；`
     + `無損閘門逐格比對 ${cells.toLocaleString()} 格通過）`);
+  console.log(`  names.json.gz ${(gzNames / 1024).toFixed(0)} KB（建物名與原站 URL，不參與篩選排序，首屏不等它；`
+    + `無損閘門逐格比對 ${nameCells.toLocaleString()} 格通過）`);
+  console.log(`  buildId ${buildId}（index／names 以此證明來自同一次建置）`);
   console.log(`  provenance ${provBucketCount} 桶（邊產邊寫，不在記憶體累積）`);
   if (gz > 500 * 1024) console.warn(`  ⚠️ 首屏資料 ${(gz / 1024).toFixed(0)} KB gzip 已超過 500 KB 預算，該啟動分片了`);
   if (g.violations.length > 0) {

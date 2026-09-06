@@ -242,3 +242,24 @@ footer p { margin: 0 0 8px; }
   color: var(--muted, #6b7280);
   margin-top: 2px;
 }
+
+/* 名稱走第二個檔案，載入中／失敗時卡片標題的樣子。
+   不可以印空字串——那看起來像「這棟沒有名字」。 */
+.card .head h3 .name-pending {
+  color: var(--muted, #9ca3af);
+  font-weight: 400;
+  font-style: italic;
+}
+/* 沒有原站 URL 時的按鈕：保持版面但不可點。
+   不用 <a href="">，那會把使用者現有的篩選條件洗掉。 */
+.card .actions .primary.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.pending-names {
+  padding: 10px 12px;
+  border: 1px solid var(--line, #e5e7eb);
+  border-radius: 8px;
+  background: var(--warn-bg, #fffbeb);
+}

@@ -26,12 +26,17 @@ export type ColumnIndex = {
 };
 
 export type EncodedIndex = {
-  v: 'C2';
+  /**
+   * `C3` 起 `b.name` 與 `b.url` 不在索引裡，改由 names.json.gz 以建物序號對齊供應
+   * （見 packages/wire-codec/src/names.ts）。版本必須跟著跳號：
+   * 舊前端拿到新檔時要「認不得而停下來」，不可以解出一個少了兩欄的索引繼續跑。
+   */
+  v: 'C3';
   meta: Record<string, unknown>;
   dict: Record<string, unknown>;
   nB: number;
   nU: number;
-  b: { name: unknown[]; url: unknown[]; fetchedAt: unknown[]; uc: string };
+  b: { fetchedAt: unknown[]; uc: string };
   u: { room: unknown[]; bid?: number[] };
   enc: Record<string, DictBlock>;
   rent: DictBlock;
@@ -132,8 +137,12 @@ export function dictDec(o: DictBlock, n: number): unknown[] {
 const DICT_B = ['ward', 'src', 'kind', 'also', 'stc', 'total', 'yearBuilt', 'stn', 'stw', 'btype'] as const;
 const DICT_U = ['layout', 'floor', 'admin', 'util', 'utilBasis', 'depNR', 'gender', 'foreigner',
   'vacant', 'monthlyTier', 'initCashTier', 'missing', 'flags', 'ads'] as const;
-/** 原樣保留（字串為主，gzip 自己處理得很好）。 */
-const RAW_B = ['name', 'url', 'fetchedAt'] as const;
+/**
+ * 原樣保留（字串為主，gzip 自己處理得很好）。
+ * `name`／`url` 自 C3 起搬到 names.json.gz——它們合計佔 index.json 的 46%，
+ * 卻完全不參與篩選與排序。
+ */
+const RAW_B = ['fetchedAt'] as const;
 
 /** rent 用 −1 當 null 的哨兵、area 用 −1/−2——真實資料撞上就必須改設計，不能默默共用。 */
 const RENT_NULL = -1;
@@ -152,7 +161,21 @@ const numAt = (a: readonly unknown[], i: number): number | null => {
 export function encodeIndex(idx: ColumnIndex): EncodedIndex {
   const B = idx.b;
   const U = idx.u;
-  const nB = (B['name'] as unknown[]).length;
+  // nB 以 RAW_B 的第一欄為準（C2 時是 name，C3 之後是 fetchedAt）。
+  // 順帶把「所有棟層欄位等長」變成硬性檢查：長度不一致就是序號錯位的源頭，
+  // 而錯位的症狀是每張卡片掛上別棟的資料、完全無聲。
+  const nBKey = RAW_B[0];
+  const nB = (B[nBKey] as unknown[] | undefined)?.length;
+  if (nB === undefined) throw new Error(`[wire-codec] 索引缺少棟層欄位 b.${nBKey}，無法決定建物數`);
+  for (const k of [...RAW_B, ...DICT_B]) {
+    if (k === 'stn' || k === 'stw') continue; // 這兩欄長度是扁平站數，不是棟數
+    const col = B[k] as unknown[] | undefined;
+    if (col === undefined) throw new Error(`[wire-codec] 索引缺少棟層欄位 b.${k}`);
+    if (col.length !== nB) throw new Error(`[wire-codec] b.${k} 有 ${col.length} 格，b.${nBKey} 有 ${nB} 格——棟層欄位必須等長`);
+  }
+  if (B['name'] !== undefined || B['url'] !== undefined) {
+    throw new Error('[wire-codec] b.name／b.url 自 C3 起不進索引，請改用 encodeNames() 產生 names.json.gz');
+  }
   const nU = (U['bid'] as unknown[]).length;
   const zeroIfNull = (a: readonly unknown[], i: number): number => numAt(a, i) ?? 0;
 
@@ -252,13 +275,13 @@ export function encodeIndex(idx: ColumnIndex): EncodedIndex {
   for (const k of DICT_U) enc[`u.${k}`] = dictEnc(U[k] as unknown[]);
 
   const out: EncodedIndex = {
-    v: 'C2',
+    v: 'C3',
     meta: idx.meta,
     dict: idx.dict,
     nB,
     nU,
     b: {
-      name: B['name'] as unknown[], url: B['url'] as unknown[], fetchedAt: B['fetchedAt'] as unknown[],
+      fetchedAt: B['fetchedAt'] as unknown[],
       uc: monotone ? tvEnc(uc) : '',
     },
     u: { room: U['room'] as unknown[] },
@@ -283,10 +306,14 @@ export function encodeIndex(idx: ColumnIndex): EncodedIndex {
 }
 
 export function decodeIndex(o: EncodedIndex): ColumnIndex {
+  if (o.v !== 'C3') {
+    throw new Error(`[wire-codec] 認不得的索引版本 ${JSON.stringify(o.v)}——這個解碼器只讀 C3`);
+  }
   const { nU, nB } = o;
-  const B: Record<string, Array<unknown>> = {
-    name: o.b.name, url: o.b.url, fetchedAt: o.b.fetchedAt,
-  };
+  const B: Record<string, Array<unknown>> = { fetchedAt: o.b.fetchedAt };
+  if (o.b.fetchedAt.length !== nB) {
+    throw new Error(`[wire-codec] b.fetchedAt 有 ${o.b.fetchedAt.length} 格，nB 是 ${nB}`);
+  }
   const U: Record<string, Array<unknown>> = { room: o.u.room };
 
   for (const k of DICT_B) {

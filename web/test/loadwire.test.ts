@@ -1,15 +1,44 @@
 import { test, describe, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { loadWire, type LoadProgress } from '../src/data.ts';
+import { loadWire, loadNames, type LoadProgress, type Wire } from '../src/data.ts';
+import { encodeNames } from '../../packages/wire-codec/src/names.ts';
+import { encodeIndex, decodeIndex, type ColumnIndex } from '../../packages/wire-codec/src/index.ts';
 
 /**
  * 索引擴到 23 区後會是數 MB，載入進度是使用者唯一能分辨「還在下載」與「壞了」的訊號。
  * 這裡用假的 fetch 驗進度事件序列——尤其是 gzip 傳輸時**不可**拿 content-length 當分母
  * （那是壓縮後的位元組數，除下去會超過 100%）。
+ *
+ * 載體用**真的 C3 編碼檔**而不是隨手寫的物件：hydrate 現在會拒絕認不得的版本，
+ * 用假載體測等於測一條實際上不存在的路徑。
  */
 
-const BODY = { meta: { units: 2 }, dict: {}, b: {}, u: {} };
+/** 一棟兩間的最小索引。欄位齊全才過得了 encodeIndex 的等長檢查。 */
+function makeIndex(): ColumnIndex {
+  return {
+    meta: { buildId: 'testbuild0000003', provDir: 'testbuild0000003', buildings: 1, units: 2 },
+    dict: { wards: ['文京区'] },
+    b: {
+      ward: [0], src: [0], kind: [1], also: [0], stc: [2], total: [10], yearBuilt: [2015],
+      stn: [0, 1], stw: [5, null], btype: [0], fetchedAt: ['2026-09-06'],
+    },
+    u: {
+      bid: [0, 0], room: ['101', null], layout: [0, 1], area: [20.5, 33], floor: [1, 2],
+      rent: [80000, 120000], admin: [5000, 8000], util: [null, null], utilBasis: [2, 2],
+      key: [80000, 0], dep: [160000, null], depNR: [null, null],
+      gender: [1, 1], foreigner: [-1, 1], vacant: [1, 1],
+      monthlyLower: [85000, 128000], monthlyTier: [0, 0],
+      initCash: [240000, 0], initCashTier: [0, 1],
+      initSunk: [80000, 0], effMonthly12: [91667, 128000],
+      missing: [0, 3], flags: [0, 4], ads: [1, 2],
+    },
+  };
+}
+
+const ENCODED = encodeIndex(makeIndex());
+/** loadWire 回傳的是解碼後的索引，所以期望值也要走同一條解碼路徑 */
+const BODY = decodeIndex(JSON.parse(JSON.stringify(ENCODED)) as typeof ENCODED) as unknown as Record<string, unknown>;
 
 function streamResponse(opts: { headers: Record<string, string>; chunks: string[]; ok?: boolean; status?: number }): Response {
   const enc = new TextEncoder();
@@ -42,12 +71,14 @@ function split(text: string, n: number): string[] {
 }
 
 describe('loadWire 的下載進度', () => {
-  const json = JSON.stringify(BODY);
+  const json = JSON.stringify(ENCODED);
 
   test('未壓縮傳輸：content-length 可當分母，最後一次進度 loaded === total', async () => {
     const chunks = split(json, 4);
     globalThis.fetch = (async () => streamResponse({
-      headers: { 'content-length': String(json.length) }, chunks,
+      // content-length 是**位元組**數。索引裡有日文，字元數會小於位元組數，
+      // 拿字元數當分母會讓進度永遠到不了 100%。
+      headers: { 'content-length': String(new TextEncoder().encode(json).byteLength) }, chunks,
     })) as typeof fetch;
 
     const seen: LoadProgress[] = [];
@@ -56,8 +87,9 @@ describe('loadWire 的下載進度', () => {
     assert.deepEqual(w, BODY, '解析結果必須與原 JSON 完全相同');
     const dl = seen.filter((p) => p.phase === 'download');
     assert.equal(dl.length, chunks.length, '每個 chunk 一次進度');
-    assert.ok(dl.every((p) => p.total === json.length));
-    assert.equal(dl[dl.length - 1]?.loaded, json.length, '下載完成時 loaded 應等於 total');
+    const bytes = new TextEncoder().encode(json).byteLength;
+    assert.ok(dl.every((p) => p.total === bytes));
+    assert.equal(dl[dl.length - 1]?.loaded, bytes, '下載完成時 loaded 應等於 total');
     // loaded 必須單調遞增，否則進度條會倒退
     for (let k = 1; k < dl.length; k++) assert.ok((dl[k] as LoadProgress).loaded > (dl[k - 1] as LoadProgress).loaded);
     assert.equal(seen[seen.length - 1]?.phase, 'parse', '最後一個事件是 parse');
@@ -77,7 +109,7 @@ describe('loadWire 的下載進度', () => {
     assert.ok(seen.length > 0);
     assert.ok(seen.every((p) => p.total === null), 'gzip 時 total 必須是 null，不可用壓縮後大小當分母');
     const last = seen.filter((p) => p.phase === 'download').pop() as LoadProgress;
-    assert.equal(last.loaded, json.length, '仍要報得出已下載的解壓後位元組數');
+    assert.equal(last.loaded, new TextEncoder().encode(json).byteLength, '仍要報得出已下載的解壓後位元組數');
   });
 
   test('沒有 content-length（chunked）：total 是 null 但仍報 loaded', async () => {
@@ -99,7 +131,7 @@ describe('loadWire 的下載進度', () => {
   });
 
   test('多位元組字元跨 chunk 邊界不可被截斷（日文建物名會踩到）', async () => {
-    const ja = JSON.stringify({ meta: { units: 1 }, dict: { wards: ['文京区', '渋谷区'] }, b: {}, u: {} });
+    const ja = json; // 真的 C3 檔，字典裡就有日文站名與区名
     const enc = new TextEncoder().encode(ja);
     // 刻意在多位元組字元中間切開
     const mid = Math.floor(enc.length / 2);
@@ -122,6 +154,50 @@ describe('loadWire 的下載進度', () => {
     } as unknown as Response)) as typeof fetch;
 
     const w = await loadWire(() => {}) as { dict: { wards: string[] } };
-    assert.deepEqual(w.dict.wards, ['文京区', '渋谷区'], '日文不可因為 chunk 邊界而變成亂碼');
+    assert.deepEqual(w.dict.wards, (BODY as { dict: { wards: string[] } }).dict.wards,
+      '日文不可因為 chunk 邊界而變成亂碼');
+    assert.ok(w.dict.wards.includes('文京区'), 'fixture 必須真的含多位元組字元，否則這個測試沒在測東西');
+  });
+});
+
+describe('loadNames：兩個檔案必須來自同一次建置', () => {
+  const wire = BODY as unknown as Wire;
+
+  const namesResponse = (payload: unknown): Response => ({
+    ok: true,
+    status: 200,
+    headers: { get: (k: string) => (k.toLowerCase() === 'content-encoding' ? 'gzip' : null) },
+    body: null,
+    json: async () => payload,
+  } as unknown as Response);
+
+  test('buildId 相同 → 正常拿到名稱與連結', async () => {
+    const enc = encodeNames({ name: ['甲棟'], url: ['https://example.test/1'] }, wire.meta.buildId);
+    let asked = '';
+    globalThis.fetch = (async (u: string) => { asked = u; return namesResponse(enc); }) as unknown as typeof fetch;
+    const n = await loadNames(wire);
+    assert.deepEqual(n.name, ['甲棟']);
+    assert.deepEqual(n.url, ['https://example.test/1']);
+    assert.ok(asked.includes(`?v=${wire.meta.buildId}`),
+      `網址要帶 buildId 才繞得開 GitHub Pages 那 10 分鐘的舊快取，實際 ${asked}`);
+  });
+
+  test('buildId 不同 → 丟例外，不回一份會張冠李戴的名單', async () => {
+    const enc = encodeNames({ name: ['別棟'], url: ['https://example.test/9'] }, 'someotherbuild01');
+    globalThis.fetch = (async () => namesResponse(enc)) as unknown as typeof fetch;
+    await assert.rejects(() => loadNames(wire), /不是同一次建置/);
+  });
+
+  test('筆數與索引的建物數不符 → 丟例外', async () => {
+    const enc = encodeNames({ name: ['甲', '乙'], url: ['a', 'b'] }, wire.meta.buildId);
+    globalThis.fetch = (async () => namesResponse(enc)) as unknown as typeof fetch;
+    await assert.rejects(() => loadNames(wire), /序號對不上/);
+  });
+
+  test('HTTP 錯誤要丟例外', async () => {
+    globalThis.fetch = (async () => ({
+      ok: false, status: 404, headers: { get: () => null }, body: null, json: async () => ({}),
+    } as unknown as Response)) as typeof fetch;
+    await assert.rejects(() => loadNames(wire), /HTTP 404/);
   });
 });

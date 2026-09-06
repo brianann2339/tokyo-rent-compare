@@ -3,10 +3,11 @@
  * 未知值一律空字串——絕不寫 0，0 在這裡是「零円」的意思。
  */
 
-import { buildingStations, monthlyWithAssumption, perM2Comparable, type Wire, type Row } from './data.ts';
+import { buildingStations, monthlyWithAssumption, perM2Comparable, type Wire, type Row, type Names } from './data.ts';
+import { isGeneratedBuildingName } from '../../packages/jp-parse/src/name.ts';
 
 const HEADER = [
-  '來源', '物件名', '区', '種類', '房型', '面積㎡', '樓層（地下為負數）', '築年',
+  '來源', '物件名', '物件名為原站自動生成', '区', '種類', '房型', '面積㎡', '樓層（地下為負數）', '築年',
   '車站1', '徒歩1', '車站2', '徒歩2', '車站3', '徒歩3',
   '賃料', '管理費', '水電', '水電基準',
   '禮金', '敷金', '敷引', '月額下限', '月額區', '初期現金', '初期現金區', '沉沒成本',
@@ -29,7 +30,14 @@ const yesNo = (v: number | undefined): string => (v === 1 ? '是' : v === 0 ? '�
 const num = (v: number | null | undefined): string => (v === null || v === undefined ? '' : String(v));
 const cell = (s: string): string => `"${s.replace(/"/g, '""')}"`;
 
-export function rowsToCsv(wire: Wire, rows: readonly Row[], opts: { assumeUtil: number | null }): string {
+/**
+ * `names` 是必填而不是可選：CSV 會離開瀏覽器、被存下來、被拿去比價。
+ * 一份沒有物件名與原站連結的 CSV 看起來仍然「完整」（每列都有數字），
+ * 使用者不會發現少了什麼。所以在型別上就不允許沒有名字的匯出。
+ */
+export function rowsToCsv(
+  wire: Wire, names: Names, rows: readonly Row[], opts: { assumeUtil: number | null },
+): string {
   const { u, b, dict, meta } = wire;
   const lines = [HEADER.map(cell).join(',')];
   for (const r of rows) {
@@ -58,7 +66,11 @@ export function rowsToCsv(wire: Wire, rows: readonly Row[], opts: { assumeUtil: 
     const layoutIdx = u.layout[i] as number;
     const fields = [
       dict.sourceMeta[srcId]?.nameZh ?? srcId,
-      b.name[bi] ?? '',
+      names.name[bi] ?? '',
+      // 網頁上這種名字會印成「物件名非公開」，CSV 不標的話，
+      // 「東急田園都市線 駒沢大学駅 3階建 新築」看起來就像真的是樓的名字。
+      // 原文照留（那確實是原站印的字），另開一欄講清楚它是什麼。
+      isGeneratedBuildingName(names.name[bi] ?? '') ? 'Y' : '',
       dict.wards[b.ward[bi] as number] ?? '',
       KIND_ZH[dict.kinds[b.kind[bi] as number] ?? 'unknown'] ?? '',
       layoutIdx >= 0 ? (dict.layouts[layoutIdx] ?? '') : '',
@@ -75,7 +87,7 @@ export function rowsToCsv(wire: Wire, rows: readonly Row[], opts: { assumeUtil: 
       missing,
       yesNo(u.foreigner[i]), GENDER_ZH[u.gender[i] as number] ?? '', yesNo(u.vacant[i]),
       num(u.ads[i]),
-      b.fetchedAt[bi] ?? '', b.url[bi] ?? '',
+      b.fetchedAt[bi] ?? '', names.url[bi] ?? '',
     ];
     lines.push(fields.map(cell).join(','));
   }

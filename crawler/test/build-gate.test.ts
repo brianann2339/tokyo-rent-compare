@@ -18,6 +18,7 @@ import { promisify } from 'node:util';
 import { known, notListed, notOffered, yen, type Field, type Yen } from '../../packages/schema/src/field.ts';
 import type { Listing, Unit, SourceId } from '../../packages/schema/src/model.ts';
 import { decodeIndex, type EncodedIndex } from '../../packages/wire-codec/src/index.ts';
+import { decodeNames, type EncodedNames } from '../../packages/wire-codec/src/names.ts';
 
 const run = promisify(execFile);
 const CLI = path.resolve(import.meta.dirname, '../src/cli/build-data.ts');
@@ -97,11 +98,16 @@ before(async () => {
 after(async () => { if (dir !== '') await rm(dir, { recursive: true, force: true }); });
 
 describe('閘門 4：跨來源同房未審核就不准產檔', () => {
-  test('無 alias 檔 → exit 非零、不產出 index.json', async () => {
+  test('無 alias 檔 → exit 非零、三份產出檔一份都不留', async () => {
     const r = await build();
     assert.notEqual(r.code, 0, '應該以非零離開');
     assert.match(r.stderr, /\[閘門4\] 跨來源同房未審核：豊島区\|レオパレス閘門テスト/);
-    assert.equal(existsSync(path.join(dir, 'out', 'index.json')), false, '不可產出 index.json');
+    // 「閘門失敗＝不留下任何產出」現在要涵蓋三個檔案：
+    // index.json、names.json.gz、prov/ 以序號互相對齊，留下任何一個都可能被下一次
+    // 建置的另外兩個配成一組，那就是「新索引配舊名稱」的錯位。
+    for (const f of ['index.json', 'names.json.gz', 'index.json.tmp', 'names.json.gz.tmp', 'prov.tmp']) {
+      assert.equal(existsSync(path.join(dir, 'out', f)), false, `不可留下 ${f}`);
+    }
   });
 
   test('alias 審過後 → 通過，非主來源的房間移出索引、prov 記 alsoListed', async () => {
@@ -116,9 +122,9 @@ describe('閘門 4：跨來源同房未審核就不准產檔', () => {
 
     const r = await build();
     assert.equal(r.code, 0, `應該成功，stderr=${r.stderr}`);
-    // index.json 是壓縮編碼格式（頂層 v:'C2'），要先解碼才有欄位
+    // index.json 是壓縮編碼格式（頂層 v:'C3'），要先解碼才有欄位
     const encoded = JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex;
-    assert.equal(encoded.v, 'C2', 'index.json 應為 C2 編碼格式');
+    assert.equal(encoded.v, 'C3', 'index.json 應為 C3 編碼格式');
     const idx = decodeIndex(encoded) as unknown as {
       meta: { units: number; buildings: number; dedup: { crossSource: { groups: number; removedUnits: number } } };
       dict: { sources: string[] };
@@ -133,10 +139,15 @@ describe('閘門 4：跨來源同房未審核就不准產檔', () => {
     const suumoBit = 1 << idx.dict.sources.indexOf('suumo');
     assert.equal((idx.b.also[0] as number) & suumoBit, suumoBit);
 
-    // prov 桶是預先 gzip 的（未壓縮 507 MB vs 壓縮後 11 MB）
-    const provFiles = await readdir(path.join(dir, 'out', 'prov'));
+    // prov 桶放在 prov/<buildId>/ 底下（舊索引要的目錄在新部署裡不存在 → 404，
+    // 而不是拿到別次建置的桶），而且是預先 gzip 的（未壓縮 507 MB vs 壓縮後 11 MB）
+    const provDir = (encoded.meta as { provDir: string; buildId: string });
+    assert.equal(provDir.provDir, provDir.buildId, 'prov 目錄名就是 buildId');
+    const provRoot = await readdir(path.join(dir, 'out', 'prov'));
+    assert.deepEqual(provRoot, [provDir.buildId], 'prov/ 底下只該有這一次建置的目錄');
+    const provFiles = await readdir(path.join(dir, 'out', 'prov', provDir.buildId));
     assert.ok(provFiles.every((f) => f.endsWith('.json.gz')), `prov 桶應為 .json.gz，實際 ${provFiles.join(',')}`);
-    const prov = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'prov', provFiles[0] as string))).toString('utf8')) as
+    const prov = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'prov', provDir.buildId, provFiles[0] as string))).toString('utf8')) as
       Record<string, { alsoListed?: Array<{ src: string; url: string }> }>;
     const also = (prov['0'] ?? {}).alsoListed;
     assert.deepEqual(also, [{ src: 'suumo', url: 'https://example.test/r1' }]);
@@ -192,8 +203,9 @@ describe('棟層不變式：徒歩分超出合理範圍', () => {
     assert.equal((idx.u.flags[0] as number) & INVARIANT_VIOLATION, INVARIANT_VIOLATION, '房間要被標記');
     assert.equal(idx.b.stw[0], 220, '原值照原文保留，不可被清成 null');
 
-    const provFiles = await readdir(path.join(dir, 'out', 'prov'));
-    const prov = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'prov', provFiles[0] as string))).toString('utf8')) as
+    const bid = (JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex).meta as { buildId: string };
+    const provFiles = await readdir(path.join(dir, 'out', 'prov', bid.buildId));
+    const prov = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'prov', bid.buildId, provFiles[0] as string))).toString('utf8')) as
       Record<string, { invariants?: string[] }>;
     assert.match((prov['0']?.invariants ?? []).join('|'), /walk|徒歩|220/, `prov 要留下明細，實際 ${JSON.stringify(prov['0']?.invariants)}`);
   });
@@ -204,5 +216,67 @@ describe('棟層不變式：徒歩分超出合理範圍', () => {
     const r = await build();
     assert.equal(r.code, 0);
     assert.doesNotMatch(r.stdout, /不變式違反/);
+  });
+});
+
+describe('顯示字串拆到 names.json.gz：兩個檔案必須綁在一起', () => {
+  /**
+   * b.name／b.url 佔 index.json 的 46%，而且完全不參與篩選排序，所以拆成第二個檔。
+   * 拆開之後最危險的失效模式是**序號錯位**：卡片掛上別棟的名字、
+   * 「前往原站」連到別棟的頁面，而且沒有任何錯誤訊息。
+   * 這裡實跑 build-data，證明兩個檔案帶著同一個 buildId、長度一致、內容對得上。
+   */
+  test('index.json 不含 name/url；names.json.gz 帶得回原值，且 buildId 相同', async () => {
+    await writeFile(path.join(dir, 'data', 'aliases', 'buildings.json'),
+      JSON.stringify({ version: 1, groups: [] }), 'utf8');
+    await writeFile(path.join(dir, 'data', 'normalized', 'suumo.ndjson.gz'),
+      gzipSync(Buffer.from(`${JSON.stringify(listing('suumo', 95000))}\n`, 'utf8')));
+    await writeFile(path.join(dir, 'data', 'normalized', 'leopalace21.ndjson.gz'),
+      gzipSync(Buffer.from(`${JSON.stringify(listing('leopalace21', 80000))}\n`, 'utf8')));
+
+    const r = await build();
+    assert.equal(r.code, 0, `應該成功，stderr=${r.stderr}`);
+
+    const encoded = JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex;
+    assert.equal(encoded.v, 'C3');
+    assert.equal('name' in encoded.b, false, 'name 不該再出現在索引裡');
+    assert.equal('url' in encoded.b, false, 'url 不該再出現在索引裡');
+
+    const meta = encoded.meta as { buildId: string; buildings: number };
+    assert.match(meta.buildId, /^[0-9a-f]{16}$/, 'buildId 應為 16 位十六進位');
+
+    const names = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'names.json.gz'))).toString('utf8')) as EncodedNames;
+    assert.equal(names.v, 'N1');
+    assert.equal(names.buildId, meta.buildId, '兩個檔案必須帶同一個 buildId');
+    assert.equal(names.n, meta.buildings, 'names 的筆數必須等於索引的建物數');
+
+    const t = decodeNames(names);
+    assert.equal(t.name.length, meta.buildings);
+    assert.deepEqual(t.name, ['レオパレス閘門テスト', 'レオパレス閘門テスト']);
+    assert.deepEqual(t.url, ['https://leopalace21.test/gate', 'https://suumo.test/gate']);
+  });
+
+  test('資料沒變時 buildId 不變（瀏覽器快取才有機會命中）', async () => {
+    const read = async (): Promise<string> => {
+      const e = JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex;
+      return (e.meta as { buildId: string }).buildId;
+    };
+    const first = await read();
+    const r = await build();
+    assert.equal(r.code, 0);
+    assert.equal(await read(), first, 'generatedAt 每次都不同，但 buildId 只吃資料');
+  });
+
+  test('資料一變 buildId 就變（前端才換得掉舊的名稱檔）', async () => {
+    const read = async (): Promise<string> => {
+      const e = JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex;
+      return (e.meta as { buildId: string }).buildId;
+    };
+    const before = await read();
+    await writeFile(path.join(dir, 'data', 'normalized', 'suumo.ndjson.gz'),
+      gzipSync(Buffer.from(`${JSON.stringify(listing('suumo', 96000))}\n`, 'utf8')));
+    const r = await build();
+    assert.equal(r.code, 0);
+    assert.notEqual(await read(), before);
   });
 });
