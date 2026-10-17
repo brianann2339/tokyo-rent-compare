@@ -5,11 +5,8 @@
  * `hasAvailableRoomForForeigner` 這種其他站要靠自由文字才判斷得出來的旗標。
  * 把它繁中化＋費用可比，正是這個專案的核心價值。
  *
- * 枚舉方式（2026-08-16 實測）：
- *   列表 `?page=N` 是**累積式**——page 1 給 30 筆卡片、page 2 給 56、每頁 +26。
- *   page=48 一次回傳全部 1,244 筆（3.5 MB / 17 秒）。
- *   所以**取一次剛好蓋住全部的那一頁**就好，48 個請求變 2 個（含讀總數那次），
- *   對對方負載反而比逐頁抓更輕。（page=100 回空，上界在 50 與 100 之間。）
+ * 枚舉方式：列表 `?page=N` 逐頁讀、以 id 去重（2026-10-17 改；細節與改版經過見 `listUrl` 上方）。
+ *   2026-08-16 時是累積式，取第 48 頁一次拿全部；站方改成一般分頁後那一頁變空的。
  *
  * 注意兩種回應格式差很多：一般 GET 的 HTML 只含 30 筆，
  * 帶 `RSC: 1` 標頭才拿得到完整 payload——這點若搞錯會默默只抓到 30 筆。
@@ -24,12 +21,17 @@
 import { reassembleFlight, extractObjects, extractArrayAfterKey } from '../../src/rsc.ts';
 import type { SourceAdapter, SourceManifest, TargetRef, RawDoc, ExtractContext, Fetcher } from '../../src/types.ts';
 import {
-  known, notListed, notOffered, unparsed, yen, type Field, type Yen,
+  known, notListed, notOffered, unparsed, includedInOther, statedNoAmount, yen, type Field, type Yen,
 } from '../../../packages/schema/src/field.ts';
 import type {
   Building, Unit, Listing, Station, ForeignerPolicy, UtilitiesBasis,
 } from '../../../packages/schema/src/model.ts';
 import { parseGenderTags, parseForeignerSignals, parseStayBucketsMinMonths } from '../../../packages/jp-parse/src/contract.ts';
+import {
+  proseZeroFees, proseUnadoptedZeroFees, proseFeeAmounts, proseYearBuilt, proseFloorsAboveGround, proseGuarantorFee, proseRenewalFees, proseCleaningFees,
+  proseOtherMonthly, BLOCK_BREAK,
+} from '../../../packages/jp-parse/src/prose.ts';
+import { proseFeeField, proseOtherMonthlyField } from '../../src/prose-fields.ts';
 
 export const manifest: SourceManifest = {
   id: 'hituji',
@@ -45,17 +47,26 @@ export const manifest: SourceManifest = {
       'layout', 'areaM2', 'roomNo', 'isVacant',
       'genderRestriction', 'foreignerWelcomed', 'stations', 'totalUnits',
       'yearBuilt',
+      // 站上沒有樓數欄位；說明文明寫「4階建て」「5階建のビル」時才有值（2026-10-17 驗證幫手抓到 3 棟漏收）
+      'floorsAboveGround',
+      // 站上沒有這兩個欄位；只有物件說明文明寫「仲介料…全て【無料】」這種免收時才有值（jp-parse/prose.ts）
+      'agencyFee', 'contractFee',
       // 站方以級距標籤刊登入居期間（「長期・4〜6か月」），有數字的頁面解得出最短月數。
       // 只寫「長期」的頁面沒有數字可讀，那是 not_listed_on_page 不是解析故障。
       'minStayMonths',
+      // 設備區「回線 光ファイバー（無料）」（2026-10-17 第二十三輪：4 間被驗證者指出沒讀）
+      'internet',
+      // 同 agencyFee：說明文明寫「火災保険はオーナー負担」時才有值（2026-10-17：4 間）
+      'fireInsurance', 'keyExchangeFee',
+      // 2026-10-17 第二十五輪（與 TSH 同一套，jp-parse proseGuarantorFee 等）：說明文「敷金・礼金・仲介料・更新料全て【無料】」→ 0；
+      // 入居条件「保証会社加入必須」→ 這頁沒寫初回保証料（不是來源不公開）
+      'guarantorInitialFee', 'cleaningFeeUpfront', 'renewalFee', 'renewalAdminFee', 'cleaningFeeOnExit',
     ],
     // 這些欄位站上完全不刊登。宣告出來，健康檢查才不會對它們產生
     // 永遠 0% 的假警報——警報疲勞會讓人乾脆關掉整個監控。
     neverProvides: [
-      'agencyFee', 'guarantorInitialFee', 'fireInsurance', 'keyExchangeFee',
-      'contractFee', 'cleaningFeeUpfront', 'renewalFee', 'renewalAdminFee',
-      'cleaningFeeOnExit', 'earlyTerminationPenalty', 'depositNonRefundable',
-      'structure', 'floorsAboveGround', 'petsAllowed',
+      'earlyTerminationPenalty', 'depositNonRefundable',
+      'structure', 'petsAllowed',
     ],
   },
   legal: {
@@ -132,30 +143,27 @@ type HitujiRoom = {
 };
 
 /**
- * 累積式分頁的實測參數（2026-08-16）：
- *   卡片數 = FIRST_PAGE_SIZE + PAGE_INCREMENT × (page - 1)
- *   page 1 → 30 筆、page 2 → 56、page 3 → 82…、page 48 → 1,244（全部）
- * 因為是累積的，只要取「剛好蓋住全部」的那一頁就好，不必逐頁抓。
+ * 列表分頁（2026-10-17 實測改版）：**一般分頁，每頁 30 筆、不累積**——
+ * page 1／2／3 各 30 筆且彼此零重疊，page 47 回 0 筆（站方自報 1,240 筆 → 42 頁）。
+ * 舊版（2026-08-16）是累積式（30 + 26×(N-1)），只抓第 48 頁就拿得到全部；
+ * 改版後那一頁是空的，舊公式於是解出 0 筆（被 discover 的 95% 護欄擋下，舊資料未被覆寫）。
+ *
+ * 所以不再依賴任何分頁公式：從第 1 頁往下讀、以 id 去重，
+ * 湊滿站方自報的筆數、或某一頁沒有新 id 就停。累積式與一般分頁都收得齊
+ * （累積式只是多下載重複的卡片）。
  */
-const FIRST_PAGE_SIZE = 30;
-const PAGE_INCREMENT = 26;
-/** 實測 page=100 回空，上界在 50–100 之間；設個保險上限避免請求到無效頁。 */
+/** 保險上限，避免站方的筆數欄位壞掉時一路請求下去。1,240 筆／30 = 42 頁。 */
 const MAX_PAGE = 80;
 
 const listUrl = (page: number): string =>
   `https://www.hituji.jp/comret/info/tokyo?page=${page}`;
 
-/** 站方自報的總筆數，用來反推需要哪一頁。 */
+/** 站方自報的總筆數，用來判斷讀到哪一頁可以停、以及收齊了沒。 */
 export function parseComretCount(payload: string): number | null {
   const m = /"comretCount":(\d+)/.exec(payload);
   if (m?.[1] === undefined) return null;
   const n = Number(m[1]);
   return Number.isFinite(n) ? n : null;
-}
-
-export function pageForCount(count: number): number {
-  if (count <= FIRST_PAGE_SIZE) return 1;
-  return Math.min(MAX_PAGE, Math.ceil((count - FIRST_PAGE_SIZE) / PAGE_INCREMENT) + 1);
 }
 
 const SUMMARY_ANCHOR = /\{"id":\d+,"name":"(?:[^"\\]|\\.)*","comment":/;
@@ -217,20 +225,49 @@ function numField(raw: string | number | null | undefined, srcKey: string): Fiel
 }
 
 /**
- * 水電基準的判定。
+ * 水電基準的判定——讀 variableCommonServiceFee 的**內容**，不是看它空不空。
  *
  * 已查證（2026-08-16，抽 7 個物件 12 間房）：`utilities` 欄位是
  * `commonServiceFee` 與 `variableCommonServiceFee` 的顯示串接
- * （例：common=6000 + var="実費" → utilities="6000実費"）。
+ * （例：common=6000 + var="実費" → utilities="6000実費"）。當時抽到的變動欄只見過「実費」，
+ * 於是寫成「非空就是另計」。
  *
- * 所以：
- *   variableCommonServiceFee 非空（如「実費」）→ 明確另計 → excluded
- *   空字串 → **unknown**。站上「光熱」「水道」等字在 payload 中零出現，
- *           沒有任何依據可以宣稱含水電。share house 慣例上多半含，
- *           但慣例不是這一頁的事實，不可據此填值。
+ * 2026-10-17 第三輪驗證抓到反例，全量列出 1,240 棟的值（38 種）才看清楚這是運營者的自由文字欄：
+ *   另計：「実費」「水道・ガス・光熱費は実費請求」「個室の電気、ガス、水道は個別に契約が必要」
+ *   含在共益費：「共益費（水光熱費・wi-fi・保険含む）」「水道光熱費は共益費にふくまれます」
+ *   無關：活動文案「家賃は2年プラン適用時の価格です…フリーレント付き！」（11 間曾被標成另計）、
+ *        二人入居加價、寵物加價、駐輪場代、「0」「なし」
+ *   說不準，維持 unknown：「光熱費は各室50KWまでは定額に含まれ、超過分は実費請求」（部分含）、
+ *        「電気・ガス…は固定費に含まれます」（沒提水道）、「共益費は¥10000／月を前預かり後、年2回精算」
+ * 空字串 → **unknown**。站上「光熱」「水道」等字在 payload 中零出現，沒有任何依據可以宣稱含水電。
  */
+export function utilitiesBasisOfText(t: string): UtilitiesBasis {
+  if (t === '') return 'unknown';
+  const mentionsInclusion = /含|込|ふくま|定額/.test(t);
+  if (/実費|個別に契約|別途/.test(t) && !mentionsInclusion) return 'excluded';
+  // 「ライフライン費￥11000」（share-house-180-kamiitabashi）：共益費之外另列的水電費
+  if (/(?:水道光熱|水光熱|光熱|ライフライン)費?\s*[￥¥]\s*[\d,]+/.test(t) && !mentionsInclusion) return 'excluded';
+  const included = /(?:水道光熱|水光熱|光熱水)[^。]{0,20}(?:含ま|含む|ふくま|込み)/.test(t)
+    || /共益費[（(][^）)]*(?:水道光熱|水光熱|光熱水)[^）)]*含む[）)]/.test(t);
+  if (included && !/実費|超過|上回|オーバー|別途/.test(t)) return 'included';
+  return 'unknown';
+}
+
 function utilitiesBasisOf(r: HitujiRoom): UtilitiesBasis {
-  return variableFeeOf(r) !== '' ? 'excluded' : 'unknown';
+  return utilitiesBasisOfText(variableFeeOf(r));
+}
+
+/**
+ * 共益費欄顯示 ￥0、附註卻寫「共益費は入居者で頭割り（¥3000〜¥8000）」（machida-forest 101）：
+ * 0 是版面上的佔位，不是「不收共益費」。存 0 會讓這間在比價裡平白便宜 3,000〜8,000 円，
+ * 改存「明寫要付、金額不固定」。只在結構化值為 0 且附註明說共益費由住戶分攤時才改。
+ */
+export function adminFeeOf(r: HitujiRoom): Field<Yen> {
+  const note = variableFeeOf(r);
+  if (r.commonServiceFee === 0 && /共益費[^。]{0,12}(?:頭割|割り勘|割勘|按分|案分|折半|住人で割|入居者で割)/.test(note)) {
+    return statedNoAmount<Yen>(`commonServiceFee=0；共益費欄附註「${note}」（共益費由住戶分攤，金額不固定）`);
+  }
+  return yenField(r.commonServiceFee, 'commonServiceFee');
 }
 
 /** `/rooms` 頁的房間物件形狀尚未實測過，缺欄位時不可讓 `.trim()` 把整棟炸掉。 */
@@ -245,6 +282,7 @@ type HitujiStation = {
   methodCode?: string;
   methodName?: string;
   timeMinutes?: number;
+  remarks?: string;
 };
 
 /**
@@ -270,8 +308,28 @@ type HitujiDetail = {
   readonly totalRoomCount: number | null;
   /** 入居条件「外国人」欄的原文。空字串＝站方有這個欄位、但這一頁沒寫（實測 128/1,244 頁）。 */
   readonly qualificationForeigner: string;
+  /** 入居条件「日本人」欄的原文（「身分証明書、緊急連絡先、保証会社加入必須。」）。只用來判保證公司。 */
+  readonly qualificationJapanese: string;
   /** 入居期間，例「長期」「長期・4〜6か月」。 */
   readonly tenancyPeriod: string;
+  /**
+   * 物件說明文（payload `description.comment`）。2026-10-17 實測 1,240 頁都出現兩次、title 都等於本棟名稱；
+   * 其中 28 頁的 comment 是 RSC 參照（"$24"），本檔不解析 flight 協定（見 rsc.ts 檔頭），那幾棟視為空字串。
+   */
+  readonly description: string;
+  /**
+   * 頁面「所在地」（payload `address`；同區塊另有 `ownerAddress`＝業者事務所，不是這個）。
+   * 2026-10-17 驗證幫手指出舊版把 addressRaw 寫死成空字串。實測 1,240 頁：每頁正好 2 次、值相同；
+   * 955 頁是「東京都〇〇区…」，其餘是空字串、只寫「東京都」或省略都名——照原文存，不補。
+   */
+  readonly address: string;
+  /**
+   * 設備區「インターネット」（payload `internet: {has, networkName, caption}`；2026-10-17 實測 1,240 個詳情頁每頁 2 份、內容相同）。
+   * null＝這頁沒有這個物件。
+   */
+  readonly internet: { readonly has: boolean; readonly caption: string } | null;
+  /** 頁面 CAMPAIGN 區塊（payload `communicationOptionMessage`）；2026-10-17 實測 1,639 頁裡 88 頁有。 */
+  readonly campaign: string;
 };
 
 /** 取某個鍵之後的 JSON 字串值（第一個）。 */
@@ -314,8 +372,82 @@ export function parseDetail(payload: string): HitujiDetail {
     stations,
     totalRoomCount: single === null || dorm === null ? null : single + dorm,
     qualificationForeigner: stringAfterKey(buf, 'qualificationForeigner') ?? '',
+    qualificationJapanese: stringAfterKey(buf, 'qualificationJapanese') ?? '',
     tenancyPeriod: [...new Set(extractArrayAfterKey<string>(buf, 'tenancyPeriod'))].join('・'),
+    address: (stringAfterKey(buf, 'address') ?? '').trim(),
+    description: descriptionOf(buf),
+    internet: internetOf(buf),
+    campaign: stringAfterKey(buf, 'communicationOptionMessage') ?? '',
   };
+}
+
+/**
+ * CAMPAIGN 區塊只拿來證明「這筆費用平常存在」，不拿活動的減免當值（減免有條件：內覽當天申請、住滿一年…）。
+ * 例：「内見当日のお申し込みの方限定！事務手数料￥20,000円→タダ！」「事務手数料0円＆…（1年以上ご入居の方限定）」
+ * 「事務手数料半額」「10月は初回保証料も0円」。2026-10-17 第二十三輪 kameido-plaisir#202：
+ * 舊版只讀物件說明，這筆被存成「來源不提供」；與 Social Apartment 活動欄礼金同一處理（明講有、金額不採用）。
+ */
+export function hitujiCampaignFees(msg: string): { contractFee?: Field<Yen>; guarantorInitialFee?: Field<Yen> } {
+  const t = msg.replace(/\s+/g, ' ').trim();
+  if (t === '') return {};
+  const note = `活動欄「${t.length > 120 ? `${t.slice(0, 120)}…` : t}」（活動條件下才減免＝平常要付；金額不採用）`;
+  return {
+    ...(/事務手数料|契約手数料/.test(t) ? { contractFee: statedNoAmount<Yen>(note) } : {}),
+    ...(/初回保証料/.test(t) ? { guarantorInitialFee: statedNoAmount<Yen>(note) } : {}),
+  };
+}
+
+function internetOf(buf: string): HitujiDetail['internet'] {
+  const m = /"internet":\{"has":(true|false)(?:,"networkName":(?:"(?:[^"\\]|\\.)*"|null))?(?:,"caption":("(?:[^"\\]|\\.)*"|null))?\}/.exec(buf);
+  if (m === null) return null;
+  let caption = '';
+  try { caption = m[2] === undefined || m[2] === 'null' ? '' : JSON.parse(m[2]) as string; } catch { caption = ''; }
+  return { has: m[1] === 'true', caption: /^\$[0-9a-z]+$/i.test(caption) ? '' : caption };
+}
+
+/**
+ * 網路費。設備區 caption 的第一行是「回線 〈種類〉（〈費用〉）」，後面「＊」開頭是補充。
+ * 2026-10-17 全量盤點 1,639 頁：「（無料）」佔絕大多數；另有「（￥2100/月）」「（¥1000。）」「（入居人数で頭割り。）」
+ * 「（￥6090を入居人数で頭割り。）」「（なし）」，以及補充寫「居室での利用は個別契約」「LAN利用料金は￥1000/月」。
+ * - 要另外簽約、與住戶分攤、或另有一筆收費 → 原站說了要付，但沒有這間房可採用的單一金額
+ * - 沒寫是月付還是一次付（「¥1000。」）→ 同上，不猜
+ * - 「（なし）」分不出是免費還是沒有回線 → 未知
+ */
+export function hitujiInternet(net: HitujiDetail['internet']): Field<Yen> {
+  if (net === null) return notOffered<Yen>();
+  if (!net.has) return notListed<Yen>('internet.has=false（站方標示沒有網路設備）');
+  const cap = net.caption.replace(/\r/g, '');
+  const src = `設備「${cap.replace(/\n/g, ' ')}」`;
+  const first = cap.split('\n')[0] ?? '';
+  const rest = cap.split('\n').slice(1).join('\n');
+  const fee = /（([^）]*)）/.exec(first)?.[1] ?? '';
+  // 「居室での利用は個別契約」才是房間要另簽；「膨大なデータ使用の際は別途個別契約…場合があります」是特殊用量，一般使用仍免費
+  if (/(?:居室|個室|専有部)[^。]{0,20}(?:個別|個人)(?:に)?契約|頭割|割る|人数/.test(cap)) {
+    return statedNoAmount<Yen>(`${src}（房間要另外簽約或與住戶分攤，金額不採用）`);
+  }
+  if (/共益費.{0,6}含/.test(fee)) return includedInOther(src);
+  const monthly = /^[￥¥]\s*([\d,]+)\s*[/／]\s*月。?$/.exec(fee);
+  const otherYen = /[￥¥]\s*[\d,]+/.test(rest);
+  if (monthly !== null) {
+    return otherYen ? statedNoAmount<Yen>(`${src}（另有一筆收費，金額不採用）`) : known(yen(Number((monthly[1] ?? '').replace(/,/g, ''))), 'measured', src);
+  }
+  if (/無料/.test(fee) || (fee === '-' && /＊無料/.test(rest))) {
+    // 「＊共益費月額￥10000に含む。」裡的金額是共益費，不是另一筆網路費
+    if (/共益費.{0,12}含/.test(rest)) return includedInOther(src);
+    if (otherYen) return statedNoAmount<Yen>(`${src}（部分用法另收費，金額不採用）`);
+    return known(yen(0), 'measured', src);
+  }
+  if (/^[￥¥]\s*[\d,]+。?$/.test(fee)) return statedNoAmount<Yen>(`${src}（沒寫是月付還是一次付，金額不採用）`);
+  if (fee === 'なし') return notListed<Yen>(`${src}（「なし」分不出是免費還是沒有回線）`);
+  return unparsed<Yen>(src);
+}
+
+function descriptionOf(buf: string): string {
+  const m = /"description":\{"title":"(?:[^"\\]|\\.)*","subTitle":"(?:[^"\\]|\\.)*","comment":"((?:[^"\\]|\\.)*)"/.exec(buf);
+  if (m?.[1] === undefined) return '';
+  let text: string;
+  try { text = JSON.parse(`"${m[1]}"`) as string; } catch { return ''; }
+  return /^\$[0-9a-z]+$/i.test(text) ? '' : text;
 }
 
 /**
@@ -365,23 +497,39 @@ function foreignerPolicy(s: HitujiSummary, d: HitujiDetail): ForeignerPolicy {
  * 實測 1,243/1,243 棟 `stationData[0].trainStationName` 與列表摘要的
  * `nearestTrainStationName` 完全相同，所以換來源不會換掉「哪一站」。
  *
- * stationData 每棟最多列到 5 站，這裡**仍然只輸出最寄的那一站**——
- * 輸出全部會改變跨來源比對用的車站集合，不在這次修正的範圍內。
+ * stationData 每棟最多列到 5 站。2026-09-06 版只輸出第 0 站；2026-10-17 驗證幫手指出頁面明列的
+ * 第 2 站以後全被丟掉（例：RooF 明大前 只剩代田橋、少了明大前 13 分），改為照順序全部輸出。
+ * 跨來源同棟比對因此多了車站可比，建置後重新跑 alias:candidates 人審。
  */
 function stationsOf(s: HitujiSummary, d: HitujiDetail): readonly Station[] {
-  const st = d.stations[0];
-  if (st !== undefined && typeof st.trainStationName === 'string' && st.trainStationName !== '') {
+  const out: Station[] = [];
+  const seen = new Set<string>();
+  d.stations.forEach((st, i) => {
+    if (typeof st.trainStationName !== 'string' || st.trainStationName === '') return;
+    const line = st.primaryTrainLineName ?? '';
+    const station = st.trainStationName.replace(/駅$/, '');
+    if (seen.has(`${line}|${station}`)) return;
+    seen.add(`${line}|${station}`);
     const mins = st.timeMinutes;
     const method = st.methodName ?? '';
-    return [{
-      line: st.primaryTrainLineName ?? '',
-      station: st.trainStationName.replace(/駅$/, ''),
+    // 自轉車站的備註只寫「徒歩25分。」（communityhouse-tobu-nerimatokumaru 的上板橋、西台，第三十輪）：站方另寫了走路分鐘數。
+    // 巴士站的「「井口八幡入口」下車　徒歩5分」是下車後走路、不是到車站，不收
+    const remark = st.remarks ?? '';
+    const walkRemark = st.methodCode === 'bicycle'
+      ? /^\s*[＊*]?\s*徒歩\s*(\d+)\s*分[。.]?\s*$/.exec(remark.replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0)))
+      : null;
+    out.push({
+      line,
+      station,
       walkMinutes: st.methodCode === 'walk' && typeof mins === 'number'
-        ? known(mins, 'measured', `stationData[0].timeMinutes=${mins}`)
-        : notListed(`${method}${mins ?? ''}`),
-      rawText: `${st.trainStationName} ${method}${mins ?? ''}分${d.stations.length > 1 ? ' 他' : ''}`,
-    }];
-  }
+        ? known(mins, 'measured', `stationData[${i}].timeMinutes=${mins}`)
+        : walkRemark?.[1] !== undefined
+          ? known(Number(walkRemark[1]), 'measured', `stationData[${i}].remarks「${remark}」`)
+          : notListed(`${method}${mins ?? ''}`),
+      rawText: `${st.trainStationName} ${method}${mins ?? ''}分${remark !== '' && walkRemark !== null ? ` ${remark}` : ''}`,
+    });
+  });
+  if (out.length > 0) return out;
   const name = s.nearestTrainStationName;
   if (typeof name !== 'string' || name === '') return [];
   const mins = s.transportationTimeMinutes;
@@ -415,6 +563,30 @@ function totalUnitsOf(s: HitujiSummary, d: HitujiDetail): Field<number> {
     `singleRoomAvailability.totalCount+dormitoryRoomAvailability.totalCount=${d.totalRoomCount}`);
 }
 
+/**
+ * 結構化的 constructionYear 優先；沒填時才讀說明文明寫的築年（jp-parse/prose.ts）。
+ * 2026-10-17 用有填 constructionYear 的 34 棟對照說明文規則：31 棟同年、3 棟差一年
+ * （2019年築 vs 2020、2016年築 vs 2015、2018年新築 vs 2017）——是運營者自己兩處寫法不一，
+ * 不是規則抓錯；所以說明文的年份照原句存，srcText 留整句讓人看得到出處。
+ */
+function yearBuiltOf(d: HitujiDetail, fetchedAt: string): Field<number> {
+  if (d.constructionYear !== null) {
+    return known(d.constructionYear, 'measured', `constructionYear=${d.constructionYear}`);
+  }
+  const p = proseYearBuilt(d.description, Number(fetchedAt.slice(0, 4)));
+  return p === null ? notListed('') : known(p.year, 'measured', `物件說明「${p.sentence}」`);
+}
+
+/**
+ * 站上沒有樓數欄位，只認說明文明寫（jp-parse/prose.ts：「N階建て」，地下層、改裝與メゾネット句不算）。
+ * 房間樓層**不**從相簿標籤「2F ROOM」推：2026-10-17 掃 486 頁，6 間房同時被標兩個不同樓層、
+ * 42 間標籤樓層與房號首碼不一致，還有「0F ROOM」「-1F ROOM」——那是運營者自填的相簿分組，不是樓層欄位。
+ */
+function floorsAboveGroundOf(d: HitujiDetail): Field<number> {
+  const p = proseFloorsAboveGround(d.description);
+  return p === null ? notListed('') : known(p.floors, 'measured', `物件說明「${p.sentence}」`);
+}
+
 function buildBuilding(s: HitujiSummary, raw: RawDoc, ctx: ExtractContext, d: HitujiDetail): Building | null {
   const keys = keysFromUrl(s.webUrl);
   if (keys === null) return null;
@@ -426,7 +598,7 @@ function buildBuilding(s: HitujiSummary, raw: RawDoc, ctx: ExtractContext, d: Hi
     sourceUrl: s.webUrl,
     name: s.name,
     kind: 'sharehouse',
-    addressRaw: '',
+    addressRaw: d.address,
     prefecture: '東京都',
     ward: d.townName ?? keys.ward,
     stations: stationsOf(s, d),
@@ -436,10 +608,8 @@ function buildBuilding(s: HitujiSummary, raw: RawDoc, ctx: ExtractContext, d: Hi
     // 站上有「建物の建築年」這個欄位（payload 的 constructionYear，實測 767/1,244 頁有值），
     // 2026-09-06 之前這裡硬寫 notOffered＝「來源根本沒有這個欄位」，那是錯的 why：
     // health 的填充率與 unparsed 告警都不會對 not_offered 出聲，缺口永遠不會浮出來。
-    yearBuilt: d.constructionYear === null
-      ? notListed('')
-      : known(d.constructionYear, 'measured', `constructionYear=${d.constructionYear}`),
-    floorsAboveGround: notOffered<number>(),
+    yearBuilt: yearBuiltOf(d, raw.fetchedAt),
+    floorsAboveGround: floorsAboveGroundOf(d),
     totalUnits: totalUnitsOf(s, d),
     imageUrls: images,
     fetchedAt: raw.fetchedAt,
@@ -468,12 +638,69 @@ function vacancyOf(r: HitujiRoom): Field<boolean> {
   return unparsed<boolean>(src);
 }
 
+/**
+ * 整個 house 在同一層的明寫句（第三十輪 chezelle-8「ハウスは全て建物2階部分の為、防犯面でも安心感があります」）：
+ * 站方沒有房間樓層欄，說明文明寫整個 house／全部房間在第 N 層時，每間房都是 N 樓。
+ * 寫了兩層以上（「シェアハウスは2・3階」「4階〜5階部分」「ハウスは1階3部屋、2階4部屋」）、「N階建て」、
+ * 沒有主詞（「4階部分につき、陽当り絶好！」）、只講某一間（「お部屋は1階は広めの…」）都不收；
+ * 全文寫出兩個不同樓層也不收。2026-10-17 對 1,701 頁說明文全量掃描、逐句看過後定的四種寫法。
+ */
+const HOUSE_FLOOR: readonly RegExp[] = [
+  // 「ハウスは全て建物2階部分」「シェアハウスは、建物の2階なので」「ハウスは建物の、最上階3階まるごと1フロア」「ハウスは9階の東南角部屋！」
+  /^(?:当)?(?:シェア)?ハウスは、?(?:全て|すべて)?、?(?:建物の?、?)?(?:最上階)?\s*([1-9][0-9]?)\s*(?:階|[FＦ])(?!\s*(?:建|以上|以下|[〜～\-ー・、と]|[0-9]))/,
+  // 「お部屋は全5室ですべて2階。」「お部屋はエレベーターなしの4階ですが」
+  /^お部屋は(?:全\s*[0-9]+\s*室で)?(?:すべて|全て)?[^。、0-9]{0,12}?([1-9][0-9]?)\s*(?:階|[FＦ])(?:です|。|$)/,
+  // 「高級分譲マンションの4階部分です。」「ビルの2Fにあります。」「徒歩2分のビルの4階にあります。」
+  /(?:マンション|ビル)の\s*([1-9][0-9]?)\s*(?:階|[FＦ])(?:部分)?(?:です|にあります)/,
+  // 「一軒家の2階部分をゲストハウスとして利用」「「ADDress聖蹟桜ヶ丘A邸」の2階を、2026年9月より女性専用・ペット可のシェアハウスとして」（第三十一輪）
+  // 「戸建ての2階、3階部分を」「マンションの2，4，5階部分を」是好幾層，「の」後面不是單一個樓層，不收
+  /の\s*([1-9][0-9]?)\s*階(?:部分)?を[^。]{0,40}?(?:シェアハウス|ゲストハウス)として/,
+];
+export function houseFloorOf(description: string): { floor: number; sentence: string } | null {
+  const found = new Map<number, string>();
+  for (const sentence of description.split(/(?<=[。！!])|\n/).map((x) => x.trim()).filter((x) => x !== '')) {
+    const t = sentence.replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0));
+    for (const re of HOUSE_FLOOR) {
+      const m = re.exec(t);
+      if (m?.[1] !== undefined) { if (!found.has(Number(m[1]))) found.set(Number(m[1]), sentence); break; }
+    }
+  }
+  if (found.size !== 1) return null;
+  const [hit] = [...found];
+  return hit === undefined ? null : { floor: hit[0], sentence: hit[1] };
+}
+
 function buildUnit(
   buildingId: string, sourceUrl: string, s: HitujiSummary, r: HitujiRoom,
   d: HitujiDetail,
 ): Unit {
   const basis = utilitiesBasisOf(r);
   const zeroNotOffered = notOffered<Yen>();
+  // 礼金／敷金有結構化欄位，不讀說明文；仲介／契約手数料／火災保険／鍵交換站上沒有欄位：說明文明寫免收＝0，
+  // 直接寫了金額＝原站明寫要付但金額不採用（與 TSH 同一套，見 jp-parse/prose.ts proseFeeAmounts）
+  const fees = proseZeroFees(d.description);
+  const condFees = proseUnadoptedZeroFees(d.description);
+  const feeAmounts = proseFeeAmounts(d.description);
+  const campaign = hitujiCampaignFees(d.campaign);
+  // 保證公司常寫在入居条件（日本人／外国人欄）而不是說明文
+  // 三個區塊（說明文／日本人入居条件／外國人入居条件）判條件時不互相跨（BLOCK_BREAK）
+  const qualText = [d.description, d.qualificationJapanese, d.qualificationForeigner].join(`\n${BLOCK_BREAK}\n`);
+  const guarantor = proseGuarantorFee(qualText);
+  const renewal = proseRenewalFees(d.description);
+  const cleaning = proseCleaningFees(d.description);
+  const houseFloor = houseFloorOf(d.description);
+  const proseFee = (key: 'agencyFee' | 'contractFee' | 'fireInsurance' | 'keyExchangeFee'): Field<Yen> => {
+    const z = fees[key];
+    if (z !== undefined) return known(yen(0), 'measured', `物件說明「${z}」`);
+    const a = feeAmounts[key];
+    if (a !== undefined) return statedNoAmount<Yen>(`物件說明「${a}」（說明文的金額不自動採用，見原文）`);
+    const fromCampaign = key === 'contractFee' ? campaign.contractFee : undefined;
+    if (fromCampaign !== undefined) return fromCampaign;
+    // 寫了免收但沒採用（同 TSH，第三十輪）：值照舊未知，標「頁面有提到」而不是「此來源不公開」
+    const u = condFees[key];
+    return u === undefined ? zeroNotOffered : notListed<Yen>(`物件說明「${u.sentence}」（${u.reason === 'conditional'
+      ? '免收句附近有條件或活動字眼，未採用' : '免收句與頁面另一處帶金額或條件的說法並存，未採用'}）`);
+  };
   return {
     id: `${buildingId}#${r.number}`,
     buildingId,
@@ -484,43 +711,56 @@ function buildUnit(
       ? notListed('')
       : known(r.__kind, 'measured', r.__kind === '個室' ? 'singleRoom[]' : 'dormitoryRoom[]'),
     areaM2: numField(r.sizeSquareMeter, 'sizeSquareMeter'),
-    floor: notListed(''),
+    floor: houseFloor === null
+      ? notListed('')
+      : known(houseFloor.floor, 'measured', `物件說明「${houseFloor.sentence}」（整個 house 在同一層）`),
     monthly: {
       rent: yenField(r.rent, 'rent'),
-      adminFee: yenField(r.commonServiceFee, 'commonServiceFee'),
+      adminFee: adminFeeOf(r),
       // ⚠️ payload 的 `utilities` **不是**另一筆水電費，是 commonServiceFee 的顯示字串
       // （2026-09-06 回頭核對 data/raw 原文：`"commonServiceFee":15000,
       // "variableCommonServiceFee":"","utilities":"15000"`）。把它當成水電金額收下來，
       // 等於把同一筆共益費在 adminFee 與 utilities 各記一次，月額直接灌水一倍。
       // 所以這裡一律不採用；srcText 要寫清楚是「共益費的重複顯示」，
       // 否則稽核時會看成「金額明明就在原文裡卻沒收」。
+      // 另計：自由文字或說明文裡可能寫了金額或估計（「ライフライン費￥11000」「月7000円～10000円が目安」），
+      // 金額不自動採用（常帶條件或只是目安）。srcText 不可以寫「金額未載明」——2026-10-17 驗證幫手抓到
+      // 說明文別處明明寫了估計值；只說「未取得確定金額」，叫人去看原文。
       utilities: basis === 'excluded'
-        ? { known: false, why: 'not_listed_on_page', basis: 'excluded_stated', srcText: `variableCommonServiceFee=${variableFeeOf(r)}（另計，金額未載明）` }
-        : notListed(`站方未單列水電費；payload 的 utilities=「${r.utilities ?? ''}」是共益費 ${r.commonServiceFee ?? ''} 的重複顯示，不是水電金額`),
-      internet: notOffered<Yen>(),
-      otherMonthly: notOffered<Yen>(),
+        ? statedNoAmount<Yen>(`variableCommonServiceFee=${variableFeeOf(r)}（另計；未取得確定金額，見原文）`)
+        : basis === 'included'
+          ? includedInOther(`variableCommonServiceFee=${variableFeeOf(r)}`)
+          : variableFeeOf(r) !== ''
+            ? notListed(`共益費欄附註「${variableFeeOf(r)}」無法判定是否含水電；payload 的 utilities=「${r.utilities ?? ''}」是共益費 ${r.commonServiceFee ?? ''} 接上附註文字的顯示字串，不是水電金額`)
+            : notListed(`站方未單列水電費；payload 的 utilities=「${r.utilities ?? ''}」是共益費 ${r.commonServiceFee ?? ''} 的重複顯示，不是水電金額`),
+      internet: hitujiInternet(d.internet),
+      otherMonthly: proseOtherMonthlyField(proseOtherMonthly(qualText), '物件說明／入居条件'),
     },
     initial: {
       keyMoney: yenField(r.keyMoney, 'keyMoney'),
       deposit: yenField(r.deposit, 'deposit'),
       depositNonRefundable: zeroNotOffered,
-      agencyFee: zeroNotOffered,
-      guarantorInitialFee: zeroNotOffered,
-      fireInsurance: zeroNotOffered,
-      keyExchangeFee: zeroNotOffered,
-      contractFee: zeroNotOffered,
-      cleaningFeeUpfront: zeroNotOffered,
+      agencyFee: proseFee('agencyFee'),
+      guarantorInitialFee: campaign.guarantorInitialFee ?? proseFeeField(guarantor, false, '物件說明／入居条件'),
+      fireInsurance: proseFee('fireInsurance'),
+      keyExchangeFee: proseFee('keyExchangeFee'),
+      contractFee: proseFee('contractFee'),
+      cleaningFeeUpfront: proseFeeField(cleaning.cleaningFeeUpfront, cleaning.cleaningFeeUpfront?.timingUnstated === true),
       otherInitial: zeroNotOffered,
     },
     deferred: {
-      renewalFee: zeroNotOffered,
-      renewalAdminFee: zeroNotOffered,
-      cleaningFeeOnExit: zeroNotOffered,
+      renewalFee: proseFeeField(renewal.renewalFee),
+      renewalAdminFee: proseFeeField(renewal.renewalAdminFee),
+      cleaningFeeOnExit: proseFeeField(cleaning.cleaningFeeOnExit),
       earlyTerminationPenalty: zeroNotOffered,
     },
     utilitiesBasis: basis,
     furnished: notListed(''),
-    availableFrom: known(r.availabilityLabel, 'measured', `availabilityLabel=${r.availabilityLabel}`),
+    // 欄位定義是「ISO 日期或『随時』」：empty（空室）＝随時；scheduled（空室予定）payload 與頁面都沒給日期 → 未知。
+    // 2026-10-17 之前直接存站方字樣「空室」「空室予定」，與其他來源的值域不一致。
+    availableFrom: r.availabilityCode === 'empty'
+      ? known('随時', 'measured', `availabilityLabel=${r.availabilityLabel}`)
+      : notListed(`availabilityLabel=${r.availabilityLabel}（站方沒給日期）`),
     isVacant: vacancyOf(r),
     contractType: 'unknown',
     contractMonths: notListed(''),
@@ -539,7 +779,8 @@ function buildUnit(
     petsAllowed: notOffered<boolean>(),
     foreigner: foreignerPolicy(s, d),
     notes: [
-      ...(variableFeeOf(r) !== '' ? [`共益費另有變動部分：${variableFeeOf(r)}`] : []),
+      // 這一欄是運營者的自由文字（活動文案、二人入居加價也寫在這裡），標籤不替它定性
+      ...(variableFeeOf(r) !== '' ? [`共益費欄附註：${variableFeeOf(r)}`] : []),
       ...(d.tenancyPeriod !== '' ? [`入居期間：${d.tenancyPeriod}`] : []),
     ],
   };
@@ -605,18 +846,29 @@ export const adapter: SourceAdapter = {
   manifest,
 
   async *discover(_ctx: ExtractContext, fetcher: Fetcher): AsyncGenerator<TargetRef> {
-    // 先讀第一頁拿站方自報的總筆數，再反推該取哪一頁——
+    // 先讀第一頁拿站方自報的總筆數，再往下讀到湊滿為止——
     // 寫死頁碼會在房源數成長後默默漏抓，這種漏抓不會有任何錯誤訊息。
     const first = await fetcher.get(listUrl(1), { headers: { RSC: '1' } });
     const count = parseComretCount(first.body);
-    const summaries = count === null || count <= FIRST_PAGE_SIZE
-      ? parseSummaries(first.body)
-      : parseSummaries((await fetcher.get(listUrl(pageForCount(count)), { headers: { RSC: '1' } })).body);
+    const byId = new Map<number, HitujiSummary>();
+    let pages = 0;
+    for (let page = 1; page <= MAX_PAGE; page++) {
+      const body = page === 1 ? first.body : (await fetcher.get(listUrl(page), { headers: { RSC: '1' } })).body;
+      pages = page;
+      let fresh = 0;
+      for (const s of parseSummaries(body)) {
+        if (byId.has(s.id)) continue;
+        byId.set(s.id, s);
+        fresh += 1;
+      }
+      if (fresh === 0 || count === null || byId.size >= count) break;
+    }
+    const summaries = [...byId.values()];
 
     if (count !== null && summaries.length < count * 0.95) {
       throw new Error(
-        `[hituji] 只解析出 ${summaries.length} 筆，但站方自報 ${count} 筆——` +
-        `分頁公式可能已失效（實測值 first=${FIRST_PAGE_SIZE}, inc=${PAGE_INCREMENT}），請重新確認`,
+        `[hituji] 讀了 ${pages} 頁只解析出 ${summaries.length} 筆，但站方自報 ${count} 筆——` +
+        '列表格式或分頁方式可能又改了，請重新確認',
       );
     }
 

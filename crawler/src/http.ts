@@ -70,27 +70,87 @@ export function extractBuildId(html: string): string | undefined {
   return m?.[1];
 }
 
+/**
+ * 暫時性失敗的退避時間。只有 502／503／504 與連線層錯誤會重試。
+ *
+ * 2026-10-17 實測：SUUMO 在一次預計 2.5 小時的爬取中途回了 503（兩次分別在第 49 頁、第 9 頁），
+ * 20 秒後同一頁就回 200，沒有驗證頁、也沒有 Retry-After——是對方暫時過載，不是擋人。
+ * 舊版遇到一次就讓整個來源中止，之前的請求全部白費。
+ * **403／429 不重試**：那可能是對方在要我們停，重試等於硬闖。
+ * 間隔刻意拉長（1／5／15 分鐘）：對方過載時最不該做的就是馬上再敲一次。
+ */
+export const RETRY_BACKOFF_MS: readonly number[] = [60_000, 300_000, 900_000];
+const TRANSIENT_STATUS = new Set([502, 503, 504]);
+
+/**
+ * Node 內建 fetch 的連線層失敗一律只說「fetch failed」，真正原因（ECONNRESET、逾時、DNS…）在 `cause`。
+ * 2026-10-17 SUUMO 同一頁連三次 fetch failed，當下用 curl 抓同一頁 1.2 秒就回 200——
+ * 沒有 cause 就分不出是對方斷線、本機網路還是程序內連線池壞掉。
+ */
+export function describeFetchError(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const cause = (e as { cause?: unknown }).cause;
+  if (!(cause instanceof Error)) return e.message;
+  const code = (cause as { code?: unknown }).code;
+  return `${e.message}（${typeof code === 'string' ? `${code} ` : ''}${cause.message}）`;
+}
+
+export async function fetchRetrying(
+  doFetch: () => Promise<Response>,
+  opts: {
+    backoffMs: readonly number[];
+    sleep: (ms: number) => Promise<void>;
+    onRetry: (why: string, waitMs: number, attempt: number) => void;
+  },
+): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    let why: string;
+    try {
+      const res = await doFetch();
+      if (!TRANSIENT_STATUS.has(res.status)) return res;
+      await res.body?.cancel();
+      why = `http ${res.status}`;
+    } catch (e) {
+      why = describeFetchError(e);
+    }
+    const wait = opts.backoffMs[attempt];
+    if (wait === undefined) throw new Error(`[${why}] 重試 ${attempt} 次仍失敗`);
+    opts.onRetry(why, wait, attempt + 1);
+    await opts.sleep(wait);
+  }
+}
+
 export class HttpFetcher implements Fetcher {
   #manifest: SourceManifest;
   #robots: RobotsRules;
   #delayMs: number;
   #lastRequestAt = 0;
   #useCache: boolean;
+  #reuseSince: string | null;
 
-  stats = { requests: 0, notModified: 0, blocked: 0, errors: 0, fromDisk: 0 };
+  stats = { requests: 0, notModified: 0, blocked: 0, errors: 0, fromDisk: 0, retries: 0 };
 
-  private constructor(manifest: SourceManifest, robots: RobotsRules, useCache: boolean) {
+  private constructor(manifest: SourceManifest, robots: RobotsRules, useCache: boolean, reuseSince: string | null) {
     this.#manifest = manifest;
     this.#robots = robots;
     this.#useCache = useCache;
+    this.#reuseSince = reuseSince;
     // robots.txt 的 Crawl-delay 若比我方設定嚴格，以對方為準
     const robotsDelay = (robots.crawlDelaySec ?? 0) * 1000;
     this.#delayMs = Math.max(manifest.crawlDelayMs, robotsDelay);
   }
 
-  static async create(manifest: SourceManifest, opts: { useCache?: boolean } = {}): Promise<HttpFetcher> {
-    const robots = await fetchRobots(manifest.origin, USER_AGENT);
-    return new HttpFetcher(manifest, robots, opts.useCache ?? true);
+  static async create(
+    manifest: SourceManifest,
+    opts: { useCache?: boolean; reuseSince?: string | null; offline?: boolean } = {},
+  ): Promise<HttpFetcher> {
+    // 離線重解析不發任何請求，robots.txt 也不抓（2026-10-17：網路斷線時重解析曾卡在這一步）；sha256 留空＝這次沒查
+    const robots = opts.offline === true
+      ? { raw: '', sha256: '', disallow: [], allow: [], crawlDelaySec: null, sitemaps: [], absent: false }
+      : await fetchRobots(manifest.origin, USER_AGENT);
+    const f = new HttpFetcher(manifest, robots, opts.useCache ?? true, opts.reuseSince ?? null);
+    f.setOffline(opts.offline === true);
+    return f;
   }
 
   get robots(): RobotsRules { return this.#robots; }
@@ -99,7 +159,7 @@ export class HttpFetcher implements Fetcher {
   /** robots.txt 是否與上次查證時相同。不同代表對方改了規則，該停下來重新檢視。 */
   robotsChanged(): boolean {
     const known = this.#manifest.legal.robotsSha256;
-    return known !== null && known !== this.#robots.sha256;
+    return known !== null && this.#robots.sha256 !== '' && known !== this.#robots.sha256;
   }
 
   async #throttle(): Promise<void> {
@@ -133,6 +193,23 @@ export class HttpFetcher implements Fetcher {
       throw new Error(`[robots] ${url} — ${decision.reason}`);
     }
 
+    // 中斷後續跑（--reuse-since）：這個時刻之後已抓過、原始檔雜湊對得上的頁直接讀本機。
+    // SUUMO 全量要數小時，抓到一半被對方連線中斷時，重跑不該把已經拿到的幾萬筆再要一次。
+    // 跨時段的分頁位移與單次長時間抓取是同一件事，build-data 已按建物 id 合併、按 unitKey 去重。
+    if (this.#reuseSince !== null) {
+      const c = await readCache(this.#manifest.id, url);
+      if (c !== null && c.sha256 !== '' && c.fetchedAt >= this.#reuseSince) {
+        const body = await readRaw(this.#manifest.id, url);
+        if (body !== null && sha256(body) === c.sha256) {
+          this.stats.fromDisk += 1;
+          return {
+            url, body, fetchedAt: c.fetchedAt, sha256: c.sha256,
+            status: 200, buildId: extractBuildId(body), notModified: true,
+          };
+        }
+      }
+    }
+
     const cached = this.#useCache ? await readCache(this.#manifest.id, url) : null;
     const headers: Record<string, string> = {
       'User-Agent': USER_AGENT,
@@ -142,10 +219,24 @@ export class HttpFetcher implements Fetcher {
     if (cached?.etag !== undefined) headers['If-None-Match'] = cached.etag;
     if (cached?.lastModified !== undefined) headers['If-Modified-Since'] = cached.lastModified;
 
-    await this.#throttle();
-    this.stats.requests += 1;
-
-    const res = await fetch(url, { headers, redirect: 'follow' });
+    let res: Response;
+    try {
+      res = await fetchRetrying(async () => {
+        await this.#throttle();
+        this.stats.requests += 1;
+        return fetch(url, { headers, redirect: 'follow' });
+      }, {
+        backoffMs: RETRY_BACKOFF_MS,
+        sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+        onRetry: (why, ms, n) => {
+          this.stats.retries += 1;
+          console.warn(`\n  ⚠ ${url} — ${why}；${ms / 1000} 秒後重試（第 ${n} 次）`);
+        },
+      });
+    } catch (e) {
+      this.stats.errors += 1;
+      throw new Error(`${e instanceof Error ? e.message : String(e)}：${url}`);
+    }
 
     if (res.status === 304) {
       this.stats.notModified += 1;

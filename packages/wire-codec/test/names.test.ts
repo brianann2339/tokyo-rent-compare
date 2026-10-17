@@ -83,6 +83,62 @@ describe('無損往返', () => {
   });
 });
 
+describe('URL：前綴字典＋數字段（數字段保持字串）', () => {
+  test('前導零、不同站的前綴、沒有尾端斜線，全部原樣還原', () => {
+    const t: NamesTable = {
+      name: ['a', 'b', 'c', 'd', 'e'],
+      url: [
+        'https://suumo.jp/chintai/jnc_000000000001/',
+        'https://www.oakhouse.jp/apartment/14493',
+        'https://tokyosharehouse.com/jpn/house/detail/2745/',
+        'https://suumo.jp/chintai/jnc_000109401145/',
+        'https://example.com/x?id=0042',
+      ],
+    };
+    const e = encodeNames(t, BID);
+    assert.equal(e.ul.length, 0, '五筆都應走結構');
+    assert.ok(e.um.split(',').includes('000000000001'), '數字段以字串存，前導零在');
+    assert.deepEqual(rt(t).url, t.url);
+  });
+
+  const odd: Array<[string, unknown]> = [
+    ['沒有數字段', 'https://www.leopalace21.com/properties/common/tokyo/x/y'],
+    ['數字段前面不是 / _ =', 'https://x/abc-123'],
+    ['兩個尾端斜線', 'https://x/_123//'],
+    ['null', null],
+    ['數字', 12345],
+    ['空字串', ''],
+  ];
+  for (const [label, v] of odd) {
+    test(`${label}：${JSON.stringify(v)} 退回字面值、原樣保留`, () => {
+      const t: NamesTable = { name: ['n'], url: [v] };
+      const e = encodeNames(t, BID);
+      assert.deepEqual(e.uk, [0]);
+      assert.ok(Object.is(rt(t).url[0], v));
+    });
+  }
+
+  test('數字段少一段 → 拒絕解碼（不回 undefined 當網址）', () => {
+    const e = encodeNames(MIXED, BID);
+    const bad = { ...e, um: e.um.split(',').slice(1).join(',') };
+    assert.throws(() => decodeNames(bad), /要讀第 \d+ 段數字/);
+  });
+
+  test('前綴索引越界 → 拒絕解碼', () => {
+    const e = encodeNames(MIXED, BID);
+    const bad = structuredClone(e);
+    bad.uk[0] = 99;
+    assert.throws(() => decodeNames(bad), /URL 前綴索引 98 超出字典/);
+  });
+
+  test('字面值 URL 多出一格 → 拒絕解碼（uk 與資料對不上的前兆）', () => {
+    const e = encodeNames(MIXED, BID);
+    const bad = structuredClone(e);
+    bad.ul.push('https://extra/');
+    assert.throws(() => decodeNames(bad), /ul 有 \d+ 格，但只用掉/);
+  });
+});
+
 describe('還原不回去的形狀一律退回字面值，不硬套結構', () => {
   const cases: Array<[string, string]> = [
     ['前後有空白', ' A線 B駅 3階建 新築 '],
@@ -123,13 +179,13 @@ describe('對不上就大聲失敗，絕不安靜地錯位', () => {
 
   test('版本不對 → 拒絕解碼', () => {
     const e = encodeNames(MIXED, BID);
-    assert.throws(() => decodeNames({ ...e, v: 'N2' as 'N1' }), /認不得的版本/);
+    assert.throws(() => decodeNames({ ...e, v: 'N1' as 'N2' }), /認不得的版本/);
   });
 
   test('n 與 k／url 長度不符 → 拒絕解碼', () => {
     const e = encodeNames(MIXED, BID);
     assert.throws(() => decodeNames({ ...e, n: 7 }), /k 有 8 格，應為 7/);
-    assert.throws(() => decodeNames({ ...e, url: e.url.slice(0, 7) }), /url 有 7 格，應為 8/);
+    assert.throws(() => decodeNames({ ...e, uk: e.uk.slice(0, 7) }), /uk 有 7 格，應為 8/);
   });
 
   test('字典索引越界 → 拒絕解碼（不會回一個 undefined 當名字）', () => {

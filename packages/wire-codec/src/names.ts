@@ -29,10 +29,12 @@
  * 拿顯示語意當磁碟格式的分支條件，等於把兩個會各自演進的東西綁死——
  * 而且實測今天就已經有 1 筆通過偵測器卻不合抽取式。
  *
- * URL **不編碼**。實測骨架字典＋數字只從 407 KB 降到 342 KB（−16%），
- * 而 86,755 筆裡有 84,159 筆的數字段帶前導零（`jnc_000109401145`），
- * 用 `Number()` 存會靜默吃掉那些零、讓 97% 的連結指到不存在的頁面。
- * 為 65 KB 引進這種陷阱不划算——gzip 對這些隨機 12 位數 id 已經接近資訊熵下限（4.8 B/筆）。
+ * URL（N2 起）拆成「前綴＋數字段＋尾端斜線」：`https://suumo.jp/chintai/jnc_` ＋ `000109401145` ＋ `/`。
+ * 前綴只有十幾種、走字典；數字段**保持字串**接成一長串。實測 378 → 324 KB。
+ * N1 時不做這件事的理由是：86,755 筆裡 84,159 筆的數字段帶前導零，
+ * 當時的試作用 `Number()` 存數字，會靜默吃掉那些零、讓 97% 的連結指到不存在的頁面。
+ * 數字段不轉數字，這個陷阱就不存在；而且跟名稱一樣**就地回比**——
+ * 組回去逐字元不等於原值的（含非字串、沒有數字段的）一律退回字面值。
  */
 
 /** 與 index.json 建物序號一一對應的顯示字串。 */
@@ -42,7 +44,7 @@ export type NamesTable = {
 };
 
 export type EncodedNames = {
-  v: 'N1';
+  v: 'N2';
   /** 必須與 index.json 的 `meta.buildId` 相同。不同就是兩個不同建置的檔案配在一起。 */
   buildId: string;
   /** 建物數。必須等於 index.json 的 `meta.buildings`。 */
@@ -55,7 +57,14 @@ export type EncodedNames = {
   d: [string[], string[], string[], string[]];
   /** 四段的字典索引，依序 */
   c: [number[], number[], number[], number[]];
-  url: unknown[];
+  /** URL 的 [前綴, 尾端] 字典 */
+  ud: Array<[string, string]>;
+  /** 每筆 URL：0＝`ul` 的下一格（字面值），k≥1＝`ud[k-1]` 加上 `um` 的下一段數字 */
+  uk: number[];
+  /** 數字段，以 `,` 相接（數字段只含 0-9，不會撞到分隔符） */
+  um: string;
+  /** 字面值 URL，依序 */
+  ul: unknown[];
 };
 
 /** 樣板句的段數上限（`線 站 階建 屋齡`）。第 4 段可以不存在。 */
@@ -134,24 +143,55 @@ export function encodeNames(t: NamesTable, buildId: string): EncodedNames {
     }
   }
 
+  // ── URL：前綴＋數字段＋尾端 ──
+  const ud = new Map<string, number>();
+  const udList: Array<[string, string]> = [];
+  const uk: number[] = [];
+  const um: string[] = [];
+  const ul: unknown[] = [];
+  for (let i = 0; i < n; i++) {
+    const v = t.url[i];
+    const m = typeof v === 'string' ? URL_RE.exec(v) : null;
+    const pre = m?.[1];
+    const mid = m?.[2];
+    const suf = m?.[3];
+    // 自我驗證同名稱：組回去逐字元相等才走結構，否則字面值
+    if (pre === undefined || mid === undefined || suf === undefined || !Object.is(pre + mid + suf, v)) {
+      uk.push(0);
+      ul.push(v);
+      continue;
+    }
+    const key = `${pre}\u0000${suf}`;
+    let ki = ud.get(key);
+    if (ki === undefined) { ki = udList.length; ud.set(key, ki); udList.push([pre, suf]); }
+    uk.push(ki + 1);
+    um.push(mid);
+  }
+
   return {
-    v: 'N1',
+    v: 'N2',
     buildId,
     n,
     k,
     lit,
     d: dicts.map((m) => [...m.keys()]) as EncodedNames['d'],
     c: cols as EncodedNames['c'],
-    url: t.url,
+    ud: udList,
+    uk,
+    um: um.join(','),
+    ul,
   };
 }
 
+/** `…/jnc_` ＋ `000109401145` ＋ `/`：前綴以 `/`、`_` 或 `=` 結尾，接一段純數字，最後可有一個 `/`。 */
+const URL_RE = /^(.*?[/_=])(\d+)(\/?)$/;
+
 export function decodeNames(o: EncodedNames): NamesTable {
-  if (o.v !== 'N1') throw new Error(`[names-codec] 認不得的版本 ${JSON.stringify(o.v)}`);
+  if (o.v !== 'N2') throw new Error(`[names-codec] 認不得的版本 ${JSON.stringify(o.v)}`);
   const n = o.n;
   if (!Number.isInteger(n) || n < 0) throw new Error(`[names-codec] n 不是非負整數：${JSON.stringify(n)}`);
   if (o.k.length !== n) throw new Error(`[names-codec] k 有 ${o.k.length} 格，應為 ${n}`);
-  if (o.url.length !== n) throw new Error(`[names-codec] url 有 ${o.url.length} 格，應為 ${n}`);
+  if (o.uk.length !== n) throw new Error(`[names-codec] uk 有 ${o.uk.length} 格，應為 ${n}`);
 
   const name = new Array<unknown>(n);
   let li = 0;
@@ -185,7 +225,29 @@ export function decodeNames(o: EncodedNames): NamesTable {
     if (col.length !== used) throw new Error(`[names-codec] c[${c}] 有 ${col.length} 列，c[0] 有 ${used} 列，四欄必須等長`);
   }
 
-  return { name, url: o.url };
+  const url = new Array<unknown>(n);
+  const mids = o.um === '' ? [] : o.um.split(',');
+  let ui = 0;
+  let mi = 0;
+  for (let i = 0; i < n; i++) {
+    const kk = o.uk[i] as number;
+    if (kk === 0) {
+      if (ui >= o.ul.length) throw new Error(`[names-codec] 第 ${i} 棟要讀 ul[${ui}]，但 ul 只有 ${o.ul.length} 格`);
+      url[i] = o.ul[ui];
+      ui += 1;
+      continue;
+    }
+    const pair = o.ud[kk - 1];
+    const mid = mids[mi];
+    if (pair === undefined) throw new Error(`[names-codec] 第 ${i} 棟的 URL 前綴索引 ${kk - 1} 超出字典（${o.ud.length} 個）`);
+    if (mid === undefined) throw new Error(`[names-codec] 第 ${i} 棟要讀第 ${mi} 段數字，但只有 ${mids.length} 段`);
+    url[i] = pair[0] + mid + pair[1];
+    mi += 1;
+  }
+  if (ui !== o.ul.length) throw new Error(`[names-codec] ul 有 ${o.ul.length} 格，但只用掉 ${ui} 格`);
+  if (mi !== mids.length) throw new Error(`[names-codec] 數字段有 ${mids.length} 段，但只用掉 ${mi} 段`);
+
+  return { name, url };
 }
 
 /**

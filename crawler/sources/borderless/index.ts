@@ -52,6 +52,8 @@ export const manifest: SourceManifest = {
       'layout', 'areaM2', 'roomNo', 'isVacant', 'availableFrom', 'furnished',
       'minStayMonths', 'genderRestriction', 'foreignerWelcomed',
       'stations', 'totalUnits',
+      // 只有少數物件在介紹文寫「built in 2010」「6-story house」（見 parseBhProse）
+      'yearBuilt', 'floorsAboveGround',
     ],
     // 全站不刊登這些欄位。
     // 註：日本的入居費用說明只列 key money 30,000 + Cleaning Fee 15,000 共 45,000 円，
@@ -63,7 +65,7 @@ export const manifest: SourceManifest = {
       'fireInsurance', 'keyExchangeFee', 'contractFee', 'otherInitial',
       'renewalFee', 'renewalAdminFee', 'cleaningFeeOnExit', 'earlyTerminationPenalty',
       'floor', 'contractType', 'contractMonths', 'ageLimitRaw', 'petsAllowed',
-      'structure', 'yearBuilt', 'floorsAboveGround', 'sourceUpdatedAt',
+      'structure', 'sourceUpdatedAt',
       'residenceCardRequired', 'japaneseRequired',
       'guarantorCompanyRequired', 'guarantorPersonRequired',
     ],
@@ -145,13 +147,23 @@ export function parseHouseCode(html: string): string | null {
  *   C `6-minute walk to JR Yamanote Line Komagome Station`             分鐘 → 路線＋站名
  *   D `Toei Shinjuku Line　Kikukawa station 6mins walk`                路線＋站名 → 分鐘
  *
- * 比對順序有意義：C 以數字開頭，必須排在 B 之前，否則 B 的「路線」會吃掉那個數字。
- * 四種都不合就跳過該行、不硬套——寧可少一個車站，不要標錯站名。
+ * 2026-10-17 全量重驗後補的寫法：
+ *   E `Unoki Station Tokyu Tamagawa Line 12mins walk`                  站名 Station 路線（沒有逗號）
+ *   F `Hanzomon Line Sumiyoshi station 7mins`                          沒寫 walk → 收站、分鐘數記「頁面沒寫」
+ *   「16 minutes on foot to X Station」的 on foot 視同 walk；
+ *   一個 <li> 用「 / 」寫兩站（`Omori Station, … 10 mins walk / Oimachi Station, … 15 mins walk.`）先切開。
+ *   `Bus stop …` 不是車站，不收。
+ *
+ * 比對順序有意義：C 以數字開頭，必須排在 B 之前，否則 B 的「路線」會吃掉那個數字；
+ * E 要排在 D 之前，否則 D 把「Unoki Station Tokyu Tamagawa Line」整段當路線、站名切成空字串。
+ * 都不合就跳過該行、不硬套——寧可少一個車站，不要標錯站名。
  */
 const BH_STATION_A = /^(?<station>.+?)\s+Station\s*,\s*(?<line>.+?)[\s,]+(?<n>\d+)\s*min(?:ute)?s?\s*walk/i;
 const BH_STATION_C = /^(?<n>\d+)\s*-?\s*min(?:ute)?s?\s*walk\s+to\s+(?<rest>.+)$/i;
 const BH_STATION_B = /^(?<line>.+?)\s*-?\s*(?<n>\d+)\s*min(?:ute)?s?\s*walk\s+to\s+(?<rest>.+)$/i;
 const BH_STATION_D = /^(?<rest>.+?)[\s,]+(?<n>\d+)\s*min(?:ute)?s?\s*walk\.?$/i;
+const BH_STATION_E = /^(?<station>[^,]+?)\s+Station\s+(?<line>.+?\bLine)\s+(?<n>\d+)\s*min(?:ute)?s?\s*walk/i;
+const BH_STATION_F = /^(?<rest>.+?\bstation)\s+(?<n>\d+)\s*min(?:ute)?s?\.?$/i;
 
 /**
  * 路線與站名黏在一起時（C／D）的切法：站方一律寫成「…{路線名} Line {站名} Station」，
@@ -169,12 +181,15 @@ export function parseBhStations(html: string): readonly Station[] {
   if (block === undefined) return [];
   const out: Station[] = [];
   const seen = new Set<string>();
-  for (const li of block.matchAll(/<li>([\s\S]*?)<\/li>/g)) {
-    const text = plain(li[1] ?? '');
-    if (text === '') continue;
-
-    const g = (BH_STATION_A.exec(text) ?? BH_STATION_C.exec(text)
-      ?? BH_STATION_B.exec(text) ?? BH_STATION_D.exec(text))?.groups;
+  const parts = [...block.matchAll(/<li>([\s\S]*?)<\/li>/g)]
+    .flatMap((li) => plain(li[1] ?? '').split(/\s+\/\s+/))
+    .map((x) => x.trim())
+    .filter((x) => x !== '' && !/^bus stop\b/i.test(x));
+  for (const text of parts) {
+    const norm = text.replace(/\bmin(?:ute)?s?\s+on\s+foot\b/i, 'mins walk');
+    const walked = BH_STATION_A.exec(norm) ?? BH_STATION_C.exec(norm)
+      ?? BH_STATION_B.exec(norm) ?? BH_STATION_E.exec(norm) ?? BH_STATION_D.exec(norm);
+    const g = (walked ?? BH_STATION_F.exec(norm))?.groups;
     if (g?.['n'] === undefined) continue;
     const walk = Number(g['n']);
     if (!Number.isFinite(walk)) continue;
@@ -186,12 +201,17 @@ export function parseBhStations(html: string): readonly Station[] {
         : { line: g['line'].trim(), station: g['rest'].replace(/\s*Station\.?$/i, '').trim() };
 
     const station = split.station;
-    if (station === '' || seen.has(station)) continue;
-    seen.add(station);
+    const line = split.line.replace(/\s+/g, ' ').replace(/^[-\s,]+/, '');
+    // 同一站不同路線（北千住：千代田／日比谷線 3 分、JR 常磐線 5 分、つくばエクスプレス 5 分）是不同的車站資訊，
+    // 舊版只用站名去重，後兩條線整個消失。其他來源一律用「路線|站名」。
+    if (station === '' || seen.has(`${line}|${station}`)) continue;
+    seen.add(`${line}|${station}`);
     out.push({
-      line: split.line.replace(/\s+/g, ' ').replace(/^[-\s,]+/, ''),
+      line,
       station,
-      walkMinutes: known(walk, 'measured', text),
+      walkMinutes: walked !== null
+        ? known(walk, 'measured', text)
+        : notListed<number>(`${text}（沒寫是步行還是其他方式）`),
       rawText: text,
     });
   }
@@ -206,7 +226,7 @@ export type BhRoom = {
   readonly roomType: string;        // Room for 1 / Room for 2 …
   readonly sizeRaw: string;
   readonly genderRaw: string;       // Male / Female / Any
-  readonly nationalityRaw: string;  // Foreign nationality / Japanese nationality / -
+  readonly nationalityRaw: string;  // Foreign nationality / Japanese nationality / Any / -
   readonly availableFromRaw: string;// Right Now / 2026.09.24 / -
 };
 
@@ -318,11 +338,13 @@ function furnishedOf(html: string): Field<boolean> {
  * 房間層的「Applicable Nationalities」。
  * `Foreign nationality` ＝這間床只收外國籍 → 對外國人而言明確可租；
  * `Japanese nationality` ＝只收日本籍 → 對外國人而言明確不可租（實測仙台物件有此值）。
+ * `Any` ＝不限國籍 → 對外國人而言明確可租（2026-10-17 驗證幫手抓到：舊版沒處理，12 張床被記成「頁面沒寫」，
+ *   srcText 卻就是 `Any`——同一筆資料自相矛盾。同房另兩床分別寫 Japanese／Foreign，可見這欄是逐床條件）。
  * BORDERLESS HOUSE 的模式就是日／外各半，所以這一欄是逐間的硬條件，不是宣傳詞。
  */
 function foreignerOf(nationalityRaw: string, minStayRaw: string): ForeignerPolicy {
   const t = nationalityRaw.trim().toLowerCase();
-  const welcomed: Field<boolean> = t.startsWith('foreign')
+  const welcomed: Field<boolean> = t.startsWith('foreign') || t === 'any'
     ? known(true, 'measured', `Applicable Nationalities: ${nationalityRaw}`)
     : t.startsWith('japanese')
       ? known(false, 'measured', `Applicable Nationalities: ${nationalityRaw}`)
@@ -347,6 +369,39 @@ function moneyField(raw: string, label: string): Field<Yen> {
     case 'absent': case 'negotiable': case 'months': return notListed(`${label}: ${t}`);
     default: return unparsed(`${label}: ${t}`);
   }
+}
+
+/**
+ * 本物件介紹文裡明寫的築年與樓層數（`Tabata house was built in 2010 for share house.`、
+ * `This is a 6-story house with rooms located between floors 2 and 5`）。
+ * 全站沒有這兩個欄位；2026-10-17 驗證幫手指出這幾棟存成「來源不提供」與頁面矛盾。
+ *
+ * ⚠️ 範圍：去掉 <script>（JSON-LD 是同一段文字的複本），並截在 `Recommended Houses` 之前——
+ * 推薦區的卡片是**別棟**的介紹文（實測 4-story／6-story／built in 2010 都會出現在別棟頁面上）。
+ * 同一句含 renovat／remodel／refurbish／convert／transform／reinforce 一律不收（改裝不是建築）。
+ * 樓層數要求後面接 house／share house／building，避免把「2-story loft room」這種房型讀成整棟；
+ * 英文數字也認（`The one-storied share house has …`，2026-10-17 全量重驗抓到）。
+ */
+const WORD_NUM: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+
+export function parseBhProse(html: string): { yearBuilt: Field<number>; floorsAboveGround: Field<number> } {
+  const cut = html.indexOf('Recommended Houses');
+  const own = (cut < 0 ? html : html.slice(0, cut))
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '\n');
+  const sentences = own.split(/[\n.!?！。]/).map((x) => x.replace(/\s+/g, ' ').trim())
+    .filter((x) => x !== '' && !/renovat|remodel|refurbish|convert|transform|reinforce/i.test(x));
+  let yearBuilt: Field<number> = notOffered<number>();
+  let floorsAboveGround: Field<number> = notOffered<number>();
+  for (const x of sentences) {
+    const y = /\b(?:house|building)\b[^,;]{0,20}\bbuilt in ((?:19|20)\d{2})\b/i.exec(x);
+    if (y?.[1] !== undefined && !yearBuilt.known) yearBuilt = known(Number(y[1]), 'measured', x);
+    const f = /\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)[- ]stor(?:y|ies|ied|ey|eyed)\s+(?:[a-z]+\s+){0,2}?(?:share\s*house|house|building)\b/i.exec(x);
+    const n = f?.[1] === undefined ? NaN : /^\d+$/.test(f[1]) ? Number(f[1]) : WORD_NUM[f[1].toLowerCase()] ?? NaN;
+    if (Number.isFinite(n) && !floorsAboveGround.known) floorsAboveGround = known(n, 'measured', x);
+  }
+  return { yearBuilt, floorsAboveGround };
 }
 
 export const adapter: SourceAdapter = {
@@ -375,8 +430,10 @@ export const adapter: SourceAdapter = {
     }
 
     const rooms = parseBhRooms(html);
-    if (rooms.length === 0) {
-      // 每個物件都必然有 VACANCY INFORMATION 表；一間都解不出來就是解析器壞了
+    // 一間都解不出來通常是解析器壞了——除非原站明寫客滿。
+    // 2026-10-17 實例：shinjuku_chuo 客滿時「全房間」分頁也是空的（舊版會列出佔用中的房），
+    // 頁面只剩一句 `There is no vacancy at this time.`。那是真的沒有空房，不是版面改了。
+    if (rooms.length === 0 && !/<p class="no-vacancy">There is no vacancy at this time\.<\/p>/.test(html)) {
       throw new Error(`[borderless] ${ref.url} 房間表解析出 0 間，版面可能已改`);
     }
 
@@ -388,6 +445,7 @@ export const adapter: SourceAdapter = {
     const minStayRaw = /Minimum of[^.]{0,40}\./i.exec(plain(html))?.[0] ?? '';
     const minStay = parseMinStayMonths(minStayRaw);
 
+    const prose = parseBhProse(html);
     const building: Building = {
       id: buildingId,
       sourceId: 'borderless',
@@ -403,8 +461,8 @@ export const adapter: SourceAdapter = {
       structure: notOffered<string>(),
       // 這個來源不標建物種別（マンション／アパート…）；那是 SUUMO 這類入口站才有的欄位
       buildingType: notOffered<string>(),
-      yearBuilt: notOffered<number>(),
-      floorsAboveGround: notOffered<number>(),
+      yearBuilt: prose.yearBuilt,
+      floorsAboveGround: prose.floorsAboveGround,
       // 站方的房間表逐床列出，列數就是床位數；這是數表格列不是估算
       totalUnits: known(rooms.length, 'measured', `VACANCY INFORMATION 表列 ${rooms.length} 床`),
       imageUrls: (() => {

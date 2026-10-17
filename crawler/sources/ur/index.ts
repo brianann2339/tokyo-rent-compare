@@ -38,7 +38,7 @@ export const manifest: SourceManifest = {
   origin: 'https://www.ur-net.go.jp',
   transport: 'http',
   fetchMode: 'none', // 全部資料來自 JSON API，不需要再抓詳情頁
-  crawlDelayMs: 2000,
+  crawlDelayMs: 3000, // 專案每站下限 3 秒（2026-10-17 由 2000 調上）
   capabilities: {
     provides: [
       'rent', 'adminFee', 'deposit', 'keyMoney', 'agencyFee', 'renewalFee',
@@ -329,7 +329,7 @@ async function postJson<T>(path: string, body: string, delayMs: number): Promise
   return (await res.json()) as T;
 }
 
-const UR_UA = 'TokyoRentCompare/0.1 (personal rental price-comparison aggregator; links back to ur-net.go.jp)';
+const UR_UA = 'TokyoRentCompare/0.1 (personal rental price-comparison aggregator; links back to ur-net.go.jp; contact via repository issues)';
 
 export const adapter: SourceAdapter = {
   manifest,

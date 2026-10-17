@@ -103,9 +103,9 @@ describe('閘門 4：跨來源同房未審核就不准產檔', () => {
     assert.notEqual(r.code, 0, '應該以非零離開');
     assert.match(r.stderr, /\[閘門4\] 跨來源同房未審核：豊島区\|レオパレス閘門テスト/);
     // 「閘門失敗＝不留下任何產出」現在要涵蓋三個檔案：
-    // index.json、names.json.gz、prov/ 以序號互相對齊，留下任何一個都可能被下一次
+    // index.json.gz、names.json.gz、prov/ 以序號互相對齊，留下任何一個都可能被下一次
     // 建置的另外兩個配成一組，那就是「新索引配舊名稱」的錯位。
-    for (const f of ['index.json', 'names.json.gz', 'index.json.tmp', 'names.json.gz.tmp', 'prov.tmp']) {
+    for (const f of ['index.json', 'index.json.gz', 'names.json.gz', 'index.json.gz.tmp', 'names.json.gz.tmp', 'prov.tmp']) {
       assert.equal(existsSync(path.join(dir, 'out', f)), false, `不可留下 ${f}`);
     }
   });
@@ -122,9 +122,10 @@ describe('閘門 4：跨來源同房未審核就不准產檔', () => {
 
     const r = await build();
     assert.equal(r.code, 0, `應該成功，stderr=${r.stderr}`);
-    // index.json 是壓縮編碼格式（頂層 v:'C3'），要先解碼才有欄位
-    const encoded = JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex;
-    assert.equal(encoded.v, 'C3', 'index.json 應為 C3 編碼格式');
+    // index.json.gz 是預壓的編碼格式（頂層 v:'C4'），要先解壓、再解碼才有欄位
+    const encoded = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'index.json.gz'))).toString('utf8')) as EncodedIndex;
+    assert.equal(encoded.v, 'C4', 'index.json.gz 應為 C4 編碼格式');
+    assert.equal(existsSync(path.join(dir, 'out', 'index.json')), false, '不再產出未壓縮的 index.json');
     const idx = decodeIndex(encoded) as unknown as {
       meta: { units: number; buildings: number; dedup: { crossSource: { groups: number; removedUnits: number } } };
       dict: { sources: string[] };
@@ -168,7 +169,7 @@ describe('閘門 4：跨來源同房未審核就不准產檔', () => {
       gzipSync(Buffer.from(`${JSON.stringify(listing('suumo', 95000))}\n`, 'utf8')));
     const r = await build();
     assert.equal(r.code, 0, `應該成功，stderr=${r.stderr}`);
-    const idx = decodeIndex(JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex) as unknown as {
+    const idx = decodeIndex(JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'index.json.gz'))).toString('utf8')) as EncodedIndex) as unknown as {
       meta: { units: number; dedup: { crossSource: { groups: number; buildingOnlyCandidates: number } } };
     };
     assert.equal(idx.meta.units, 2, '兩間都要留著');
@@ -196,14 +197,14 @@ describe('棟層不變式：徒歩分超出合理範圍', () => {
     assert.match(r.stdout, /walk_minutes_range ×1/, '一棟只該記一次，不是每間房記一次');
     assert.match(r.stdout, /歩?220/, '訊息要帶得出原值');
 
-    const idx = decodeIndex(JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex) as unknown as {
+    const idx = decodeIndex(JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'index.json.gz'))).toString('utf8')) as EncodedIndex) as unknown as {
       u: { flags: number[] }; b: { stw: Array<number | null> };
     };
     const INVARIANT_VIOLATION = 1024;
     assert.equal((idx.u.flags[0] as number) & INVARIANT_VIOLATION, INVARIANT_VIOLATION, '房間要被標記');
     assert.equal(idx.b.stw[0], 220, '原值照原文保留，不可被清成 null');
 
-    const bid = (JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex).meta as { buildId: string };
+    const bid = (JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'index.json.gz'))).toString('utf8')) as EncodedIndex).meta as { buildId: string };
     const provFiles = await readdir(path.join(dir, 'out', 'prov', bid.buildId));
     const prov = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'prov', bid.buildId, provFiles[0] as string))).toString('utf8')) as
       Record<string, { invariants?: string[] }>;
@@ -226,7 +227,7 @@ describe('顯示字串拆到 names.json.gz：兩個檔案必須綁在一起', ()
    * 「前往原站」連到別棟的頁面，而且沒有任何錯誤訊息。
    * 這裡實跑 build-data，證明兩個檔案帶著同一個 buildId、長度一致、內容對得上。
    */
-  test('index.json 不含 name/url；names.json.gz 帶得回原值，且 buildId 相同', async () => {
+  test('index.json.gz 不含 name/url；names.json.gz 帶得回原值，且 buildId 相同', async () => {
     await writeFile(path.join(dir, 'data', 'aliases', 'buildings.json'),
       JSON.stringify({ version: 1, groups: [] }), 'utf8');
     await writeFile(path.join(dir, 'data', 'normalized', 'suumo.ndjson.gz'),
@@ -237,8 +238,8 @@ describe('顯示字串拆到 names.json.gz：兩個檔案必須綁在一起', ()
     const r = await build();
     assert.equal(r.code, 0, `應該成功，stderr=${r.stderr}`);
 
-    const encoded = JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex;
-    assert.equal(encoded.v, 'C3');
+    const encoded = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'index.json.gz'))).toString('utf8')) as EncodedIndex;
+    assert.equal(encoded.v, 'C4');
     assert.equal('name' in encoded.b, false, 'name 不該再出現在索引裡');
     assert.equal('url' in encoded.b, false, 'url 不該再出現在索引裡');
 
@@ -246,7 +247,7 @@ describe('顯示字串拆到 names.json.gz：兩個檔案必須綁在一起', ()
     assert.match(meta.buildId, /^[0-9a-f]{16}$/, 'buildId 應為 16 位十六進位');
 
     const names = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'names.json.gz'))).toString('utf8')) as EncodedNames;
-    assert.equal(names.v, 'N1');
+    assert.equal(names.v, 'N2');
     assert.equal(names.buildId, meta.buildId, '兩個檔案必須帶同一個 buildId');
     assert.equal(names.n, meta.buildings, 'names 的筆數必須等於索引的建物數');
 
@@ -258,7 +259,7 @@ describe('顯示字串拆到 names.json.gz：兩個檔案必須綁在一起', ()
 
   test('資料沒變時 buildId 不變（瀏覽器快取才有機會命中）', async () => {
     const read = async (): Promise<string> => {
-      const e = JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex;
+      const e = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'index.json.gz'))).toString('utf8')) as EncodedIndex;
       return (e.meta as { buildId: string }).buildId;
     };
     const first = await read();
@@ -269,7 +270,7 @@ describe('顯示字串拆到 names.json.gz：兩個檔案必須綁在一起', ()
 
   test('資料一變 buildId 就變（前端才換得掉舊的名稱檔）', async () => {
     const read = async (): Promise<string> => {
-      const e = JSON.parse(await readFile(path.join(dir, 'out', 'index.json'), 'utf8')) as EncodedIndex;
+      const e = JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'index.json.gz'))).toString('utf8')) as EncodedIndex;
       return (e.meta as { buildId: string }).buildId;
     };
     const before = await read();

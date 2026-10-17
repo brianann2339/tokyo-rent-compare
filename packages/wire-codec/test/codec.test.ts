@@ -43,6 +43,42 @@ function makeIndex(over: Partial<Record<string, unknown[]>> = {}): ColumnIndex {
 
 const roundTrip = (idx: ColumnIndex): ColumnIndex => decodeIndex(JSON.parse(JSON.stringify(encodeIndex(idx))));
 
+/**
+ * 多棟、多区、站數不一（含 0 站）的索引。C4 的兩個新手法——站名存「区內名次」、
+ * 每棟第一間與其餘各間分兩串——只有在棟與区都不只一個時才會真的被走到。
+ */
+function makeMulti(bid: number[] = [0, 0, 0, 1, 2, 2, 3]): ColumnIndex {
+  const n = bid.length;
+  const pick = <T>(xs: readonly T[]): T[] => Array.from({ length: n }, (_, i) => xs[i % xs.length] as T);
+  const rent = pick([80000, 80000, 81000, null, 120000, 118000, 55000]);
+  const admin = pick([5000, 5000, 5000, 0, null, 8000, 3000]);
+  const key = rent.map((r, i) => (i % 3 === 0 ? r : 0));
+  const dep = rent.map((r, i) => (i % 2 === 0 ? r : null));
+  const z = (v: number | null): number => v ?? 0;
+  const monthlyLower = rent.map((r, i) => z(r) + z(admin[i] as number | null));
+  const initCash = key.map((k, i) => z(k) + z(dep[i] as number | null));
+  const initSunk = key.map((k) => z(k));
+  return {
+    meta: { units: n, buildings: 4, provBucket: 400 },
+    dict: { wards: ['文京区', '港区', '新宿区'], stations: ['A', 'B', 'C', 'D', 'E'], sources: ['suumo'], kinds: ['unknown', 'apartment'], layouts: ['1K', '1LDK', 'ドミトリー'], lines: [], pairs: [] },
+    b: {
+      ward: [0, 1, 0, 2], src: [0, 0, 0, 0],
+      // 第 0 棟 3 站、第 1 棟 0 站、第 2 棟 2 站、第 3 棟 1 站；站 3 在文京区出現 2 次、港区 0 次
+      stc: [3, 0, 2, 1], stn: [3, 0, 1, 3, 4, 2], stw: [5, 12, null, 7, 3, 20],
+      total: [10, null, 4, 30], fetchedAt: ['2026-10-17', '2026-10-17', '2026-08-16', '2026-10-17'],
+      kind: [1, 1, 1, 1], yearBuilt: [2015, null, 1999, 2024], also: [0, 0, 0, 0], btype: [0, -1, 0, 0],
+    },
+    u: {
+      bid, room: pick(['101', null, '203']), layout: pick([0, 0, 1, 2, 0]), area: pick([20.5, 20.5, 21.37, null, 33, 9.66746, 25]),
+      floor: pick([1, 1, 2, -1, 3]), rent, admin, util: pick([null]), utilBasis: pick([2]),
+      key, dep, depNR: pick([null]), gender: pick([1]), foreigner: pick([-1, 1]), vacant: pick([1]),
+      monthlyLower, monthlyTier: pick([0, 1]), initCash, initCashTier: pick([0]),
+      initSunk, effMonthly12: monthlyLower.map((m, i) => m + Math.round((initSunk[i] as number) / 12)),
+      missing: pick([0, 0, 3, 8]), flags: pick([0, 4]), ads: pick([1, 1, 2]),
+    },
+  };
+}
+
 describe('無損往返', () => {
   test('每一格都用 Object.is 比對（分得出 0 與 −0）', () => {
     const idx = makeIndex();
@@ -62,6 +98,63 @@ describe('無損往返', () => {
     assert.equal(back.u['admin']?.[0], 0);
     assert.equal(back.u['area']?.[0], null);
     assert.equal(back.u['dep']?.[1], 0);
+  });
+
+  test('C4：多棟多区（含 0 站的棟）——区內名次與每棟第一間分串都原樣還原', () => {
+    const idx = makeMulti();
+    const back = roundTrip(idx);
+    const { cells } = assertLossless(idx, back);
+    assert.ok(cells > 100, `cells ${cells}`);
+    assert.deepEqual(back.b['stn'], [3, 0, 1, 3, 4, 2]);
+    assert.deepEqual(back.u['area'], idx.u['area']);
+  });
+
+  test('C4：bid 不遞增（不存 uc、改存 bid）時分串照樣對得上', () => {
+    const idx = makeMulti([0, 1, 0, 2, 2, 3, 0]);
+    assertLossless(idx, roundTrip(idx));
+  });
+
+  test('C4：同一份資料編兩次結果完全相同（排序是全序，不受 Map 插入順序影響）', () => {
+    assert.equal(JSON.stringify(encodeIndex(makeMulti())), JSON.stringify(encodeIndex(makeMulti())));
+  });
+
+  test('C4：站序號不是非負整數 → 拒絕編碼', () => {
+    const idx = makeMulti();
+    idx.b['stn'] = [3, 0, 1.5, 3, 4, 2];
+    assert.throws(() => encodeIndex(idx), /b\.stn\[2\]/);
+    idx.b['stn'] = [3, 0, null, 3, 4, 2];
+    assert.throws(() => encodeIndex(idx), /b\.stn\[2\]/);
+  });
+
+  test('C4：站數合計與站欄長度不符 → 拒絕編碼', () => {
+    const idx = makeMulti();
+    idx.b['stc'] = [3, 0, 2, 2];
+    assert.throws(() => encodeIndex(idx), /b\.stc 合計 7，b\.stn 有 6 格/);
+  });
+
+  test('C4：区內名次被竄改成超出站表 → 拒絕解碼，不回一個 undefined 當站名', () => {
+    const e = encodeIndex(makeMulti());
+    const bad = structuredClone(e);
+    bad.stn.c = tvEnc([0, 0, 0, 0, 0, 99]);
+    assert.throws(() => decodeIndex(bad), /区內名次 99 超出該区站表/);
+  });
+
+  test('C4：分串欄位的「與前一間相同」碼——同棟連續相同、不同、null 交錯都原樣還原', () => {
+    const idx = makeMulti();
+    idx.u['admin'] = [5000, 5000, null, 0, null, null, 3000];
+    idx.u['monthlyLower'] = (idx.u['rent'] as Array<number | null>).map((r, i) => (r ?? 0) + ((idx.u['admin'] as Array<number | null>)[i] ?? 0));
+    idx.u['effMonthly12'] = (idx.u['monthlyLower'] as number[]).map((m, i) => m + Math.round(((idx.u['initSunk'] as number[])[i] as number) / 12));
+    const back = roundTrip(idx);
+    assertLossless(idx, back);
+    assert.deepEqual(back.u['admin'], [5000, 5000, null, 0, null, null, 3000]);
+  });
+
+  test('C4：分串欄位的字典碼被竄改成超出字典 → 拒絕解碼', () => {
+    const e = encodeIndex(makeMulti());
+    const bad = structuredClone(e);
+    const blk = bad.split['u.admin'] as { r: { d: unknown[]; c: string } };
+    blk.r.c = tvEnc(new Array(3).fill(99));
+    assert.throws(() => decodeIndex(bad), /字典碼 98 超出字典/);
   });
 
   test('賃料非半整數倍的敷金／礼金走例外表，值原樣保留', () => {
@@ -155,9 +248,9 @@ describe('危險形狀一律大聲失敗，絕不靜默改值', () => {
     assert.throws(() => encodeIndex(idx), /棟層欄位必須等長/);
   });
 
-  test('解碼器只讀 C3，認不得的版本要停下來而不是解出半個索引', () => {
+  test('解碼器只讀 C4，認不得的版本要停下來而不是解出半個索引', () => {
     const e = encodeIndex(makeIndex());
-    assert.throws(() => decodeIndex({ ...e, v: 'C2' as 'C3' }), /只讀 C3/);
+    assert.throws(() => decodeIndex({ ...e, v: 'C3' as 'C4' }), /只讀 C4/);
   });
 
   test('assertLossless 抓得到被竄改的一格', () => {

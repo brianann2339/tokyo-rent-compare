@@ -30,6 +30,7 @@ import { findCandidates, crossSourceRoomHits, type AliasFile } from './alias-can
 import type { Listing, Unit, Building, PropertyKind } from '../../../packages/schema/src/model.ts';
 import type { Field, Yen } from '../../../packages/schema/src/field.ts';
 import { parseLayout } from '../../../packages/jp-parse/src/layout.ts';
+import { stationKey, lineKey } from '../../../packages/jp-parse/src/station.ts';
 import {
   monthlyCost, initialCash, initialSunk, effectiveMonthly, tierOf,
 } from '../../../packages/cost-model/src/index.ts';
@@ -247,6 +248,31 @@ function missingMask(u: Unit): number {
 }
 
 /** 字典編碼器：重複字串只存一次，欄式陣列裡放索引。Map 查找，不用 indexOf 的 O(n)。 */
+/**
+ * 依比對鍵分組的字典（站名、路線）：同一個站／線的各種寫法拿到同一個序號，
+ * `finalize()` 把顯示名換成該組在資料裡出現最多次的寫法（全半形先統一；同票取字典序小的，保證可重現）。
+ */
+function keyedDict(keyOf: (v: string) => string): { list: string[]; idx: (v: string) => number; finalize: () => void } {
+  const d = dict();
+  const votes: Array<Map<string, number>> = [];
+  return {
+    list: d.list,
+    idx: (v: string): number => {
+      const i = d.idx(keyOf(v));
+      const shown = v.normalize('NFKC').replace(/\s+/g, ' ').trim();
+      const m = votes[i] ?? (votes[i] = new Map());
+      m.set(shown, (m.get(shown) ?? 0) + 1);
+      return i;
+    },
+    finalize: (): void => {
+      for (let i = 0; i < d.list.length; i++) {
+        const best = [...(votes[i] ?? new Map<string, number>())].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0];
+        if (best !== undefined) d.list[i] = best[0];
+      }
+    },
+  };
+}
+
 function dict(): { list: string[]; idx: (v: string) => number } {
   const list: string[] = [];
   const map = new Map<string, number>();
@@ -414,8 +440,9 @@ async function main(): Promise<void> {
 
   // ── 字典與欄式陣列 ────────────────────────────────────────────
   const wards = dict();
-  const stations = dict();
-  const lines = dict();
+  // 站名與路線各來源寫法不一（「大塚(東京)」「ＪＲ山手線／JR山手線／山手線」）——用比對鍵合併，見 jp-parse/station.ts
+  const stations = keyedDict(stationKey);
+  const lines = keyedDict(lineKey);
   const layouts = dict();
   const btypes = dict();
   const pairSet = new Set<string>();
@@ -457,8 +484,8 @@ async function main(): Promise<void> {
   await rm(PROV_TMP, { recursive: true, force: true });
   await mkdir(PROV_TMP, { recursive: true });
   // 上一次跑到一半留下的暫存檔要先清掉：Vite 會把 web/public/ 原樣複製進 dist，
-  // 一個殘留的 index.json.tmp 會跟著部署上線。
-  await rm(path.join(OUT_DIR, 'index.json.tmp'), { force: true });
+  // 一個殘留的 index.json.gz.tmp 會跟著部署上線。
+  await rm(path.join(OUT_DIR, 'index.json.gz.tmp'), { force: true });
   await rm(path.join(OUT_DIR, 'names.json.gz.tmp'), { force: true });
   let provBucketNo = -1;
   let provBucket: Record<string, unknown> = {};
@@ -488,13 +515,23 @@ async function main(): Promise<void> {
     NAMES.url.push(b.sourceUrl);
     B.ward.push(wards.idx(b.ward));
     B.src.push(sources.idx(b.sourceId));
+    // 合併寫法後同一棟可能出現兩次同一站（Oak「浅草(つくばＥＸＰ)」與「浅草(東武・都営・メトロ)」）：
+    // 只留一筆、步行取較短的；兩條路線的線—站對照都保留。
+    const firstAt = new Map<number, number>();
     for (const st of b.stations) {
       const si = stations.idx(st.station);
-      B.stn.push(si);
-      B.stw.push(st.walkMinutes.known ? st.walkMinutes.v : null);
+      const walk = st.walkMinutes.known ? st.walkMinutes.v : null;
+      const at = firstAt.get(si);
+      if (at === undefined) {
+        firstAt.set(si, B.stn.length);
+        B.stn.push(si);
+        B.stw.push(walk);
+      } else if (walk !== null && (B.stw[at] === null || walk < (B.stw[at] as number))) {
+        B.stw[at] = walk;
+      }
       if (st.line.trim() !== '') pairSet.add(`${lines.idx(st.line)},${si}`);
     }
-    B.stc.push(b.stations.length);
+    B.stc.push(firstAt.size);
     B.total.push(numOrNull(b.totalUnits));
     B.fetchedAt.push(b.fetchedAt.slice(0, 10));
     B.kind.push(Math.max(0, KINDS.indexOf(b.kind)));
@@ -567,16 +604,27 @@ async function main(): Promise<void> {
     // 閘門失敗＝不留下任何產出。三個暫存位置都要清：殘留的 .tmp 會被 Vite
     // 原樣複製進 web/dist，跟著部署上線。
     await rm(PROV_TMP, { recursive: true, force: true });
-    await rm(path.join(OUT_DIR, 'index.json.tmp'), { force: true });
+    await rm(path.join(OUT_DIR, 'index.json.gz.tmp'), { force: true });
     await rm(path.join(OUT_DIR, 'names.json.gz.tmp'), { force: true });
     console.error(`\n⛔ 建置閘門失敗（${g.errors.length} 項），未產出任何檔案：\n`);
-    for (const e of g.errors.slice(0, 20)) console.error('  ' + e);
-    if (g.errors.length > 20) console.error(`  …另有 ${g.errors.length - 20} 項`);
+    // GATE_ALL=1 印全部（處理一批新的未審 alias 成員時要看完整清單）
+    const shown = process.env['GATE_ALL'] === '1' ? g.errors : g.errors.slice(0, 20);
+    for (const e of shown) console.error('  ' + e);
+    if (g.errors.length > shown.length) console.error(`  …另有 ${g.errors.length - shown.length} 項（GATE_ALL=1 印全部）`);
+    // 只印前 20 項時，後面藏著別種閘門失敗也看不到——分類計數一定全印
+    const byGate = new Map<string, number>();
+    for (const e of g.errors) {
+      const k = /^\[([^\]]+)\]/.exec(e)?.[1] ?? '其他';
+      byGate.set(k, (byGate.get(k) ?? 0) + 1);
+    }
+    console.error(`  分類：${[...byGate].map(([k, n]) => `${k} ${n}`).join('、')}`);
     process.exitCode = 1;
     return;
   }
 
   const pairs = [...pairSet].map((p) => p.split(',').map(Number) as [number, number]);
+  stations.finalize();
+  lines.finalize();
 
   /**
    * 兩個檔案「來自同一次建置」的唯一證明。
@@ -661,12 +709,16 @@ async function main(): Promise<void> {
   }
 
   // ── 產出：三份檔案必須一起換掉 ────────────────────────────────
-  // index.json、names.json.gz、prov/ 三者以建物／房間序號互相對齊。
+  // index.json.gz、names.json.gz、prov/ 三者以建物／房間序號互相對齊。
   // 先全部寫到 .tmp 再一次 rename，中途失敗就不會留下「新索引配舊名稱」的組合。
-  const namesGz = gzipSync(Buffer.from(namesJson, 'utf8'));
-  const indexTmp = path.join(OUT_DIR, 'index.json.tmp');
+  //
+  // 索引自 C4 起也是預壓的 .json.gz（-9）：Pages 對 .json 的即時壓縮實測比 -9 大 2.4%，
+  // 而且即時壓縮時前端拿不到總位元組數、進度條只能顯示「已下載多少」。
+  const indexGz = gzipSync(Buffer.from(encodedJson, 'utf8'), { level: 9 });
+  const namesGz = gzipSync(Buffer.from(namesJson, 'utf8'), { level: 9 });
+  const indexTmp = path.join(OUT_DIR, 'index.json.gz.tmp');
   const namesTmp = path.join(OUT_DIR, 'names.json.gz.tmp');
-  await writeFile(indexTmp, encodedJson, 'utf8');
+  await writeFile(indexTmp, indexGz);
   await writeFile(namesTmp, namesGz);
 
   // provenance 桶放在 **prov/<buildId>/** 底下，不是 prov/ 根目錄。
@@ -680,11 +732,13 @@ async function main(): Promise<void> {
   await rm(path.join(OUT_DIR, 'prov'), { recursive: true, force: true });
   await mkdir(path.join(OUT_DIR, 'prov'), { recursive: true });
   await rename(PROV_TMP, path.join(OUT_DIR, 'prov', buildId));
-  await rename(indexTmp, path.join(OUT_DIR, 'index.json'));
+  await rename(indexTmp, path.join(OUT_DIR, 'index.json.gz'));
   await rename(namesTmp, path.join(OUT_DIR, 'names.json.gz'));
+  // C3 以前的未壓縮 index.json：留著會被 Vite 原樣帶上線，成為一份沒人更新的舊資料
+  await rm(path.join(OUT_DIR, 'index.json'), { force: true });
 
-  const gz = gzipSync(Buffer.from(encodedJson, 'utf8')).length;
-  const gzPlain = gzipSync(Buffer.from(plainJson, 'utf8')).length;
+  const gz = indexGz.length;
+  const gzPlain = gzipSync(Buffer.from(plainJson, 'utf8'), { level: 9 }).length;
   const gzNames = namesGz.length;
   console.log(`✔ 建置完成`);
   console.log(`  建物 ${meta.buildings} 棟 / 房間 ${meta.units} 間（空棟略過 ${emptyBuildings}；`
@@ -692,7 +746,7 @@ async function main(): Promise<void> {
   console.log(`  SUUMO 去重：${suumoBefore.length} → ${suumoAfter.length}（${suumoGroups} 組、移除 ${suumoRemoved}、疑似不併 ${suumoSuspect}）；A 區賃料中位數 ${medBefore} → ${medAfter}`);
   console.log(`  跨來源：${crossGroups} 組已審核合併、移除 ${crossRemoved} 間；僅棟層命中 ${crossBuildingOnly} 組（不併）`);
   console.log(`  字典：站 ${stations.list.length}、線 ${lines.list.length}、線站對 ${pairs.length}、間取 ${layouts.list.length}、建物種別 ${btypes.list.length}`);
-  console.log(`  index.json ${(encodedJson.length / 1024).toFixed(0)} KB raw → ${(gz / 1024).toFixed(0)} KB gzip`);
+  console.log(`  index.json.gz ${(encodedJson.length / 1024).toFixed(0)} KB raw → ${(gz / 1024).toFixed(0)} KB gzip -9`);
   console.log(`    （未編碼會是 ${(gzPlain / 1024).toFixed(0)} KB gzip，壓縮省下 ${(100 * (gzPlain - gz) / gzPlain).toFixed(1)}%；`
     + `無損閘門逐格比對 ${cells.toLocaleString()} 格通過）`);
   console.log(`  names.json.gz ${(gzNames / 1024).toFixed(0)} KB（建物名與原站 URL，不參與篩選排序，首屏不等它；`

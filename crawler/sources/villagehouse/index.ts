@@ -43,13 +43,13 @@ export const manifest: SourceManifest = {
   crawlDelayMs: 3000,
   capabilities: {
     provides: [
-      'rent', 'keyMoney', 'deposit', 'fireInsurance',
+      'rent', 'keyMoney', 'deposit', 'fireInsurance', 'agencyFee', 'keyExchangeFee',
       'cleaningFeeOnExit', 'earlyTerminationPenalty',
       'layout', 'areaM2', 'roomNo', 'floor', 'isVacant', 'availableFrom', 'furnished',
       'stations', 'structure', 'yearBuilt', 'floorsAboveGround', 'totalUnits',
     ],
     neverProvides: [
-      'depositNonRefundable', 'keyExchangeFee', 'contractFee',
+      'depositNonRefundable', 'contractFee',
       'cleaningFeeUpfront', 'otherInitial',
       'renewalFee', 'renewalAdminFee',
       'internet', 'otherMonthly',
@@ -190,6 +190,33 @@ export function parseVhRooms(html: string): VhRoom[] {
   return out;
 }
 
+/**
+ * 物件自己的「{物件名}について」段落裡寫「仲介手数料なし」的那一句；沒有就回 null。
+ *
+ * 只看這一段：同一頁的 meta description 與站務 FAQ（「3. 初期費用を抑えて引っ越しできますか？」）
+ * 也有同樣字樣，但那是全站宣傳文案，不是這棟的說明。2026-10-17 以前物件頁沒有這一段，
+ * 那時舊版註解寫「頁面從沒寫過」是對的；改版後 fresh-context 驗證幫手對原始頁面抓到。
+ */
+export function vhAgencyFreeSentence(html: string, name: string): string | null {
+  return vhPropertySentence(html, name, /仲介手数料(?:なし|無料|不要)/);
+}
+
+/**
+ * 物件自己的段落（「{物件名}について」「{市区}エリアでの暮らし」）裡符合 re 的那一句；沒有就回 null。
+ * 「エリアでの暮らし」開頭是這棟自己的車站與周邊（「京王高尾線山田駅徒歩８分 小学校約２km…。カギ交換代無料！（貸主負担）。」），
+ * 2026-10-17 第二十一輪驗證幫手指出 7/7 頁都寫了「カギ交換代無料！（貸主負担）」，我們卻記「此來源不公開」。
+ */
+export function vhPropertySentence(html: string, name: string, re: RegExp): string | null {
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const blocks = new RegExp(`<h2[^>]*>\\s*(?:${esc}について|[^<]{1,12}エリアでの暮らし)\\s*</h2>\\s*<div class='container-qa-description rich-text'>([\\s\\S]*?)</div>`, 'g');
+  for (const m of html.matchAll(blocks)) {
+    const textOnly = (m[1] ?? '').replace(/<[^>]+>/g, '');
+    const hit = textOnly.split(/(?<=。)/).map((x) => x.trim()).find((x) => re.test(x));
+    if (hit !== undefined) return hit;
+  }
+  return null;
+}
+
 export const adapter: SourceAdapter = {
   manifest,
 
@@ -230,6 +257,8 @@ export const adapter: SourceAdapter = {
 
     const key = /\/([a-z0-9-]+-(\d+))\/?$/.exec(ref.url)?.[1] ?? ref.url;
     const buildingId = `villagehouse:${key}`;
+    const agencyFreeSentence = vhAgencyFreeSentence(html, name);
+    const keyFreeSentence = vhPropertySentence(html, name, /(?:カギ|鍵)交換(?:代|費用?)?(?:無料|なし|不要)/);
 
     const structRaw = vhCell(html, '構造•階建て') ?? '';
     const structure = /^([^/]*造)/.exec(structRaw)?.[1]?.trim() ?? '';
@@ -365,12 +394,15 @@ export const adapter: SourceAdapter = {
               ? known(yen(deposit.jpy), 'measured', `敷金: ${r.depositRaw}`)
               : notListed(r.depositRaw),
           depositNonRefundable: notOffered<Yen>(),
-          // 取引態様は貸主（VH 自己是出租人）→ 常識上不會有仲介手数料，
-          // 但頁面從沒寫過「仲介手数料なし」。從取引態様推 0 是推論不是事實，不填。
-          agencyFee: notListed('取引態様: 貸主'),
+          // 取引態様は貸主（VH 自己是出租人）→ 常識上不會有仲介手数料，但從取引態様推 0 是推論，
+          // 所以只在物件自己的「〇〇について」段落明寫「仲介手数料なし」時才記 0（2026-10-17 起 7/7 頁都有）。
+          agencyFee: agencyFreeSentence !== null
+            ? known(yen(0), 'measured', `${agencyFreeSentence}（取引態様: 貸主）`)
+            : notListed('取引態様: 貸主'),
           guarantorInitialFee: notListed(guarantorRaw),
           fireInsurance,
-          keyExchangeFee: notOffered<Yen>(),
+          // 「カギ交換代無料！（貸主負担）」（物件的「〇〇エリアでの暮らし」段落）→ 0
+          keyExchangeFee: keyFreeSentence !== null ? known(yen(0), 'measured', keyFreeSentence) : notOffered<Yen>(),
           contractFee: notOffered<Yen>(),
           cleaningFeeUpfront: notOffered<Yen>(),
           otherInitial: notOffered<Yen>(),

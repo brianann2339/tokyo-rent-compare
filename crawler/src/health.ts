@@ -243,7 +243,9 @@ export function renderMarkdown(
     lines.push(`- 執行時間：${h.runAt}`);
     if (n !== undefined) lines.push(`- 此來源最後執行於 ${n.lastRunAt}`);
     lines.push(`- 建物 ${h.buildings} 棟 / 房間 ${h.units} 間`);
-    lines.push(`- robots.txt sha256：\`${h.robotsSha256.slice(0, 16)}…\`${h.robotsChanged ? ' **⚠️ 已變動**' : ''}`);
+    lines.push(h.robotsSha256 === ''
+      ? '- robots.txt：這次是離線重解析，沒有查（0 次網路請求）'
+      : `- robots.txt sha256：\`${h.robotsSha256.slice(0, 16)}…\`${h.robotsChanged ? ' **⚠️ 已變動**' : ''}`);
     if (h.buildIds.length > 0) lines.push(`- 來源 buildId：${h.buildIds.map((b) => `\`${b}\``).join(', ')}`);
     const a = alerts[h.sourceId] ?? [];
     lines.push(a.length === 0 ? '- 告警：無' : `- 告警：${a.map((x) => `**${x.level}** ${x.fieldId}（${x.message}）`).join('；')}`);

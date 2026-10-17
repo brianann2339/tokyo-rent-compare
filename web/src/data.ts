@@ -7,6 +7,7 @@
 
 import { decodeIndex, type EncodedIndex, type ColumnIndex } from '../../packages/wire-codec/src/index.ts';
 import { decodeNames, type EncodedNames } from '../../packages/wire-codec/src/names.ts';
+import { stationKey, lineKey } from '../../packages/jp-parse/src/station.ts';
 
 export const UTIL_BASIS = ['unknown', 'included', 'excluded'] as const;
 export const GENDER = ['unknown', 'mixed', 'female_only', 'male_only'] as const;
@@ -77,11 +78,15 @@ export type Prov = {
   notes: string[]; caveats: string[]; missing: string[];
   fields: Record<string, ProvField>;
   layoutRaw?: string;
+  /** ISO 日期、「随時」，或 Couverture 不寫年份的「--MM-DD」；未知為 null */
+  availFrom?: string | null;
   minStayMonths?: number;
   ageLimitRaw?: string;
   adCount?: number;
   mergedFrom?: Array<{ unitKey: string; url: string }>;
   alsoListed?: Array<{ src: string; url: string }>;
+  /** 這間房違反的合理性不變式（build-data 的 invariants）；值照原文保留 */
+  invariants?: string[];
 };
 
 /** 延遲讀取：Node 測試環境沒有 import.meta.env，模組載入時就讀會直接炸掉。 */
@@ -94,42 +99,58 @@ export type Names = { name: string[]; url: string[] };
 export type LoadProgress = { loaded: number; total: number | null; phase: 'download' | 'parse' };
 
 /**
- * 索引是一個大檔（10 区時 1.5 MB gzip，23 区會到數 MB）。
+ * 索引是一個大檔（23 区約 1.2 MB gzip）。
  * 用 stream 讀而不是 `res.json()`，是為了能報進度——不然使用者在慢網路上
  * 會盯著一片「載入中…」十幾秒，分不出是在下載還是壞掉了。
+ *
+ * 自 C4 起索引是**建置時就用 gzip -9 壓好**的 `index.json.gz`：
+ *   - GitHub Pages 對 `.json` 是即時壓縮，實測比 -9 大 2.4%（1,305,656 vs 1,275,209 bytes）。
+ *   - Pages 對 `.json.gz` 送 `application/gzip`、不加 content-encoding，content-length 就是
+ *     實際要下載的位元組數——進度條第一次有真的百分比（以前 total 永遠是 null）。
+ * 解壓前看**檔頭魔數**（1f 8b）而不是 header：伺服器若哪天自己解掉、或開發伺服器的行為不同，
+ * 拿到的會是 JSON 本體，照樣讀得出來，不會雙重解壓。
  */
 export async function loadWire(onProgress?: (p: LoadProgress) => void): Promise<Wire> {
-  const res = await fetch(`${base()}data/index.json`);
+  const res = await fetch(`${base()}data/index.json.gz`);
   if (!res.ok) throw new Error(`載入資料失敗：HTTP ${res.status}`);
 
-  // content-length 在 gzip 傳輸時是「壓縮後」的位元組數，而 reader 讀到的是解壓後的——
+  // content-length 在伺服器加了 content-encoding 時是「壓縮後」的位元組數，而 reader 讀到的是解壓後的——
   // 兩者不同單位，混在一起算百分比會得到 >100%。所以只在沒有 content-encoding 時才用它當分母。
   const encoded = res.headers.get('content-encoding');
   const lenHeader = res.headers.get('content-length');
   const total = encoded === null && lenHeader !== null && Number.isFinite(Number(lenHeader))
     ? Number(lenHeader) : null;
 
-  if (res.body === null || onProgress === undefined) return hydrate(await res.json());
-
-  const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let loaded = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value !== undefined) { chunks.push(value); loaded += value.byteLength; onProgress({ loaded, total, phase: 'download' }); }
+  if (res.body !== null) {
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value !== undefined) { chunks.push(value); loaded += value.byteLength; onProgress?.({ loaded, total, phase: 'download' }); }
+    }
   }
-  onProgress({ loaded, total, phase: 'parse' });
+  onProgress?.({ loaded, total, phase: 'parse' });
   // 讓瀏覽器把進度畫出來再進 JSON.parse——parse 是同步的，會把主執行緒鎖住一段時間
   await new Promise((r) => setTimeout(r, 0));
   const buf = new Uint8Array(loaded);
   let at = 0;
   for (const c of chunks) { buf.set(c, at); at += c.byteLength; }
-  return hydrate(JSON.parse(new TextDecoder().decode(buf)));
+  return hydrate(JSON.parse(await gunzipIfNeeded(buf, '索引')));
+}
+
+/** 檔頭是 gzip 魔數就解壓，否則當成已解壓的 UTF-8 文字。 */
+async function gunzipIfNeeded(buf: Uint8Array<ArrayBuffer>, what: string): Promise<string> {
+  if (buf.length < 2 || buf[0] !== 0x1f || buf[1] !== 0x8b) return new TextDecoder().decode(buf);
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error(`這個瀏覽器不支援 DecompressionStream，無法讀取${what}（需要 Chrome 80+／Safari 16.4+／Firefox 113+）`);
+  }
+  return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
 }
 
 /**
- * 索引是壓縮編碼格式，目前是 `v: 'C3'`（C3 起 name／url 不在索引裡）。
+ * 索引是壓縮編碼格式，目前是 `v: 'C4'`（C3 起 name／url 不在索引裡；C4 換了站名與分棟的排法）。
  *
  * 認不得的版本一律**丟例外**，不再像 C2 時代那樣「沒有 v 就原樣回傳」——
  * 拿一個舊格式當新格式用，會得到一個少了兩整欄的索引然後在畫面上到處是空白，
@@ -138,7 +159,7 @@ export async function loadWire(onProgress?: (p: LoadProgress) => void): Promise<
  */
 function hydrate(parsed: unknown): Wire {
   const o = parsed as { v?: string };
-  if (o.v !== 'C3') {
+  if (o.v !== 'C4') {
     throw new Error(`資料檔版本是 ${JSON.stringify(o.v ?? '(無)')}，這個版本的網站讀不懂（請重新整理頁面取得新版）`);
   }
   return decodeIndex(parsed as EncodedIndex) as unknown as Wire;
@@ -440,13 +461,16 @@ export function query(w: Wire, f: Filters, now: Date = new Date(), names: Names 
   const srcIdx = toIdxSet(f.sources, dict.sources);
   const layoutIdx = toIdxSet(f.layouts, dict.layouts);
   const btypeIdx = toIdxSet(f.buildingTypes, dict.buildingTypes);
-  const lineIdx = f.line === '' ? -1 : dict.lines.indexOf(f.line);
+  const lineIdx = f.line === '' ? -1 : lineIndexOf(dict.lines, f.line);
   const lineStations = new Set<number>();
   if (lineIdx >= 0) for (const [li, si] of dict.pairs) if (li === lineIdx) lineStations.add(si);
-  const stIdx = f.st === '' ? -1 : dict.stations.indexOf(f.st);
+  const stIdx = f.st === '' ? -1 : stationIndexOf(dict.stations, f.st);
   const off = stationOffsets(w);
   const thisYear = now.getFullYear();
   const q = f.q.trim().toLowerCase();
+  // 自由搜尋也用站名比對鍵：打「阿佐ヶ谷」要找得到顯示成「阿佐ケ谷」的站
+  const qKey = q === '' ? '' : stationKey(q);
+  const stKeys = q === '' ? [] : stationKeysOf(dict.stations);
   const rows: Row[] = [];
   const counts: [number, number, number] = [0, 0, 0];
   const excluded = { kindUnknown: 0, ageUnknown: 0, floorUnknown: 0 };
@@ -498,7 +522,8 @@ export function query(w: Wire, f: Filters, now: Date = new Date(), names: Names 
       const ward = dict.wards[b.ward[bi] as number] ?? '';
       let hit = name.includes(q) || ward.includes(q);
       for (let k = off[bi] as number; !hit && k < (off[bi + 1] as number); k++) {
-        if ((dict.stations[b.stn[k] as number] ?? '').toLowerCase().includes(q)) hit = true;
+        const si = b.stn[k] as number;
+        if ((dict.stations[si] ?? '').toLowerCase().includes(q) || (qKey !== '' && (stKeys[si] ?? '').includes(qKey))) hit = true;
       }
       ok = hit;
     }
@@ -588,4 +613,73 @@ export const yen = (n: number | null | undefined): string =>
  */
 export function floorLabel(floor: number): string {
   return floor < 0 ? `B${-floor}F` : `${floor}F`;
+}
+
+// ── 資料新舊 ────────────────────────────────────────────────────
+/**
+ * 超過這麼多天沒重新確認的房，卡片上標「可能已出租」。
+ * 這是介面上的取捨，不是對市場的斷言：重點是讓「兩個月前抓的」與「今天抓的」
+ * 看起來不一樣——Sakura House 只能人在場用真實瀏覽器抓，常常會比其他來源舊。
+ */
+export const STALE_DAYS = 14;
+
+/** `YYYY-MM-DD`（抓取日，UTC）距 `now` 幾個整天。格式不對回 null，不猜。 */
+export function daysSince(ymd: string | undefined, now: Date): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd ?? '');
+  if (m === null) return null;
+  const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.floor((today - t) / 86_400_000);
+}
+
+const freshCache = new WeakMap<Wire, Array<{ src: string; latest: string }>>();
+
+/** 各來源最近一次確認日（該來源所有建物抓取日的最大值），依來源字典順序。 */
+export function sourceFreshness(w: Wire): Array<{ src: string; latest: string }> {
+  let out = freshCache.get(w);
+  if (out === undefined) {
+    const latest = new Array<string>(w.dict.sources.length).fill('');
+    for (let bi = 0; bi < w.b.fetchedAt.length; bi++) {
+      const s = w.b.src[bi] as number;
+      const d = w.b.fetchedAt[bi] as string;
+      if (d > (latest[s] as string)) latest[s] = d;
+    }
+    out = w.dict.sources.map((src, k) => ({ src, latest: latest[k] as string })).filter((x) => x.latest !== '');
+    freshCache.set(w, out);
+  }
+  return out;
+}
+
+/** 可入住時間的顯示字串；值域見 Prov.availFrom。 */
+export function availLabel(v: string | null | undefined): string | null {
+  if (v === null || v === undefined || v === '') return null;
+  if (v === '随時') return '隨時可入住';
+  const md = /^--(\d{2})-(\d{2})$/.exec(v);
+  if (md !== null) return `${Number(md[1])} 月 ${Number(md[2])} 日起（原站未寫年份）`;
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  if (ymd !== null) return `${ymd[1]}-${ymd[2]}-${ymd[3]} 起`;
+  return v;
+}
+
+/**
+ * 站名／路線在字典裡的序號：用比對鍵找，不用字面相等——
+ * 使用者打「阿佐ヶ谷」而字典顯示名是「阿佐ケ谷」、或舊分享連結帶著「ＪＲ山手線」時，仍要找得到。
+ */
+const stKeyCache = new WeakMap<readonly string[], string[]>();
+function stationKeysOf(list: readonly string[]): string[] {
+  let k = stKeyCache.get(list);
+  if (k === undefined) { k = list.map(stationKey); stKeyCache.set(list, k); }
+  return k;
+}
+export function stationIndexOf(list: readonly string[], name: string): number {
+  const exact = list.indexOf(name);
+  if (exact >= 0) return exact;
+  const k = stationKey(name);
+  return k === '' ? -1 : list.findIndex((s) => stationKey(s) === k);
+}
+export function lineIndexOf(list: readonly string[], name: string): number {
+  const exact = list.indexOf(name);
+  if (exact >= 0) return exact;
+  const k = lineKey(name);
+  return k === '' ? -1 : list.findIndex((s) => lineKey(s) === k);
 }

@@ -21,6 +21,7 @@ import {
   parseLdNodes, pickLdType, parseOffers, parseLeaseMonths,
   parseLeoStations, parseBuildingSummary, kindOf, keyFromUrl,
   sitemapIndexUrls, tokyoPropertyUrls, feeField, monthsOrAmountField,
+  parseLeoRoomPage, roomPageUrls, leoAvailableFrom,
 } from '../sources/leopalace21/index.ts';
 import type { Listing, Unit } from '../../packages/schema/src/model.ts';
 import type { Field, Yen } from '../../packages/schema/src/field.ts';
@@ -543,7 +544,7 @@ describe('建置期閘門相容性', () => {
 });
 
 describe('capabilities 宣告與實際產出一致', () => {
-  test('neverProvides 的欄位一律 not_offered_by_source，不是解析失敗', () => {
+  test('沒抓到房間詳情頁時（只有建物頁），房間層欄位一律 not_offered_by_source，不是解析失敗', () => {
     assert.ok(nakano);
     const u = nakano.units[0];
     assert.ok(u);
@@ -581,5 +582,91 @@ describe('capabilities 宣告與實際產出一致', () => {
     assert.ok(manifest.legal.notes.includes('/estimate/*'));
     assert.ok(manifest.legal.notes.includes('私的利用'));
     assert.ok(manifest.crawlDelayMs >= 3000);
+  });
+});
+
+describe('房間詳情頁（2026-10-17 起）：レオパレス南台第３ 205 號', () => {
+  const bu = 'https://www.leopalace21.com/properties/common/tokyo/nakano-ku-13114/minamidai-dai3-00118';
+  const ru = 'https://www.leopalace21.com/properties/chintai/tokyo/nakano-ku-13114/minamidai-dai3-00118/205';
+  const buildingHtml = fixture('detail-nakano-minamidai-dai3-2026-10-17.html.gz');
+  const d = parseLeoRoomPage(ru, fixture('room-nakano-minamidai-dai3-205-2026-10-17.html.gz'));
+  const raw = { url: bu, body: '', fetchedAt: '2026-10-17T02:00:00Z', sha256: '', status: 200, notModified: false };
+  // 執行器以 fetchMode 'none' 呼叫：rawIn 是空的，建物頁與房間頁都在 hint
+  const l = adapter.extract(
+    raw, { url: bu, hint: { __buildingRaw: { ...raw, body: buildingHtml, sha256: 'sha-b' }, __roomDetails: { [ru]: d } } },
+    { manifest, now: new Date('2026-10-17T02:00:00Z') },
+  );
+  const u = l?.units.find((x) => x.roomNo.known && x.roomNo.v === '205');
+
+  test('建物頁 JSON-LD 列出的賃貸房間頁網址', () => {
+    assert.deepEqual(roomPageUrls(buildingHtml), [ru]);
+  });
+
+  test('諸費用：鍵交換費・更新料是單一金額 → 照收；退去時清掃費依站方重要事項是入居時就付', () => {
+    assert.ok(u?.initial.keyExchangeFee.known && u.initial.keyExchangeFee.v.jpy === 16500);
+    assert.ok(u.deferred.renewalFee.known && u.deferred.renewalFee.v.jpy === 16500);
+    assert.ok(u.initial.cleaningFeeUpfront.known && u.initial.cleaningFeeUpfront.v.jpy === 52250);
+    assert.match(u.initial.cleaningFeeUpfront.srcText, /ご契約時に、退去時清掃費として/);
+    assert.equal(u.deferred.cleaningFeeOnExit.known, false, '同一筆錢不在退去時再算一次');
+  });
+
+  test('區間與按日計的不取值：火災保険「2年 13,130円～26,680円」、保証委託料「利用料の100％～120％」、環境維持費「30日あたり550円」', () => {
+    for (const f of [u?.initial.fireInsurance, u?.initial.guarantorInitialFee, u?.monthly.otherMonthly]) {
+      assert.ok(f !== undefined && !f.known);
+      assert.equal(!f.known && f.basis, 'excluded_stated', f.srcText);
+    }
+    assert.match(u?.initial.fireInsurance.srcText ?? '', /13,130円～26,680円/);
+  });
+
+  test('お部屋の詳細：所在階・家具・現況・入居日・敷引；建物構造・総戸数・種別', () => {
+    assert.ok(u?.floor.known && u.floor.v === 2);
+    assert.ok(u.furnished.known && u.furnished.v === true);
+    assert.ok(u.isVacant.known && u.isVacant.v === false, '現況「退去予定」＝還沒空出（JSON-LD 寫 InStock）');
+    assert.ok(u.availableFrom.known && u.availableFrom.v === '2026-10-26');
+    assert.ok(u.initial.depositNonRefundable.known && u.initial.depositNonRefundable.v.jpy === 0);
+    const b = l?.building;
+    assert.ok(b?.structure.known && b.structure.v === '木造');
+    assert.ok(b.totalUnits.known && b.totalUnits.v === 10);
+    assert.ok(b.buildingType.known && b.buildingType.v === 'アパート');
+  });
+
+  test('選配（任意）只留在 notes；インターネット利用料進網路欄（第三十一輪）', () => {
+    assert.ok(u !== undefined);
+    assert.ok(u.notes.some((n) => n.startsWith('抗菌+害虫防除施工（任意）')));
+    assert.ok(!u.notes.some((n) => n.startsWith('インターネット利用料')));
+    // 這間房頁寫「インターネット利用不可」：沒有網路可用，不是「此來源不公開」
+    assert.ok(!u.monthly.internet.known && u.monthly.internet.why === 'not_listed_on_page' && u.monthly.internet.basis === 'unstated');
+    assert.match(u.monthly.internet.srcText, /インターネット利用不可/);
+  });
+
+  test('インターネット利用料「月額3,630円（税込）～」只有下限 → 原站明寫要付、不取值（全量 2,882 頁是這個寫法）', () => {
+    // 同一份房間頁，只把那一格換成另一種實際出現過的值
+    const html = fixture('room-nakano-minamidai-dai3-205-2026-10-17.html.gz').replaceAll('インターネット利用不可', '月額3,630円（税込）～');
+    const d2 = parseLeoRoomPage(ru, html);
+    const l2 = adapter.extract(
+      raw, { url: bu, hint: { __buildingRaw: { ...raw, body: buildingHtml, sha256: 'sha-b' }, __roomDetails: { [ru]: d2 } } },
+      { manifest, now: new Date('2026-10-17T02:00:00Z') },
+    );
+    const net = l2?.units.find((x) => x.roomNo.known && x.roomNo.v === '205')?.monthly.internet;
+    assert.ok(net !== undefined && !net.known && net.basis === 'excluded_stated', JSON.stringify(net));
+    assert.match(net.srcText, /インターネット利用料 月額3,630円（税込）～/);
+  });
+
+  test('入居日：年月日 → ISO、「即入居可」→ 随時、看不懂照原文', () => {
+    const d1 = leoAvailableFrom('2026年1月5日');
+    assert.ok(d1.known && d1.v === '2026-01-05');
+    const now = leoAvailableFrom('即入居可');
+    assert.ok(now.known && now.v === '随時');
+    assert.equal(leoAvailableFrom('11月上旬').known, false);
+    // 房間頁實際寫法是「即入居可能」（2026-10-17：742 間房頁裡 65 間）——舊式多一個「能」就判成解析失敗
+    const now2 = leoAvailableFrom('即入居可能');
+    assert.ok(now2.known && now2.v === '随時');
+    const dash = leoAvailableFrom('-');
+    assert.ok(!dash.known && dash.why === 'not_listed_on_page', '「-」是沒寫，不是解析失敗');
+  });
+
+  test('extract 直接拿建物頁（測試路徑）仍可用', () => {
+    const direct = adapter.extract({ ...raw, body: buildingHtml }, { url: bu }, { manifest, now: new Date() });
+    assert.ok(direct !== null && direct.units.length > 0);
   });
 });

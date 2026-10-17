@@ -15,6 +15,17 @@
  *   - `sparse` 遇到 null 就 throw（`null - pred` 在 JS 是數字，會無聲產生殘差）
  *   - 哨兵值（rent 的 −1、area 的 −1/−2）在編碼時檢查真實資料不會撞上
  * 再加上 build-data 的 encode→decode→全量比對閘門，任何漏網都會變成建置失敗。
+ *
+ * ── C4（2026-10-17）：讓 gzip 看到更好認的分佈 ─────────────────────
+ * GitHub Pages 只供 gzip，所以壓縮率的上限是「gzip 對這串字元能做到多少」。
+ * 實測再往下的路有兩條：自帶熵編碼器（算術編碼＋上下文模型，估計還能省 ~17%），
+ * 但手機上解碼要多花數百毫秒，抵掉省下的下載時間；或是**不換熵編碼器、只換排法**，
+ * 讓同一種分佈的數字排在一起。C4 走後者，解碼成本跟 C3 一樣：
+ *   - `b.stn`：站名改存「在該区的出現頻率名次」。同一区的物件反覆出現同幾個站，
+ *     全域頻率名次會把它們打散成大數字；区內名次大多是個位數。
+ *   - `rent`／`area`／`u.admin`／`u.layout`／`u.missing`：每棟第一間與其餘各間分兩串。
+ *     第一間是「新的一棟」（值域大、亂），其餘是「同一棟的下一間」（常與前一間相同或相近）——
+ *     混在同一串裡，gzip 的 Huffman 表只能取兩者的平均。
  */
 
 /** 索引的結構型別。刻意不 import web 的 `Wire`——那會讓 crawler 依賴 web。 */
@@ -31,7 +42,7 @@ export type EncodedIndex = {
    * （見 packages/wire-codec/src/names.ts）。版本必須跟著跳號：
    * 舊前端拿到新檔時要「認不得而停下來」，不可以解出一個少了兩欄的索引繼續跑。
    */
-  v: 'C3';
+  v: 'C4';
   meta: Record<string, unknown>;
   dict: Record<string, unknown>;
   nB: number;
@@ -39,14 +50,23 @@ export type EncodedIndex = {
   b: { fetchedAt: unknown[]; uc: string };
   u: { room: unknown[]; bid?: number[] };
   enc: Record<string, DictBlock>;
-  rent: DictBlock;
-  area: { d: string; i: number[]; v: number[] };
+  /** 每棟第一間（f）與其餘各間（r，0＝與前一間相同）分兩串的欄位 */
+  split: Record<string, SameBlock>;
+  /** 站：`t[區序號]` 是該区的站（依區內出現次數排序），`c` 是每個扁平站位在該表的名次 */
+  stn: { t: number[][]; c: string };
+  /** 賃料：f＝每棟第一間的值，r＝同棟與前一間的差 */
+  rent: SplitBlock;
+  /** 面積 ×100：f＝每棟第一間（zigzag），r＝與前一間的差（zigzag）；例外表同 C3 */
+  area: { f: string; r: string; i: number[]; v: number[] };
   key: RatioBlock;
   dep: RatioBlock;
   resid: Record<string, ResidBlock>;
 };
 
 type DictBlock = { d: unknown[]; c: string };
+type SplitBlock = { f: DictBlock; r: DictBlock };
+/** 同 SplitBlock，但 r 的碼 0 代表「與前一間相同」，k≥1 代表 `r.d[k-1]` */
+type SameBlock = { f: DictBlock; r: DictBlock };
 type RatioBlock = { c: DictBlock; i: string; v: number[] };
 type ResidBlock = { n: number; i: string; v: string };
 
@@ -133,10 +153,17 @@ export function dictDec(o: DictBlock, n: number): unknown[] {
   return out;
 }
 
-/** 這些欄位走頻率字典（值域小、重複度高）。 */
-const DICT_B = ['ward', 'src', 'kind', 'also', 'stc', 'total', 'yearBuilt', 'stn', 'stw', 'btype'] as const;
-const DICT_U = ['layout', 'floor', 'admin', 'util', 'utilBasis', 'depNR', 'gender', 'foreigner',
-  'vacant', 'monthlyTier', 'initCashTier', 'missing', 'flags', 'ads'] as const;
+/** 這些欄位走頻率字典（值域小、重複度高）。`stn` 自 C4 起改走区內名次，見 `stn` 欄。 */
+const DICT_B = ['ward', 'src', 'kind', 'also', 'stc', 'total', 'yearBuilt', 'stw', 'btype'] as const;
+const DICT_U = ['floor', 'util', 'utilBasis', 'depNR', 'gender', 'foreigner',
+  'vacant', 'monthlyTier', 'initCashTier', 'flags', 'ads'] as const;
+/**
+ * 每棟第一間與其餘各間分兩串、且其餘各間以「與前一間相同」為 0 號碼的房間欄位。
+ * 只放實測有省的：admin 76.1→68.9、layout 55.6→52.6、missing 47.0→42.7 KB（2026-09-06 資料）；
+ * floor 反而變大（77.6 > 76.0），ads 也變大，所以不在這裡。
+ * ⚠️「相同」這個 0 號碼是省下來的關鍵：只分兩串、不加這個碼，實測三欄反而各大 3〜6 KB。
+ */
+const SPLIT_U = ['admin', 'layout', 'missing'] as const;
 /**
  * 原樣保留（字串為主，gzip 自己處理得很好）。
  * `name`／`url` 自 C3 起搬到 names.json.gz——它們合計佔 index.json 的 46%，
@@ -168,7 +195,7 @@ export function encodeIndex(idx: ColumnIndex): EncodedIndex {
   const nB = (B[nBKey] as unknown[] | undefined)?.length;
   if (nB === undefined) throw new Error(`[wire-codec] 索引缺少棟層欄位 b.${nBKey}，無法決定建物數`);
   for (const k of [...RAW_B, ...DICT_B]) {
-    if (k === 'stn' || k === 'stw') continue; // 這兩欄長度是扁平站數，不是棟數
+    if (k === 'stw') continue; // 長度是扁平站數，不是棟數
     const col = B[k] as unknown[] | undefined;
     if (col === undefined) throw new Error(`[wire-codec] 索引缺少棟層欄位 b.${k}`);
     if (col.length !== nB) throw new Error(`[wire-codec] b.${k} 有 ${col.length} 格，b.${nBKey} 有 ${nB} 格——棟層欄位必須等長`);
@@ -196,11 +223,34 @@ export function encodeIndex(idx: ColumnIndex): EncodedIndex {
     if (v === RENT_NULL) throw new Error(`[wire-codec] rent 第 ${i} 項是 ${RENT_NULL}，與 null 哨兵相撞——哨兵要改值`);
     RS[i] = v ?? RENT_NULL;
   }
-  const rentD = new Array<number>(nU);
-  for (let i = 0; i < nU; i++) {
-    const same = i > 0 && (bidRaw[i] as number) === (bidRaw[i - 1] as number);
-    rentD[i] = zig(same ? (RS[i] as number) - (RS[i - 1] as number) : (RS[i] as number));
-  }
+  // 「每棟第一間」與「其餘各間」：bid 遞增時就是 bid 變了的那一格
+  const firstOfB = (i: number): boolean => i === 0 || (bidRaw[i] as number) !== (bidRaw[i - 1] as number);
+  const splitEnc = (vals: readonly unknown[]): SplitBlock => {
+    const f: unknown[] = [];
+    const r: unknown[] = [];
+    for (let i = 0; i < nU; i++) (firstOfB(i) ? f : r).push(vals[i]);
+    return { f: dictEnc(f), r: dictEnc(r) };
+  };
+  const sameEnc = (vals: readonly unknown[]): SameBlock => {
+    const f: unknown[] = [];
+    const diff: unknown[] = [];
+    const isSame: boolean[] = [];
+    for (let i = 0; i < nU; i++) {
+      if (firstOfB(i)) { f.push(vals[i]); continue; }
+      const same = Object.is(vals[i], vals[i - 1]);
+      isSame.push(same);
+      if (!same) diff.push(vals[i]);
+    }
+    // 「不同」的那些值照頻率字典編，碼整體 +1，把 0 讓給「相同」
+    const db = dictEnc(diff);
+    const dc = tvDec(db.c, diff.length);
+    const codes = new Array<number>(isSame.length);
+    let k = 0;
+    for (let j = 0; j < isSame.length; j++) codes[j] = isSame[j] ? 0 : (dc[k++] as number) + 1;
+    return { f: dictEnc(f), r: { d: db.d, c: tvEnc(codes) } };
+  };
+  const rentFR = new Array<number>(nU);
+  for (let i = 0; i < nU; i++) rentFR[i] = firstOfB(i) ? (RS[i] as number) : (RS[i] as number) - (RS[i - 1] as number);
 
   // ── key/dep：日本慣例是賃料的 0/0.5/1/2… 倍，存倍數比存金額省得多；不整除的存例外表 ──
   const ratioEnc = (arr: readonly unknown[], label: string): RatioBlock => {
@@ -267,15 +317,57 @@ export function encodeIndex(idx: ColumnIndex): EncodedIndex {
     if (s / 100 === v && Number.isSafeInteger(s)) AS[i] = s;
     else { AS[i] = AREA_EXCEPTION; aexI.push(i); aexV.push(v); }
   }
-  const areaD = new Array<number>(nU);
-  for (let i = 0; i < nU; i++) areaD[i] = zig(i !== 0 ? (AS[i] as number) - (AS[i - 1] as number) : (AS[i] as number));
+  const areaF: number[] = [];
+  const areaR: number[] = [];
+  for (let i = 0; i < nU; i++) {
+    if (firstOfB(i)) areaF.push(zig(AS[i] as number));
+    else areaR.push(zig((AS[i] as number) - (AS[i - 1] as number)));
+  }
+
+  // ── stn：区內出現次數名次。同一区的物件反覆出現同幾個站 ──
+  const wardB = B['ward'] as unknown[];
+  const stcB = B['stc'] as unknown[];
+  const stnB = B['stn'] as unknown[] | undefined;
+  if (stnB === undefined) throw new Error('[wire-codec] 索引缺少 b.stn');
+  const flatWard: number[] = [];
+  for (let b = 0; b < nB; b++) {
+    const w = wardB[b];
+    const c = stcB[b];
+    if (typeof w !== 'number' || !Number.isInteger(w) || w < 0) throw new Error(`[wire-codec] b.ward[${b}] 是 ${JSON.stringify(w)}，区內名次編碼需要非負整數`);
+    if (typeof c !== 'number' || !Number.isInteger(c) || c < 0) throw new Error(`[wire-codec] b.stc[${b}] 是 ${JSON.stringify(c)}`);
+    for (let j = 0; j < c; j++) flatWard.push(w);
+  }
+  if (flatWard.length !== stnB.length) throw new Error(`[wire-codec] b.stc 合計 ${flatWard.length}，b.stn 有 ${stnB.length} 格`);
+  const perWard = new Map<number, Map<number, number>>();
+  for (let p = 0; p < stnB.length; p++) {
+    const s = stnB[p];
+    if (typeof s !== 'number' || !Number.isInteger(s) || s < 0) throw new Error(`[wire-codec] b.stn[${p}] 是 ${JSON.stringify(s)}，必須是站字典的非負整數序號`);
+    const w = flatWard[p] as number;
+    let m = perWard.get(w);
+    if (m === undefined) { m = new Map(); perWard.set(w, m); }
+    m.set(s, (m.get(s) ?? 0) + 1);
+  }
+  const nWards = perWard.size === 0 ? 0 : Math.max(...perWard.keys()) + 1;
+  const stnT: number[][] = [];
+  const stnRank: Array<Map<number, number>> = [];
+  for (let w = 0; w < nWards; w++) {
+    const m = perWard.get(w) ?? new Map<number, number>();
+    // 次數多的在前；同次數依站序號——排序必須是全序，否則同一份資料兩次編碼結果會不同
+    const list = [...m.keys()].sort((a, b) => (m.get(b) as number) - (m.get(a) as number) || a - b);
+    stnT.push(list);
+    stnRank.push(new Map(list.map((s, r) => [s, r])));
+  }
+  const stnC = new Array<number>(stnB.length);
+  for (let p = 0; p < stnB.length; p++) stnC[p] = (stnRank[flatWard[p] as number] as Map<number, number>).get(stnB[p] as number) as number;
 
   const enc: Record<string, DictBlock> = {};
   for (const k of DICT_B) enc[`b.${k}`] = dictEnc(B[k] as unknown[]);
   for (const k of DICT_U) enc[`u.${k}`] = dictEnc(U[k] as unknown[]);
+  const split: Record<string, SameBlock> = {};
+  for (const k of SPLIT_U) split[`u.${k}`] = sameEnc(U[k] as unknown[]);
 
   const out: EncodedIndex = {
-    v: 'C3',
+    v: 'C4',
     meta: idx.meta,
     dict: idx.dict,
     nB,
@@ -286,8 +378,10 @@ export function encodeIndex(idx: ColumnIndex): EncodedIndex {
     },
     u: { room: U['room'] as unknown[] },
     enc,
-    rent: dictEnc(rentD),
-    area: { d: tvEnc(areaD), i: aexI, v: aexV },
+    split,
+    stn: { t: stnT, c: tvEnc(stnC) },
+    rent: splitEnc(rentFR),
+    area: { f: tvEnc(areaF), r: tvEnc(areaR), i: aexI, v: aexV },
     key: ratioEnc(U['key'] as unknown[], 'key'),
     dep: ratioEnc(U['dep'] as unknown[], 'dep'),
     resid: {
@@ -306,8 +400,8 @@ export function encodeIndex(idx: ColumnIndex): EncodedIndex {
 }
 
 export function decodeIndex(o: EncodedIndex): ColumnIndex {
-  if (o.v !== 'C3') {
-    throw new Error(`[wire-codec] 認不得的索引版本 ${JSON.stringify(o.v)}——這個解碼器只讀 C3`);
+  if (o.v !== 'C4') {
+    throw new Error(`[wire-codec] 認不得的索引版本 ${JSON.stringify(o.v)}——這個解碼器只讀 C4`);
   }
   const { nU, nB } = o;
   const B: Record<string, Array<unknown>> = { fetchedAt: o.b.fetchedAt };
@@ -317,14 +411,28 @@ export function decodeIndex(o: EncodedIndex): ColumnIndex {
   const U: Record<string, Array<unknown>> = { room: o.u.room };
 
   for (const k of DICT_B) {
-    if (k === 'stn' || k === 'stw') continue; // 長度是扁平站數，要先有 stc
+    if (k === 'stw') continue; // 長度是扁平站數，要先有 stc
     B[k] = dictDec(o.enc[`b.${k}`] as DictBlock, nB);
   }
   for (const k of DICT_U) U[k] = dictDec(o.enc[`u.${k}`] as DictBlock, nU);
 
   let flat = 0;
   for (let i = 0; i < nB; i++) flat += (B['stc'] as number[])[i] as number;
-  B['stn'] = dictDec(o.enc['b.stn'] as DictBlock, flat);
+  {
+    const ranks = tvDec(o.stn.c, flat);
+    const stn = new Array<number>(flat);
+    let p = 0;
+    for (let b = 0; b < nB; b++) {
+      const table = o.stn.t[(B['ward'] as number[])[b] as number];
+      const c = (B['stc'] as number[])[b] as number;
+      for (let j = 0; j < c; j++, p++) {
+        const s = table?.[ranks[p] as number];
+        if (s === undefined) throw new Error(`[wire-codec] 第 ${p} 個站位的区內名次 ${ranks[p]} 超出該区站表`);
+        stn[p] = s;
+      }
+    }
+    B['stn'] = stn;
+  }
   B['stw'] = dictDec(o.enc['b.stw'] as DictBlock, flat);
 
   // bid
@@ -338,12 +446,41 @@ export function decodeIndex(o: EncodedIndex): ColumnIndex {
   }
   U['bid'] = bid;
 
+  // 每棟第一間／其餘各間兩串：先數出兩串各幾格，再依序交錯取回
+  let nFirst = 0;
+  for (let i = 0; i < nU; i++) if (i === 0 || bid[i] !== bid[i - 1]) nFirst += 1;
+  const splitDec = (blk: SplitBlock): unknown[] => {
+    const f = dictDec(blk.f, nFirst);
+    const r = dictDec(blk.r, nU - nFirst);
+    const out = new Array<unknown>(nU);
+    let fi = 0;
+    let ri = 0;
+    for (let i = 0; i < nU; i++) out[i] = i === 0 || bid[i] !== bid[i - 1] ? f[fi++] : r[ri++];
+    return out;
+  };
+  const sameDec = (blk: SameBlock): unknown[] => {
+    const f = dictDec(blk.f, nFirst);
+    const r = tvDec(blk.r.c, nU - nFirst);
+    const out = new Array<unknown>(nU);
+    let fi = 0;
+    let ri = 0;
+    for (let i = 0; i < nU; i++) {
+      if (i === 0 || bid[i] !== bid[i - 1]) { out[i] = f[fi++]; continue; }
+      const c = r[ri++] as number;
+      if (c === 0) { out[i] = out[i - 1]; continue; }
+      if (c - 1 >= blk.r.d.length) throw new Error(`[wire-codec] 第 ${i} 間的字典碼 ${c - 1} 超出字典（${blk.r.d.length} 個）`);
+      out[i] = blk.r.d[c - 1];
+    }
+    return out;
+  };
+  for (const k of SPLIT_U) U[k] = sameDec(o.split[`u.${k}`] as SameBlock);
+
   // rent
-  const rd = dictDec(o.rent, nU) as number[];
+  const rd = splitDec(o.rent) as number[];
   const RS = new Array<number>(nU);
   const rent = new Array<number | null>(nU);
   for (let i = 0; i < nU; i++) {
-    const d = unzig(rd[i] as number);
+    const d = rd[i] as number;
     RS[i] = i > 0 && bid[i] === bid[i - 1] ? (RS[i - 1] as number) + d : d;
     rent[i] = RS[i] === RENT_NULL ? null : (RS[i] as number);
   }
@@ -369,13 +506,16 @@ export function decodeIndex(o: EncodedIndex): ColumnIndex {
 
   // area
   {
-    const d = tvDec(o.area.d, nU);
+    const f = tvDec(o.area.f, nFirst);
+    const r = tvDec(o.area.r, nU - nFirst);
     const ex = new Map<number, number>();
     for (let j = 0; j < o.area.i.length; j++) ex.set(o.area.i[j] as number, o.area.v[j] as number);
     const area = new Array<number | null>(nU);
     let prev = 0;
+    let fi = 0;
+    let ri = 0;
     for (let i = 0; i < nU; i++) {
-      prev = i !== 0 ? prev + unzig(d[i] as number) : unzig(d[i] as number);
+      prev = i === 0 || bid[i] !== bid[i - 1] ? unzig(f[fi++] as number) : prev + unzig(r[ri++] as number);
       area[i] = prev === AREA_NULL ? null : prev === AREA_EXCEPTION ? (ex.get(i) as number) : prev / 100;
     }
     U['area'] = area;

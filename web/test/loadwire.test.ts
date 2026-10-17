@@ -1,5 +1,6 @@
 import { test, describe, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { gzipSync } from 'node:zlib';
 
 import { loadWire, loadNames, type LoadProgress, type Wire } from '../src/data.ts';
 import { encodeNames } from '../../packages/wire-codec/src/names.ts';
@@ -7,10 +8,13 @@ import { encodeIndex, decodeIndex, type ColumnIndex } from '../../packages/wire-
 
 /**
  * 索引擴到 23 区後會是數 MB，載入進度是使用者唯一能分辨「還在下載」與「壞了」的訊號。
- * 這裡用假的 fetch 驗進度事件序列——尤其是 gzip 傳輸時**不可**拿 content-length 當分母
- * （那是壓縮後的位元組數，除下去會超過 100%）。
+ * 這裡用假的 fetch 驗進度事件序列——尤其是伺服器加了 content-encoding 時**不可**拿
+ * content-length 當分母（那是壓縮後的位元組數，除下去會超過 100%）。
  *
- * 載體用**真的 C3 編碼檔**而不是隨手寫的物件：hydrate 現在會拒絕認不得的版本，
+ * 自 C4 起索引是建置時預壓的 `index.json.gz`（Pages 送 application/gzip、不加 content-encoding），
+ * 主路徑是「讀壓縮位元組報進度 → 看魔數 → 自己解壓」。
+ *
+ * 載體用**真的 C4 編碼檔**而不是隨手寫的物件：hydrate 現在會拒絕認不得的版本，
  * 用假載體測等於測一條實際上不存在的路徑。
  */
 
@@ -40,9 +44,9 @@ const ENCODED = encodeIndex(makeIndex());
 /** loadWire 回傳的是解碼後的索引，所以期望值也要走同一條解碼路徑 */
 const BODY = decodeIndex(JSON.parse(JSON.stringify(ENCODED)) as typeof ENCODED) as unknown as Record<string, unknown>;
 
-function streamResponse(opts: { headers: Record<string, string>; chunks: string[]; ok?: boolean; status?: number }): Response {
+function streamResponse(opts: { headers: Record<string, string>; chunks: Array<string | Uint8Array>; ok?: boolean; status?: number }): Response {
   const enc = new TextEncoder();
-  const parts = opts.chunks.map((c) => enc.encode(c));
+  const parts = opts.chunks.map((c) => (typeof c === 'string' ? enc.encode(c) : c));
   let i = 0;
   const body = new ReadableStream<Uint8Array>({
     pull(ctrl) {
@@ -55,7 +59,7 @@ function streamResponse(opts: { headers: Record<string, string>; chunks: string[
     status: opts.status ?? 200,
     headers: { get: (k: string) => opts.headers[k.toLowerCase()] ?? null },
     body,
-    json: async () => JSON.parse(opts.chunks.join('')) as unknown,
+    json: async () => { throw new Error('loadWire 不應該呼叫 res.json()——它要自己讀位元組才報得出進度'); },
   } as unknown as Response;
 }
 
@@ -70,10 +74,41 @@ function split(text: string, n: number): string[] {
   return out;
 }
 
+/** 位元組版：預壓檔的封包邊界落在壓縮資料的任何位置 */
+function splitBytes(b: Uint8Array, n: number): Uint8Array[] {
+  const size = Math.ceil(b.length / n);
+  const out: Uint8Array[] = [];
+  for (let k = 0; k < b.length; k += size) out.push(b.slice(k, k + size));
+  return out;
+}
+
 describe('loadWire 的下載進度', () => {
   const json = JSON.stringify(ENCODED);
+  const gz = new Uint8Array(gzipSync(Buffer.from(json, 'utf8'), { level: 9 }));
 
-  test('未壓縮傳輸：content-length 可當分母，最後一次進度 loaded === total', async () => {
+  test('預壓的 index.json.gz（主路徑）：content-length 就是壓縮後位元組數，進度能走到 100%，解出來與原檔相同', async () => {
+    const chunks = splitBytes(gz, 4);
+    let asked = '';
+    globalThis.fetch = (async (u: string) => {
+      asked = u;
+      return streamResponse({ headers: { 'content-type': 'application/gzip', 'content-length': String(gz.byteLength) }, chunks });
+    }) as unknown as typeof fetch;
+
+    const seen: LoadProgress[] = [];
+    const w = await loadWire((p) => seen.push({ ...p }));
+
+    assert.ok(asked.endsWith('data/index.json.gz'), `應請求預壓檔，實際 ${asked}`);
+    assert.deepEqual(w, BODY, '解壓＋解碼結果必須與原 JSON 完全相同');
+    const dl = seen.filter((p) => p.phase === 'download');
+    assert.equal(dl.length, chunks.length, '每個 chunk 一次進度');
+    assert.ok(dl.every((p) => p.total === gz.byteLength));
+    assert.equal(dl[dl.length - 1]?.loaded, gz.byteLength, '下載完成時 loaded 應等於 total');
+    // loaded 必須單調遞增，否則進度條會倒退
+    for (let k = 1; k < dl.length; k++) assert.ok((dl[k] as LoadProgress).loaded > (dl[k - 1] as LoadProgress).loaded);
+    assert.equal(seen[seen.length - 1]?.phase, 'parse', '最後一個事件是 parse');
+  });
+
+  test('未壓縮傳輸（例如開發伺服器直接給 JSON）：看魔數就知道不必解壓', async () => {
     const chunks = split(json, 4);
     globalThis.fetch = (async () => streamResponse({
       // content-length 是**位元組**數。索引裡有日文，字元數會小於位元組數，
@@ -83,21 +118,25 @@ describe('loadWire 的下載進度', () => {
 
     const seen: LoadProgress[] = [];
     const w = await loadWire((p) => seen.push({ ...p }));
-
-    assert.deepEqual(w, BODY, '解析結果必須與原 JSON 完全相同');
-    const dl = seen.filter((p) => p.phase === 'download');
-    assert.equal(dl.length, chunks.length, '每個 chunk 一次進度');
+    assert.deepEqual(w, BODY);
     const bytes = new TextEncoder().encode(json).byteLength;
-    assert.ok(dl.every((p) => p.total === bytes));
-    assert.equal(dl[dl.length - 1]?.loaded, bytes, '下載完成時 loaded 應等於 total');
-    // loaded 必須單調遞增，否則進度條會倒退
-    for (let k = 1; k < dl.length; k++) assert.ok((dl[k] as LoadProgress).loaded > (dl[k - 1] as LoadProgress).loaded);
-    assert.equal(seen[seen.length - 1]?.phase, 'parse', '最後一個事件是 parse');
+    assert.equal(seen.filter((p) => p.phase === 'download').pop()?.loaded, bytes);
   });
 
-  test('gzip 傳輸：total 必須是 null——header 是壓縮後大小，拿來當分母會超過 100%', async () => {
-    // 真實情境：GitHub Pages 回 content-encoding: gzip，content-length 是壓縮後的位元組數。
-    // 若誤用它當分母，解壓後的 loaded 會遠大於它。
+  test('瀏覽器不支援 DecompressionStream → 明講原因，不丟一個看不懂的 JSON 語法錯誤', async () => {
+    const saved = globalThis.DecompressionStream;
+    (globalThis as { DecompressionStream?: unknown }).DecompressionStream = undefined;
+    try {
+      globalThis.fetch = (async () => streamResponse({ headers: {}, chunks: [gz] })) as typeof fetch;
+      await assert.rejects(() => loadWire(), /不支援 DecompressionStream，無法讀取索引/);
+    } finally {
+      globalThis.DecompressionStream = saved;
+    }
+  });
+
+  test('伺服器自己解壓（content-encoding: gzip）：total 必須是 null——header 是壓縮後大小，拿來當分母會超過 100%', async () => {
+    // 情境：若伺服器對 .json.gz 加了 content-encoding，瀏覽器會先解掉，reader 讀到的是 JSON 本體，
+    // content-length 卻還是壓縮後的位元組數。若誤用它當分母，解壓後的 loaded 會遠大於它。
     globalThis.fetch = (async () => streamResponse({
       headers: { 'content-encoding': 'gzip', 'content-length': String(Math.floor(json.length / 5)) },
       chunks: split(json, 3),
@@ -120,8 +159,8 @@ describe('loadWire 的下載進度', () => {
     assert.ok((seen[0] as LoadProgress).loaded > 0);
   });
 
-  test('不傳 onProgress 時走原本的 res.json()，結果相同', async () => {
-    globalThis.fetch = (async () => streamResponse({ headers: {}, chunks: [json] })) as typeof fetch;
+  test('不傳 onProgress 時結果相同', async () => {
+    globalThis.fetch = (async () => streamResponse({ headers: {}, chunks: [gz] })) as typeof fetch;
     assert.deepEqual(await loadWire(), BODY);
   });
 
@@ -131,7 +170,7 @@ describe('loadWire 的下載進度', () => {
   });
 
   test('多位元組字元跨 chunk 邊界不可被截斷（日文建物名會踩到）', async () => {
-    const ja = json; // 真的 C3 檔，字典裡就有日文站名與区名
+    const ja = json; // 真的 C4 檔，字典裡就有日文站名與区名
     const enc = new TextEncoder().encode(ja);
     // 刻意在多位元組字元中間切開
     const mid = Math.floor(enc.length / 2);

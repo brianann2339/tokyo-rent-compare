@@ -15,7 +15,7 @@ import { gunzipSync } from 'node:zlib';
 import path from 'node:path';
 
 import {
-  adapter, manifest, text, saRow, saOverview, parseSaStations, parseSaRooms, parseSaFloors,
+  adapter, manifest, text, saRow, saOverview, parseSaStations, parseSaRooms, parseSaFloors, parseSaFeeMentions, saAvailability,
 } from '../sources/socialapartment/index.ts';
 import type { Listing } from '../../packages/schema/src/model.ts';
 import { monthlyCost } from '../../packages/cost-model/src/index.ts';
@@ -218,7 +218,10 @@ describe('端到端：extract 產出可比價的 Listing', () => {
     assert.equal(monthlyCost(u).lower.jpy, 72_000);
     assert.equal(u.areaM2.known && u.areaM2.v, 12.18);
     assert.equal(u.layout.known && u.layout.v, '1BR');
-    assert.equal(u.availableFrom.known && u.availableFrom.v, '8月中旬入居可能');
+    // 「8月中旬」不是日期：值未知、原文留著；還沒到入居日＝現在不是空房（與ひつじ scheduled、TSH／Oak 空室予定同語意）
+    assert.equal(u.availableFrom.known, false);
+    assert.match(u.availableFrom.srcText, /^8月中旬入居可能（只到旬，沒有日期）$/);
+    assert.equal(u.isVacant.known && u.isVacant.v, false);
   });
 
   test('非東京物件（千葉）→ null', () => {
@@ -229,10 +232,10 @@ describe('端到端：extract 產出可比價的 Listing', () => {
 describe('嚴禁虛構：初期費用一個都不能生出來', () => {
   const u = extract(kasaiHtml, KASAI_URL)?.units[0];
 
-  test('敷金／礼金／仲介手数料／保証料全部是 not_offered_by_source，不是 0', () => {
+  test('敷金／仲介手数料／保証料是 not_offered_by_source，不是 0', () => {
     assert.ok(u);
     for (const [id, f] of [
-      ['keyMoney', u.initial.keyMoney], ['deposit', u.initial.deposit],
+      ['deposit', u.initial.deposit],
       ['agencyFee', u.initial.agencyFee], ['guarantorInitialFee', u.initial.guarantorInitialFee],
       ['fireInsurance', u.initial.fireInsurance], ['contractFee', u.initial.contractFee],
     ] as const) {
@@ -246,6 +249,16 @@ describe('嚴禁虛構：初期費用一個都不能生出來', () => {
     assert.ok(u);
     assert.equal(u.initial.keyMoney.known, false);
     assert.ok(u.notes.some((n) => n.includes('礼金無料')), '活動條件應原文留在 notes 供使用者判讀');
+  });
+
+  test('活動欄明寫「お支払いいただく礼金（賃料1か月分）」→ 記「明講有、沒給金額」，不是「來源不提供」', () => {
+    // 2026-10-17 驗證幫手抓到：舊版一律 notOffered，使用者會以為可能不用付。
+    // 金額仍不換算——三種方案賃料不同，卡片賃料沒標方案，乘哪一個是猜。
+    assert.ok(u);
+    const f = u.initial.keyMoney;
+    assert.ok(!f.known && f.basis === 'excluded_stated', JSON.stringify(f));
+    assert.match(f.srcText, /お支払いいただく礼金（賃料1か月分）/);
+    assert.match(f.srcText, /内覧当日お申込みの方のみ/, '活動條件要跟著原文一起留下');
   });
 
   test('「賃料1か月」是月數不是金額 → 違約金不換算成日圓', () => {
@@ -312,5 +325,76 @@ describe('capabilities 宣告與實際產出一致', () => {
       assert.equal(f.known, false);
       if (!f.known) assert.equal(f.why, 'not_offered_by_source');
     }
+  });
+});
+
+describe('2026-10-17 快照：物件頁明講的費用與逐房註記', () => {
+  const NOW2 = new Date('2026-10-17T02:00:00Z');
+  const ex = (file: string, url: string): Listing | null => adapter.extract(
+    { url, body: fixture(file), fetchedAt: '2026-10-17T02:00:00Z', sha256: 'x', status: 200, notModified: false },
+    { url },
+    { manifest, now: NOW2 },
+  );
+  const taito = ex('detail-tokyo-view31-2026-10-17.html.gz', 'https://www.social-apartment.com/builds/tokyo/taito-ku/view/31');
+
+  test('備考「仲介手数料：賃料1ヶ月分(+税)」→ 明講有、沒給金額；不替它乘賃料、不替它加稅', () => {
+    const u = taito?.units.find((x) => x.unitKey === '407');
+    assert.ok(u);
+    const f = u.initial.agencyFee;
+    assert.ok(!f.known && f.basis === 'excluded_stated', JSON.stringify(f));
+    assert.equal(f.srcText, '備考 仲介手数料：賃料1ヶ月分(+税)');
+  });
+
+  test('房間卡片的「※ 家具付き居室」是這間房自己的標示 → furnished = true', () => {
+    const u = taito?.units.find((x) => x.unitKey === '407');
+    assert.ok(u?.furnished.known && u.furnished.v === true);
+    assert.equal(u.furnished.srcText, '※ 家具付き居室');
+    assert.equal(u.genderRestriction, 'unknown', '卡片沒寫性別就是 unknown');
+  });
+
+  test('「電気代は給湯設備使用料3,960円＋実費」：總額未知，不可只取 3,960（這棟目前満室，直接測解析函式）', () => {
+    const t = text(fixture('detail-tokyo-view49-2026-10-17.html.gz'));
+    const seg = saOverview(t);
+    assert.ok(seg);
+    const r = parseSaFeeMentions(t, seg);
+    assert.ok(!r.utilities.known && r.utilities.basis === 'excluded_stated', JSON.stringify(r.utilities));
+    assert.match(r.utilities.srcText, /給湯設備使用料3,960円\(税込・固定金額\)＋実費/);
+    assert.match(r.remarks, /ワールドネイバーズカフェ清澄白河/, '備考原文整段留下');
+  });
+
+  test('只有「礼金無料！」banner、沒有描述礼金本身的句子 → 維持 notOffered（從「無料」反推「平常要付」是推論）', () => {
+    const t = '｜現在実施中のキャンペーン｜礼金無料！10月までの先行予約で｜空室情報｜';
+    const r = parseSaFeeMentions(t, '物件概要｜');
+    assert.equal(r.keyMoney.basis, 'unstated');
+    assert.equal(r.keyMoney.known ? null : r.keyMoney.why, 'not_offered_by_source');
+  });
+
+  test('「この物件を見ている人に人気の物件」是別棟——那裡的字樣不可以漏進這一棟', () => {
+    const t = text(fixture('detail-tokyo-view31-2026-10-17.html.gz'));
+    const i = t.indexOf('この物件を見ている人に人気の物件');
+    assert.ok(i > 0, 'fixture 應含別棟推薦區，否則這個測試沒在測東西');
+    const r = parseSaFeeMentions(t.slice(0, i) + '｜礼金（賃料2か月分）｜', saOverview(t) ?? '');
+    assert.ok(!r.keyMoney.known && !/2か月/.test(r.keyMoney.srcText), '推薦區之後的礼金不可以被讀進來');
+  });
+});
+
+describe('空室情報欄的入居時期（2026-10-17：值域統一成 ISO 日期或「随時」）', () => {
+  test('即入居可能 → 随時、現在是空房', () => {
+    const a = saAvailability('即入居可能', '空室情報欄列出 101 号室');
+    assert.equal(a.availableFrom.known && a.availableFrom.v, '随時');
+    assert.equal(a.isVacant.known && a.isVacant.v, true);
+  });
+  test('10月下旬入居可能 → 值未知（不換成月初）、還沒空出', () => {
+    const a = saAvailability('10月下旬入居可能', '空室情報欄列出 207 号室');
+    assert.equal(a.availableFrom.known, false);
+    assert.equal(a.availableFrom.srcText, '10月下旬入居可能（只到旬，沒有日期）');
+    assert.equal(a.isVacant.known && a.isVacant.v, false);
+  });
+  test('沒寫 → 照舊：列在空室情報欄就是空房；看不懂的字樣 → 解析失敗告警、空不空未知', () => {
+    const none = saAvailability('', 'x').isVacant;
+    assert.equal(none.known && none.v, true);
+    const odd = saAvailability('要相談', 'x');
+    assert.equal(odd.availableFrom.known === false && odd.availableFrom.why, 'unparsed');
+    assert.equal(odd.isVacant.known, false);
   });
 });

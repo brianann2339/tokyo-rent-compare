@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import path from 'node:path';
 
-import { adapter, manifest, vhCell, parseVhStations, parseVhRooms } from '../sources/villagehouse/index.ts';
+import { adapter, manifest, vhCell, parseVhStations, parseVhRooms, vhAgencyFreeSentence, vhPropertySentence } from '../sources/villagehouse/index.ts';
 import type { Listing } from '../../packages/schema/src/model.ts';
 import { monthlyCost, initialCash } from '../../packages/cost-model/src/index.ts';
 
@@ -336,5 +336,52 @@ describe('capabilities 與法務宣告', () => {
     const u = extract(gouchiHtml, GOUCHI_URL)?.units[0];
     assert.ok(u);
     assert.equal(u.furnished.known && u.furnished.v, false);
+  });
+});
+
+describe('仲介手数料：只認物件自己的「〇〇について」段落（2026-10-17 改版後才有）', () => {
+  const html = fixture('detail-tokyo-shiomi-tower-3246-2026-10-17.html.gz');
+  const url = 'https://www.villagehouse.jp/chintai/kanto/tokyo/tokyo-wards-131083/shiomi-tower-3246/';
+
+  test('段落明寫「仲介手数料なし」→ 0，原文與取引態様一起留在 srcText', () => {
+    const l = extract(html, url);
+    assert.ok(l && l.units.length > 0);
+    for (const u of l.units) {
+      const f = u.initial.agencyFee;
+      assert.ok(f.known && f.v.jpy === 0 && f.basis === 'measured', JSON.stringify(f));
+      assert.match(f.srcText, /仲介手数料なし/);
+      assert.match(f.srcText, /取引態様: 貸主/);
+    }
+  });
+
+  test('舊版頁面沒有這個段落 → 維持「頁面沒寫」，不從取引態様推 0', () => {
+    const old = fixture('detail-tokyo-gouchi-3057.html.gz');
+    assert.equal(vhAgencyFreeSentence(old, 'ビレッジハウス郷地'), null);
+  });
+
+  test('meta description／站務 FAQ 的同樣字樣不算——只有這一段被拿掉時要回 null', () => {
+    assert.ok(html.includes("content='敷金なし✔️更新料なし✔️礼金なし✔️仲介手数料無料"), 'fixture 應含全站文案，否則沒在測東西');
+    const stripped = html.replace(/ビレッジハウス潮見タワーについて/g, 'ほかの物件について');
+    assert.equal(vhAgencyFreeSentence(stripped, 'ビレッジハウス潮見タワー'), null);
+  });
+});
+
+describe('鍵交換費：物件「〇〇エリアでの暮らし」段落的「カギ交換代無料！（貸主負担）」（2026-10-17 第二十一輪）', () => {
+  const html = fixture('detail-tokyo-shiomi-tower-3246-2026-10-17.html.gz');
+  const url = 'https://www.villagehouse.jp/chintai/kanto/tokyo/tokyo-wards-131083/shiomi-tower-3246/';
+
+  test('→ 0，原句留在 srcText', () => {
+    const l = extract(html, url);
+    assert.ok(l && l.units.length > 0);
+    for (const u of l.units) {
+      const f = u.initial.keyExchangeFee;
+      assert.ok(f.known && f.v.jpy === 0, JSON.stringify(f));
+      assert.match(f.srcText, /カギ交換代無料！（貸主負担）/);
+    }
+  });
+
+  test('段落不在就回 null（不從站務文案推）', () => {
+    const stripped = html.replace(/江東区エリアでの暮らし/g, 'ほかの話題');
+    assert.equal(vhPropertySentence(stripped, 'ビレッジハウス潮見タワー', /カギ交換代無料/), null);
   });
 });

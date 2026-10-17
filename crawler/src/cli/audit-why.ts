@@ -60,6 +60,28 @@ const REVIEWED: Record<string, string> = {
   'oakhouse|initial.agencyFee': '站方只印「仲介手数料なし」，沒有任何「あり」寫法（實測 992 頁 0 筆），所以沒印＝沒說',
   'sakurahouse|floor': '`B1F` 已於 2026-09-06 改成 −1，但這個來源只能用真人在場的瀏覽器抓、沒有 data/raw/，'
     + '真相層要等下次人工重抓才會更新',
+  // 2026-10-17 第三十一輪逐筆看過全部原文（不只例句）
+  'tokyosharehouse|initial.guarantorInitialFee': '數字屬於同串別的費用（初期費用清單、再契約手数料）、月付保證費（月額保証料 1,830円、月額支払合計1.2％）、'
+    + '年費（￥10000／年）、或沒寫時點的百分比（総賃料50％～）；初回保證費確實沒寫（有寫初回／小標清單／續約年費另列的已改為明寫要付）',
+  'hituji|initial.guarantorInitialFee': '數字是年齡（18歳から40歳）或押金月數（敷金1か月）；只寫要加入保證公司，沒寫初回費用',
+  'tokyosharehouse|initial.fireInsurance': '「住宅保険料：不要」與「光熱水等費 16,000円※…家財保険が含まれています」並存（3394），數字是那筆水電費；不替原站挑。'
+    + '活動區塊（house-detail-campaign-introduction）裡的「保険10000円」照設計不從活動條款採用、只標頁面有提到（3235、3119，第三十二～三十三輪逐筆看過）',
+  'tokyosharehouse|initial.contractFee': '數字是免收句本身的「0円」，附近有活動字眼所以沒採用（srcText 已註明）；'
+    + '或在活動區塊裡（「契約事務手数料0円キャンペーン実施中」「契約費28,000円→18,000円」）——活動條款不採用，只標頁面有提到',
+  'tokyosharehouse|initial.keyMoney': '同上：「敷金・礼金０」「38,750円~【お部屋限定、学生のみ対象】」是附條件的免收，沒採用',
+  // 2026-10-17 第三十三輪：活動區塊的提及（逐筆看過全部原文；4291、2282 也在第三十三輪抽樣裡，驗證未判錯）
+  'tokyosharehouse|initial.cleaningFeeUpfront': '數字在活動區塊裡（4291「☆退去時清掃費用として一律33,000円を初期費用でいただきます」、4195）——'
+    + '活動區整塊照設計不讀費用，只標頁面有提到並引原句；營運者把非活動條款放進活動區時是否改讀，待使用者裁決',
+  'tokyosharehouse|initial.otherInitial': '數字在活動區塊裡（2282「期間中のみ、通常初期費用25,000円⇒無料」）——活動條款不採用；'
+    + 'note 另寫「初期費用（礼金15,000円、初回保証料10,000円）」已拆項目，各由礼金與保証料欄讀，不另立其他初期費用',
+  'tokyosharehouse|monthly.utilities': '數字在活動區塊裡（3119「＜毎月＞ 水道光熱費15,000円」）——活動條款不採用，只標頁面有提到',
+  'tokyosharehouse|monthly.rent': '原站寫「賃料 ￥0」：房租不會是 0，視為站方未填（同「0 ㎡」）',
+  'socialapartment|availableFrom': '原站只寫到上中下旬（「11月上旬入居可能」），沒有日期，不替原站挑一天',
+  'couverture|areaM2': '雙人／三人房的面積是整間的，不是這一床的專有面積（srcText 已寫明）',
+  'couverture|stations.walkMinutes': '一行寫兩個車站共用一個「徒歩16分」，分不出是哪一站的',
+  'oakhouse|availableFrom': '「お申込みから1カ月後の入居」是相對日期，沒有固定入居日',
+  'oakhouse|isVacant': '站方把「空室」與「空室予定」合成同一個 data-status，加上「お申込みから1カ月後」，分不出現在空不空',
+  'borderless|stations.walkMinutes': '「Sumiyoshi station 7mins」沒寫是步行還是其他交通方式',
 };
 
 type Row = { key: string; n: number; withNum: number; sample: string };

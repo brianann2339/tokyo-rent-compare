@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import type { Wire, Names } from '../src/data.ts';
 import { rowsToCsv, csvFileName } from '../src/csv.ts';
-import { floorLabel } from '../src/data.ts';
+import { floorLabel, availLabel } from '../src/data.ts';
 
 /**
  * 最小 Names：建物名與原站 URL 走第二個檔案，以建物序號對齊。
@@ -208,6 +208,19 @@ describe('樓層顯示', () => {
   });
 });
 
+describe('可入住時間顯示', () => {
+  test('随時／ISO 日期／Couverture 不寫年份的 --MM-DD', () => {
+    assert.equal(availLabel('随時'), '隨時可入住');
+    assert.equal(availLabel('2026-11-05'), '2026-11-05 起');
+    assert.equal(availLabel('--11-12'), '11 月 12 日起（原站未寫年份）');
+  });
+  test('未知不顯示——不可以把「沒資料」說成任何時間', () => {
+    assert.equal(availLabel(null), null);
+    assert.equal(availLabel(undefined), null);
+    assert.equal(availLabel(''), null);
+  });
+});
+
 describe('SUUMO 的樣板名稱在 CSV 裡要標出來', () => {
   test('樣板名：原文照留，另一欄標 Y', () => {
     const w = makeWire();
@@ -221,5 +234,19 @@ describe('SUUMO 的樣板名稱在 CSV 裡要標出來', () => {
     const r = rec(parseCsv(rowsToCsv(makeWire(), makeNames('レオパレス翔'), [{ i: 0, tier: 2, key: 0 }], { assumeUtil: null }))[1] as string[]);
     assert.equal(r['物件名'], 'レオパレス翔');
     assert.equal(r['物件名為原站自動生成'], '');
+  });
+});
+
+describe('站名／路線用比對鍵找序號（2026-10-17）', () => {
+  test('使用者打的寫法與字典顯示名不同仍找得到；完全不同的站找不到', async () => {
+    const { stationIndexOf, lineIndexOf } = await import('../src/data.ts');
+    const st = ['阿佐ケ谷', '大塚', '浅草橋'];
+    assert.equal(stationIndexOf(st, '阿佐ヶ谷'), 0);
+    assert.equal(stationIndexOf(st, '大塚(東京)'), 1);
+    assert.equal(stationIndexOf(st, '浅草'), -1, '浅草 ≠ 浅草橋');
+    const ln = ['JR山手線', '東京メトロ丸ノ内線'];
+    assert.equal(lineIndexOf(ln, 'ＪＲ山手線'), 0, '舊分享連結帶全形 ＪＲ');
+    assert.equal(lineIndexOf(ln, '東京地下鉄丸ノ内線'), 1);
+    assert.equal(lineIndexOf(ln, '西武新宿線'), -1);
   });
 });

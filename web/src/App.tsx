@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  loadWire, loadNames, loadProv, query, queryToFilters, filtersToQuery, yen, floorLabel,
+  loadWire, loadNames, loadProv, query, queryToFilters, filtersToQuery, yen, floorLabel, availLabel, stationIndexOf, lineIndexOf,
   type LoadProgress,
   buildingStations, lineBuildingCounts, kindGroup, monthlyWithAssumption, perM2Comparable,
   GENDER, type Wire, type Filters, type Prov, type MyProperty, type Names,
+  STALE_DAYS, daysSince, sourceFreshness,
 } from './data.ts';
 import { summary, percentileRank, sortedAsc } from './stats.ts';
 import { rowsToCsv, csvFileName, downloadCsv } from './csv.ts';
@@ -90,6 +91,8 @@ function flagChips(w: Wire, flags: number): React.ReactNode[] {
   if (has('ageLimitKnown')) out.push(<Chip key="age" tone="warn">有年齡限制</Chip>);
   if (has('guarantorPersonYes')) out.push(<Chip key="gp" tone="warn">需連帶保證人</Chip>);
   if (has('guarantorPersonNo')) out.push(<Chip key="gp" tone="good">免連帶保證人</Chip>);
+  // 原站自己寫的數字不合常理（「60000㎡ ／ 7.2帖」「賃料 1円」「退去時22000％償却」）：照原文顯示，但要讓人一眼看到
+  if (has('invariantViolation')) out.push(<Chip key="inv" tone="warn">原站數值可疑</Chip>);
   return out;
 }
 
@@ -111,6 +114,11 @@ function Detail({ wire, unitIdx, onClose }: { wire: Wire; unitIdx: number; onClo
           {p.caveats.length > 0 && (
             <ul className="caveats">{p.caveats.map((c) => <li key={c}>⚠️ {c}</li>)}</ul>
           )}
+          {p.invariants !== undefined && p.invariants.length > 0 && (
+            <ul className="caveats">
+              {p.invariants.map((c) => <li key={c}>⚠️ 原站寫的數值不合常理（照原文顯示、未修正）：{c}</li>)}
+            </ul>
+          )}
           <table className="breakdown">
             <thead><tr><th>項目</th><th>金額</th><th>原站原文／狀態</th></tr></thead>
             <tbody>
@@ -123,17 +131,22 @@ function Detail({ wire, unitIdx, onClose }: { wire: Wire; unitIdx: number; onClo
                   </td>
                   <td className="src">
                     {f.v === null
-                      ? <span className="muted">{WHY_ZH[(f as { why: string }).why] ?? (f as { why: string }).why}</span>
+                      ? <>
+                          {/* 「明寫另計／要付但沒有可採用的金額」不是「沒寫」：顯示成未載明會讓人以為可能不用付 */}
+                          <span className="muted">{f.basis === 'excluded_stated' ? '原站明寫要另付，金額未取得' : WHY_ZH[f.why] ?? f.why}</span>
+                          {f.src !== '' && <> <code>{f.src}</code></>}
+                        </>
                       : <code>{f.src || '—'}</code>}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {(p.layoutRaw !== undefined || p.minStayMonths !== undefined || p.ageLimitRaw !== undefined) && (
+          {(availLabel(p.availFrom) !== null || p.layoutRaw !== undefined || p.minStayMonths !== undefined || p.ageLimitRaw !== undefined) && (
             <>
               <h3>其他條件（原文）</h3>
               <ul>
+                {availLabel(p.availFrom) !== null && <li>可入住：{availLabel(p.availFrom)}</li>}
                 {p.layoutRaw !== undefined && <li>房型原站標示：<code>{p.layoutRaw}</code>（已正規化顯示）</li>}
                 {p.minStayMonths !== undefined && <li>最短居住期間：{p.minStayMonths} 個月</li>}
                 {p.ageLimitRaw !== undefined && <li>年齡限制：<code>{p.ageLimitRaw}</code></li>}
@@ -329,7 +342,7 @@ export default function App() {
   }, [wire]);
   const stationChoices = useMemo(() => {
     if (wire === null) return [];
-    const li = f.line === '' ? -1 : wire.dict.lines.indexOf(f.line);
+    const li = f.line === '' ? -1 : lineIndexOf(wire.dict.lines, f.line);
     if (li < 0) return [...wire.dict.stations].filter((s) => s !== '').sort((a, b) => a.localeCompare(b, 'ja'));
     return wire.dict.pairs.filter(([l]) => l === li).map(([, s]) => wire.dict.stations[s] ?? '').sort((a, b) => a.localeCompare(b, 'ja'));
   }, [wire, f.line]);
@@ -392,8 +405,18 @@ export default function App() {
   const { rows, counts, excluded } = result;
   const { b, u, dict, meta } = wire;
   const set = (patch: Partial<Filters>): void => setF({ ...f, ...patch });
-  const thisYear = new Date().getFullYear();
-  const stIdxSel = f.st === '' ? -1 : dict.stations.indexOf(f.st);
+  const today = new Date();
+  const thisYear = today.getFullYear();
+  // 「資料更新於〔建置日〕」會讓人以為每個來源都是那天抓的；實際上 Sakura House 只能人在場重抓，
+  // 常比其他來源舊。所以講各來源確認日的範圍，細目在頁尾。
+  const freshDates = sourceFreshness(wire).map((x) => x.latest).sort();
+  const freshRange = freshDates.length === 0 ? '資料確認日不明'
+    : freshDates[0] === freshDates[freshDates.length - 1] ? `資料確認於 ${freshDates[0]}`
+      : `各來源資料確認於 ${freshDates[0]}〜${freshDates[freshDates.length - 1]}（見頁尾）`;
+  const stIdxSel = f.st === '' ? -1 : stationIndexOf(dict.stations, f.st);
+  // 舊分享連結可能帶「ＪＲ山手線」：篩選用比對鍵已經找得到，選單也要顯示字典裡的那個名字，不然看起來是「不限」
+  const lineIdxSel = f.line === '' ? -1 : lineIndexOf(dict.lines, f.line);
+  const lineShown = lineIdxSel >= 0 ? (dict.lines[lineIdxSel] ?? f.line) : f.line;
 
   // 篩選器在左側欄，捲下去就看不見，但結果數可能已經被砍掉九成——
   // 沒有生效條件的指示，使用者只會覺得「明明有 7,900 間卻只剩幾十筆」。
@@ -438,7 +461,7 @@ export default function App() {
       <header>
         <h1>東京租屋比價</h1>
         <p className="sub">
-          把分散在各家網站的房源放到同一把尺上比較。資料更新於 {meta.generatedAt.slice(0, 10)}，
+          把分散在各家網站的房源放到同一把尺上比較。{freshRange}，
           共 {meta.buildings.toLocaleString()} 棟 / {meta.units.toLocaleString()} 間房
           （已合併 SUUMO 多家仲介重複刊登 {meta.dedup.suumoWithin.removed.toLocaleString()} 筆、跨站重複 {meta.dedup.crossSource.removedUnits} 筆）。
         </p>
@@ -498,10 +521,10 @@ export default function App() {
           </fieldset>
 
           <label>路線
-            <select value={f.line} onChange={(e) => set({ line: e.target.value, st: '' })}>
+            <select value={lineShown} onChange={(e) => set({ line: e.target.value, st: '' })}>
               <option value="">不限</option>
               {lineOrder.slice(0, TOP_LINES).map((l) => <option key={l.name} value={l.name}>{l.name}（{l.n}）</option>)}
-              {(moreLines || (f.line !== '' && lineOrder.slice(0, TOP_LINES).every((l) => l.name !== f.line))) && (
+              {(moreLines || (lineShown !== '' && lineOrder.slice(0, TOP_LINES).every((l) => l.name !== lineShown))) && (
                 <optgroup label="其他路線">
                   {lineOrder.slice(TOP_LINES).map((l) => <option key={l.name} value={l.name}>{l.name}（{l.n}）</option>)}
                 </optgroup>
@@ -709,6 +732,7 @@ export default function App() {
               // 照原文印會讓使用者以為那是樓的名字，而且十幾棟會長得一模一樣。
               const generatedName = name !== null && isGeneratedBuildingName(name);
               const url = names === null ? null : names.url[bi];
+              const ageDays = daysSince(b.fetchedAt[bi], today);
               return (
                 <li key={i} className={`card t${tier}`}>
                   <div className="head">
@@ -776,6 +800,7 @@ export default function App() {
                     {ads > 1 && <Chip>{ads} 家仲介刊登</Chip>}
                     {alsoNames.length > 0 && <Chip tone="good">也可在 {alsoNames.join('、')} 申請</Chip>}
                     {mTier === 1 && <Chip tone="warn">費用資訊不全</Chip>}
+                    {ageDays !== null && ageDays > STALE_DAYS && <Chip tone="warn">已 {ageDays} 天未重新確認，可能已出租</Chip>}
                   </div>
 
                   <div className="actions">
@@ -789,7 +814,7 @@ export default function App() {
                           前往原站 ↗
                         </a>
                       )}
-                    <span className="fresh">確認於 {b.fetchedAt[bi]}</span>
+                    <span className="fresh">確認於 {b.fetchedAt[bi]}{ageDays !== null && ageDays > 0 && `（${ageDays} 天前）`}</span>
                   </div>
                 </li>
               );
@@ -812,7 +837,10 @@ export default function App() {
           點「前往原站」即可查看完整資訊並直接聯繫。金額以原站為準。
         </p>
         <p className="muted">
-          資料來源：{dict.sources.map((sid) => dict.sourceMeta[sid]?.nameZh ?? sid).join('、')} · 產生於 {meta.generatedAt.slice(0, 16).replace('T', ' ')}
+          資料來源與最近確認日：{sourceFreshness(wire).map(({ src, latest }) => {
+            const d = daysSince(latest, today);
+            return `${dict.sourceMeta[src]?.nameZh ?? src} ${latest}${d !== null && d > STALE_DAYS ? `（${d} 天前）` : ''}`;
+          }).join('、')} · 產生於 {meta.generatedAt.slice(0, 16).replace('T', ' ')}
           {meta.violations > 0 && ` · ${meta.violations} 筆欄位因數值互相矛盾而未採用`}
         </p>
       </footer>

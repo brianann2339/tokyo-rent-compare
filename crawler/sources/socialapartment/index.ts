@@ -12,6 +12,16 @@
  * 保証料一律 notOffered 並宣告在 capabilities.neverProvides，健康檢查才不會對
  * 永遠 0% 的欄位發假警報。
  *
+ * 2026-10-17 更正（fresh-context 驗證幫手對原始頁面抓到）：「完全不刊登」說得太滿。
+ * 32 頁裡有 18 頁的キャンペーン欄寫著「初期費用でお支払いいただく礼金（賃料1か月分）が無料になります」
+ * ＋「※ 内覧当日お申込みの方のみの限定キャンペーンです」，2 頁的備考寫「仲介手数料：賃料1ヶ月分(+税)」。
+ * 這些頁面**明講有這筆費用**，存成 notOffered（來源不提供）是錯的——使用者會以為可能不用付。
+ * 但金額仍然不能算：同一頁並列 2年／1年／短期三種方案、賃料各差 4,000〜8,000 円，
+ * 房間卡片的賃料沒標是哪個方案，「賃料1か月分」乘哪一個是猜。所以存 statedNoAmount
+ * （明講有、沒給金額），原文放 srcText；沒提到的頁維持 notOffered。
+ * 房間卡片的 `room-list-component__room-notes`（「※ 家具付き居室」「※ 女性専用居室」）是逐房標示，
+ * 同日起讀進 furnished／genderRestriction。
+ *
  * 同樣的判斷也適用於外國人條件與最低居住期間：FAQ 有
  * 「外国籍の方の場合は、パスポート、日本のビザもしくは在留カードが必要です。
  *   保証会社の利用は必須です。」與「基本的に皆様に6ヶ月以上のご入居をお願いしております。」，
@@ -25,7 +35,7 @@
 
 import type { SourceAdapter, SourceManifest, TargetRef, RawDoc, ExtractContext, Fetcher } from '../../src/types.ts';
 import {
-  known, notListed, notOffered, yen, type Yen,
+  known, notListed, notOffered, statedNoAmount, unknown, unparsed, yen, type Yen, type Field,
 } from '../../../packages/schema/src/field.ts';
 import type {
   Building, Unit, Listing, Station, ForeignerPolicy,
@@ -48,15 +58,17 @@ export const manifest: SourceManifest = {
     provides: [
       'rent', 'adminFee', 'layout', 'areaM2', 'roomNo', 'isVacant', 'availableFrom',
       'stations', 'structure', 'yearBuilt', 'floorsAboveGround', 'totalUnits',
+      // 只有部分頁面寫、且多半只寫「有這筆」不寫金額（statedNoAmount），見檔頭 2026-10-17 更正
+      'keyMoney', 'agencyFee', 'utilities', 'furnished', 'genderRestriction',
     ],
     // 全站物件頁都沒有這些欄位——不是解析故障，是來源的穩定屬性
     neverProvides: [
-      'keyMoney', 'deposit', 'depositNonRefundable', 'agencyFee',
+      'deposit', 'depositNonRefundable',
       'guarantorInitialFee', 'fireInsurance', 'keyExchangeFee', 'contractFee',
       'cleaningFeeUpfront', 'otherInitial',
       'renewalFee', 'renewalAdminFee', 'cleaningFeeOnExit',
-      'utilities', 'internet', 'otherMonthly',
-      'floor', 'minStayMonths', 'ageLimitRaw', 'petsAllowed', 'genderRestriction',
+      'internet', 'otherMonthly',
+      'floor', 'minStayMonths', 'ageLimitRaw', 'petsAllowed',
       'foreignerWelcomed', 'residenceCardRequired', 'japaneseRequired',
       'guarantorCompanyRequired', 'guarantorPersonRequired',
       'sourceUpdatedAt',
@@ -145,6 +157,8 @@ export type SaRoom = {
   readonly layoutRaw: string;
   readonly areaRaw: string;
   readonly availabilityRaw: string;
+  /** 卡片自己的註記（`※ 家具付き居室`、`※ 女性専用居室、家具付き居室`）。沒有就是空字串。 */
+  readonly notesRaw: string;
 };
 
 /**
@@ -181,9 +195,49 @@ export function parseSaRooms(html: string): SaRoom[] {
       layoutRaw: details.find((d) => !/[㎡m²]/.test(d)) ?? '',
       areaRaw: details.find((d) => /[㎡m²]/.test(d)) ?? '',
       availabilityRaw: inner(block, 'availability-date'),
+      notesRaw: inner(block, 'notes'),
     });
   }
   return out;
+}
+
+/**
+ * 物件頁上「明講有這筆費用」的地方：キャンペーン欄的礼金、物件概要的備考。
+ *
+ * - 礼金：只看「現在実施中のキャンペーン」到「空室情報」之間——頁尾「この物件を見ている人に
+ *   人気の物件」是**別棟**的卡片，那裡的礼金字樣不屬於這一棟。
+ * - 仲介手数料／電気代：只看備考列。備考可能很長（超過 saRow 的 80 字上限），所以單獨取。
+ * - 寫法認得出是「有、但金額依方案而定」→ statedNoAmount（只有「礼金無料！」banner、沒有描述礼金本身的句子 → 維持 notOffered）；提到了但寫法沒見過 → notListed 帶原文，
+ *   讓 audit:why 掃到交給人看；完全沒提到 → notOffered（維持原判）。
+ */
+export function parseSaFeeMentions(t: string, seg: string): {
+  keyMoney: Field<Yen>; agencyFee: Field<Yen>; utilities: Field<Yen>; remarks: string;
+} {
+  const start = t.indexOf('現在実施中のキャンペーン');
+  const end = start < 0 ? -1 : t.indexOf('空室情報', start);
+  const camp = start < 0 || end < 0 ? '' : t.slice(start, end);
+  const pieces = (s: string, re: RegExp): string[] =>
+    [...new Set(s.split('｜').map((x) => x.trim()).filter((x) => re.test(x)))];
+  const reikin = pieces(camp, /礼金/);
+  const conditions = pieces(camp, /限定|当日/).filter((x) => !reikin.includes(x));
+  // 只有「礼金無料！」字樣的 banner 不算明講：要有把礼金當成一筆應付費用描述的句子
+  // （「初期費用でお支払いいただく礼金（賃料1か月分）」）。從「無料」反推「平常要付」是推論，不是原文。
+  const keyMoney = !reikin.some((x) => /お支払いいただく礼金|礼金[（(]賃料/.test(x))
+    ? notOffered<Yen>()
+    : statedNoAmount<Yen>(`キャンペーン欄：${[...reikin, ...conditions].join(' / ')}`);
+
+  const remarks = /備考｜[\s｜]*([^｜]{1,400}?)\s*｜/.exec(seg)?.[1]?.trim() ?? '';
+  const parts = remarks.split(/\s*\/\s*/).filter((x) => x !== '');
+  const agencyRaw = parts.find((x) => /仲介手数料/.test(x));
+  const agencyFee = agencyRaw === undefined
+    ? notOffered<Yen>()
+    : /仲介手数料[：:]\s*賃料[\d.]+\s*[ヶか]月分/.test(agencyRaw)
+      ? statedNoAmount<Yen>(`備考 ${agencyRaw}`)
+      : notListed<Yen>(`備考 ${agencyRaw}`);
+  const utilRaw = parts.find((x) => /電気代|光熱費|水道/.test(x));
+  // 「給湯設備使用料3,960円＋実費」：固定部分有金額、實費部分沒有 → 總額未知，不可只取 3,960
+  const utilities = utilRaw === undefined ? notOffered<Yen>() : statedNoAmount<Yen>(`備考 ${utilRaw}`);
+  return { keyMoney, agencyFee, utilities, remarks };
 }
 
 /** 全站沒有任何外國人條件欄位（FAQ 的通則不是物件屬性，見檔頭說明）。 */
@@ -217,6 +271,23 @@ export function parseSaFloors(structure: string): number | null {
   const built = ok(/(\d+)\s*階建/.exec(noBasement)?.[1]);
   if (built !== null) return built;
   return ok(/(\d+)\s*階/.exec(noBasement)?.[1]);
+}
+
+/**
+ * 空室情報欄的「availability-date」：「即入居可能」或「10月下旬入居可能」（2026-10-17 全站 24 間：即入居可能 14、N月X旬 10）。
+ * 欄位定義是 ISO 日期或「随時」——「10月下旬」不是日期，換成月初會把入住日提早，所以只留原文、值未知。
+ * isVacant 與其他來源同一語意（ひつじ scheduled、TSH／Oak 空室予定）：還沒到可入住日＝現在不是空房。
+ */
+export function saAvailability(raw: string, listed: string): { availableFrom: Field<string>; isVacant: Field<boolean> } {
+  if (raw === '') return { availableFrom: notListed(''), isVacant: known(true, 'measured', listed) };
+  if (/^即入居可(?:能)?$/.test(raw)) return { availableFrom: known('随時', 'measured', raw), isVacant: known(true, 'measured', `${listed}：${raw}`) };
+  if (/^[0-9０-９]{1,2}月(?:上旬|中旬|下旬|初旬|末)?(?:以降)?入居可(?:能)?$/.test(raw)) {
+    return {
+      availableFrom: unknown<string>('not_listed_on_page', 'unstated', `${raw}（只到旬，沒有日期）`),
+      isVacant: known(false, 'measured', `${listed}：${raw}`),
+    };
+  }
+  return { availableFrom: unparsed(raw), isVacant: unknown<boolean>('not_listed_on_page', 'unstated', `${listed}：${raw}`) };
 }
 
 export const adapter: SourceAdapter = {
@@ -308,6 +379,7 @@ export const adapter: SourceAdapter = {
     const twoPersonRaw = saRow(seg, '2人入居');
     const dealTypeRaw = saRow(seg, '取引形態');
     const campaign = /礼金無料/.test(t);
+    const fees = parseSaFeeMentions(t, seg);
 
     const buildingNotes: string[] = [];
     if (rentRangeRaw !== null) {
@@ -318,6 +390,7 @@ export const adapter: SourceAdapter = {
     if (planRaw !== '') buildingNotes.push(`短期解約違約金（原文，依方案而異，非金額）：${planRaw}`);
     if (twoPersonRaw !== null) buildingNotes.push(`2人入居：${twoPersonRaw}`);
     if (dealTypeRaw !== null) buildingNotes.push(`取引形態：${dealTypeRaw}`);
+    if (fees.remarks !== '') buildingNotes.push(`備考：${fees.remarks}`);
     if (campaign) {
       buildingNotes.push('原站標示「礼金無料」為期間限定且需內覧当日申込的活動條件，非本物件常態礼金金額——本站不據此填 0');
     }
@@ -350,16 +423,17 @@ export const adapter: SourceAdapter = {
           adminFee: admin.kind === 'amount'
             ? known(yen(admin.jpy), 'measured', r.adminRaw)
             : notListed(r.adminRaw),
-          utilities: notOffered<Yen>(),
+          utilities: fees.utilities,
           internet: notOffered<Yen>(),
           otherMonthly: notOffered<Yen>(),
         },
-        // 初期費用整組不刊登（見檔頭）。FAQ 的定性描述不可換算成金額。
+        // 初期費用的金額整組不刊登（見檔頭）。FAQ 的定性描述不可換算成金額；
+        // 物件頁明講「有這筆」的礼金／仲介手数料記 statedNoAmount。
         initial: {
-          keyMoney: notOffered<Yen>(),
+          keyMoney: fees.keyMoney,
           deposit: notOffered<Yen>(),
           depositNonRefundable: notOffered<Yen>(),
-          agencyFee: notOffered<Yen>(),
+          agencyFee: fees.agencyFee,
           guarantorInitialFee: notOffered<Yen>(),
           fireInsurance: notOffered<Yen>(),
           keyExchangeFee: notOffered<Yen>(),
@@ -376,17 +450,18 @@ export const adapter: SourceAdapter = {
           earlyTerminationPenalty: notListed(planRaw),
         },
         utilitiesBasis: 'unknown',
-        // 専有部有無家具站上沒寫；頁面上的「家具」字樣全是 lounge 的宣傳文案，不可當欄位。
-        furnished: notListed(''),
-        availableFrom: r.availabilityRaw === ''
-          ? notListed('')
-          : known(r.availabilityRaw, 'measured', r.availabilityRaw),
-        isVacant: known(true, 'measured', `空室情報欄列出 ${r.number} 号室`),
+        // 只認房間卡片自己的註記；頁面其他地方的「家具」字樣是 lounge 或全館的宣傳文案，不可當這間房的欄位。
+        furnished: /家具付き/.test(r.notesRaw)
+          ? known(true, 'measured', r.notesRaw)
+          : notListed(r.notesRaw),
+        ...saAvailability(r.availabilityRaw, `空室情報欄列出 ${r.number} 号室`),
         contractType: 'unknown',
         // 1年／2年／短期三種方案並存，選哪一種是住戶的決定不是物件屬性 → 不挑一個當值
         contractMonths: notListed(plansRaw),
         minStayMonths: notOffered<number>(),
-        genderRestriction: 'unknown',
+        genderRestriction: /女性専用/.test(r.notesRaw) ? 'female_only'
+          : /男性専用/.test(r.notesRaw) ? 'male_only'
+            : 'unknown',
         ageLimitRaw: notOffered<string>(),
         petsAllowed: notOffered<boolean>(),
         foreigner: NOT_OFFERED_FOREIGNER,

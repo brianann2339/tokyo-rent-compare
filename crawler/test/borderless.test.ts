@@ -6,6 +6,7 @@
  *   detail-roppongi            東京、16 床 3 間可租；含 2 人共用房（桌機版 HTML 會欄位錯位）
  *   detail-ikebukuro           東京、全滿（0 間可租）；最寄駅是另一種語序的英文寫法
  *   detail-osaka-tsuruhashi1   大阪——必須被排除
+ *   detail-shinjuku-chuo-full  （2026-10-17）客滿頁連「全房間」分頁都是空的，只剩 no-vacancy 一句
  *   sitemap.xml                57 個 /jp/sharehouse/ slug（含関西・仙台）
  */
 
@@ -18,7 +19,7 @@ import path from 'node:path';
 import {
   adapter, manifest,
   parseSitemapSlugs, parseRegion, parseHouseCode, parseBhStations, parseBhRooms,
-  parseInitialFees, parseAvailableFrom, genderOf,
+  parseInitialFees, parseAvailableFrom, genderOf, parseBhProse,
 } from '../sources/borderless/index.ts';
 import type { Field, Yen } from '../../packages/schema/src/field.ts';
 import type { Listing, Unit } from '../../packages/schema/src/model.ts';
@@ -164,6 +165,26 @@ describe('物件名稱與最寄駅', () => {
 
   test('整段沒有最寄駅區塊 → 空陣列（實測 chitose_funabashi 就是這樣）', () => {
     assert.deepEqual(parseBhStations('<html><body>no access section</body></html>'), []);
+  });
+});
+
+describe('客滿頁：房間表是空的（2026-10-17 起）', () => {
+  const file = 'detail-shinjuku-chuo-full-2026-10-17.html.gz';
+
+  test('原站明寫 no vacancy → 0 間，不丟「版面可能已改」', () => {
+    assert.equal(parseBhRooms(fixture(file)).length, 0);
+    const l = extract('shinjuku_chuo', file);
+    assert.ok(l !== null);
+    assert.equal(l.units.length, 0);
+  });
+
+  test('0 間又沒有 no-vacancy 那句 → 仍然丟例外（那才是解析器壞了）', () => {
+    const html = fixture(file).replace(/<p class="no-vacancy">There is no vacancy at this time\.<\/p>/g, '');
+    const url = 'https://www.borderless-house.com/jp/sharehouse/shinjuku_chuo/';
+    assert.throws(() => adapter.extract(
+      { url, body: html, fetchedAt: '2026-10-17T00:00:00Z', sha256: 'x', status: 200, notModified: false },
+      { url }, { manifest, now: new Date('2026-10-17T00:00:00Z') },
+    ), /房間表解析出 0 間/);
   });
 });
 
@@ -461,5 +482,81 @@ describe('建置閘門的規則在這裡就先擋住', () => {
         assert.ok(monthlyCost(u).lower.jpy >= u.monthly.rent.v.jpy, u.id);
       }
     }
+  });
+});
+
+describe('Applicable Nationalities: Any（2026-10-17 驗證幫手抓到）', () => {
+  const l = extract('asakusa-iriya', 'detail-asakusa-iriya-2026-10-17.html.gz');
+  const bed = (no: string): Unit | undefined => l?.units.find((u) => u.unitKey === no);
+
+  test('Any ＝不限國籍 → 外國人可租；舊版記成「頁面沒寫」而 srcText 卻就是 Any', () => {
+    const f = bed('2F-2')?.foreigner.welcomed;
+    assert.ok(f?.known && f.v === true, JSON.stringify(f));
+    assert.equal(f.srcText, 'Applicable Nationalities: Any');
+  });
+
+  test('同房另外兩床照舊：Japanese → false、Foreign → true（若仍空室）', () => {
+    for (const [no, v] of [['2F-1', false], ['2F-3', true]] as const) {
+      const u = bed(no);
+      if (u === undefined) continue; // 已出租就不在空室清單
+      assert.ok(u.foreigner.welcomed.known && u.foreigner.welcomed.v === v, `${no} ${JSON.stringify(u.foreigner.welcomed)}`);
+    }
+  });
+});
+
+describe('介紹文裡的築年／樓層數（2026-10-17 驗證幫手抓到）', () => {
+  test('本物件介紹文明寫 → 收；原句就是 srcText', () => {
+    const r = parseBhProse(fixture('detail-tabata-2026-10-17.html.gz'));
+    assert.ok(r.yearBuilt.known && r.yearBuilt.v === 2010, JSON.stringify(r.yearBuilt));
+    assert.equal(r.yearBuilt.srcText, 'Tabata house was built in 2010 for share house');
+    assert.equal(r.floorsAboveGround.known, false);
+  });
+
+  test('推薦區（Recommended Houses）裡別棟的「4-story／6-story」不可以算到這一棟', () => {
+    const html = fixture('detail-jimbocho-2026-10-17.html.gz');
+    assert.match(html, /4-story/, 'fixture 應含別棟卡片的字樣，否則沒在測東西');
+    const r = parseBhProse(html);
+    assert.equal(r.floorsAboveGround.known, false, JSON.stringify(r.floorsAboveGround));
+    assert.equal(r.yearBuilt.known, false);
+  });
+
+  test('改裝句不是建築年；房型的 2-story loft 不是整棟樓層', () => {
+    const r = parseBhProse('<p class="house-tx">The house was built in 1975 and renovated in 2019. Enjoy our 2-story loft room!</p>');
+    assert.equal(r.yearBuilt.known, false);
+    assert.equal(r.floorsAboveGround.known, false);
+  });
+});
+
+describe('最寄駅：2026-10-17 全量重驗補的寫法', () => {
+  const st = (li: string) => parseBhStations(`The closest station</p><ul>${li}</ul>`)
+    .map((x) => [x.line, x.station, x.walkMinutes.known ? x.walkMinutes.v : null]);
+
+  test('一個 <li> 用「 / 」寫兩站 → 兩站都收', () => {
+    assert.deepEqual(st('<li>Omori Station, JR Keihin-Tohoku Line 10 mins walk / Oimachi Station, Tokyu Oimachi Line, Rinkai Line  15 mins walk.</li>'), [
+      ['JR Keihin-Tohoku Line', 'Omori', 10],
+      ['Tokyu Oimachi Line, Rinkai Line', 'Oimachi', 15],
+    ]);
+  });
+
+  test('同站不同路線不可以被當成重複（北千住三條線）', () => {
+    assert.equal(st('<li>Kitasenju Station, Tokyo-Metro  Chiyoda/Hibiya Line 3 mins walk</li><li>Kitasenju Station, JR Joban Line 5 mins walk</li><li>Kitasenju Station, Tsukuba Express Line 5 mins walk</li>').length, 3);
+  });
+
+  test('「on foot」視同 walk；Station 後面沒逗號也認得', () => {
+    assert.deepEqual(st('<li>JR Keihin-Tohoku Line - 16 minutes on foot to Higashi-Jujo Station</li>'), [['JR Keihin-Tohoku Line', 'Higashi-Jujo', 16]]);
+    assert.deepEqual(st('<li>Unoki Station Tokyu Tamagawa Line 12mins walk</li>'), [['Tokyu Tamagawa Line', 'Unoki', 12]]);
+  });
+
+  test('沒寫 walk（`Hanzomon Line Sumiyoshi station 7mins`）→ 收站，但分鐘數不當成步行', () => {
+    assert.deepEqual(st('<li>Hanzomon Line Sumiyoshi station 7mins</li>'), [['Hanzomon Line', 'Sumiyoshi', null]]);
+  });
+
+  test('Bus stop 不是車站', () => {
+    assert.deepEqual(st('<li>Bus stop Daitokuji-mae  5 minutes</li>'), []);
+  });
+
+  test('英文數字的樓層：「The one-storied share house …」→ 1', () => {
+    const r = parseBhProse('<p class="house-tx">The one-storied share house has a spacious wood deck.</p>');
+    assert.ok(r.floorsAboveGround.known && r.floorsAboveGround.v === 1);
   });
 });

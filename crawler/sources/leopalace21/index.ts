@@ -13,12 +13,13 @@
  * 所以本 adapter **只採用 ≥2 個月的 Offer**，マンスリー 只在 notes 揭露、不進比價。
  * （2026-08-16 對 17 個頁面 70 筆 Offer 普查：leaseLength 只有 "24 months" 與 "1 month" 兩種值。）
  *
- * ⚠️ 本 adapter 只讀**建物頁** `/properties/common/…`。
- * 房間詳情頁 `/properties/chintai/{pref}/{city}/{slug}/{號室}` 另有
- * 建物構造・総戸数・所在階・更新料・鍵交換費・退去時清掃費・火災保険・敷引・入居可能日，
- * 建物頁完全沒有這些欄位（2026-08-16 對建物頁 grep 構造／総戸数 皆為 0）。
- * 這些欄位在本 adapter 的取材範圍內是結構性缺席，宣告於 capabilities.neverProvides；
- * 要補齊必須加抓房間層（約 2,900 個頁面），屬於後續階段。
+ * 兩層：建物頁 `/properties/common/…`（JSON-LD：賃料・共益費・礼金・敷金・仲介・間取り・面積）
+ * ＋房間詳情頁 `/properties/chintai/{pref}/{city}/{slug}/{號室}`（「お部屋の詳細」「諸費用」兩張表：
+ * 建物構造・総戸数・所在階・家具・家電・現況・入居/引渡・火災保険・更新料・環境維持費・鍵交換費・退去時清掃費・
+ * 保証委託料）。建物頁完全沒有後面這些欄位（2026-08-16 對建物頁 grep 構造／総戸数 皆為 0）。
+ * 2026-10-17 以前只抓建物頁，這些欄位一律記「此來源不公開」——但站方其實逐房公開，初期費用因此被排進
+ * 「完整」區、漏掉鍵交換費 16,500 円與入居時就要付的退去時清掃費 5 萬多円（第二十輪驗證幫手指出）。
+ * 房間頁在 discover 階段抓（每棟先抓建物頁取房間網址），結果放進 hint；房間頁抓不到的房退回只有建物頁的欄位。
  */
 
 import type { SourceAdapter, SourceManifest, TargetRef, RawDoc, ExtractContext, Fetcher } from '../../src/types.ts';
@@ -49,25 +50,30 @@ export const manifest: SourceManifest = {
   homepage: 'https://www.leopalace21.com/',
   origin: 'https://www.leopalace21.com',
   transport: 'http',
+  // 建物頁與房間頁都在 discover 抓（要先讀建物頁才知道房間頁網址），執行器不必再抓一次建物頁
+  fetchMode: 'none',
   crawlDelayMs: 3000,
   capabilities: {
     provides: [
       'rent', 'adminFee', 'keyMoney', 'deposit', 'agencyFee',
       'layout', 'areaM2', 'roomNo', 'isVacant', 'contractMonths',
       'stations', 'yearBuilt', 'floorsAboveGround', 'sourceUpdatedAt',
+      // 以下來自房間詳情頁（2026-10-17 起）
+      'depositNonRefundable', 'keyExchangeFee', 'cleaningFeeUpfront', 'cleaningFeeOnExit', 'renewalFee',
+      'floor', 'furnished', 'availableFrom', 'structure', 'totalUnits', 'buildingType',
     ],
-    // 建物頁結構性缺席的欄位。前段（費用類）多數在房間詳情頁有，
-    // 但本 adapter 不抓那一層——見檔頭說明。宣告出來，健康檢查才不會產生永遠 0% 的假警報。
+    // 兩層頁面都沒有的欄位。宣告出來，健康檢查才不會產生永遠 0% 的假警報。
+    // 火災保険（「2年 13,130円～26,680円」區間）、保証委託料（「利用料の100％～120％」）、環境維持費（「30日あたり550円」）、
+    // インターネット利用料（「月額3,630円（税込）～」，第三十一輪起讀）
+    // 房間頁有寫但沒有單一月額／金額，記「原站明寫要付、金額未取得」，不算 provides。
     neverProvides: [
-      'utilities', 'internet', 'otherMonthly',
-      'depositNonRefundable', 'guarantorInitialFee', 'fireInsurance',
-      'keyExchangeFee', 'contractFee', 'cleaningFeeUpfront', 'otherInitial',
-      'renewalFee', 'renewalAdminFee', 'cleaningFeeOnExit', 'earlyTerminationPenalty',
-      'floor', 'furnished', 'availableFrom', 'minStayMonths', 'contractType',
+      'utilities',
+      'contractFee', 'otherInitial',
+      'renewalAdminFee', 'earlyTerminationPenalty',
+      'minStayMonths', 'contractType',
       'genderRestriction', 'ageLimitRaw', 'petsAllowed',
       'foreignerWelcomed', 'residenceCardRequired', 'japaneseRequired',
       'guarantorCompanyRequired', 'guarantorPersonRequired',
-      'structure', 'totalUnits',
     ],
   },
   legal: {
@@ -401,6 +407,121 @@ const NOT_OFFERED_FOREIGNER: ForeignerPolicy = {
   rawText: '',
 };
 
+/* ────────────────────────── 房間詳情頁 ────────────────────────── */
+
+export type LeoRoomDetail = {
+  readonly url: string;
+  /** 「お部屋の詳細」「諸費用」兩張表的 標籤→值（頁面把諸費用印兩次〔寬窄版面〕，值相同只留一份） */
+  readonly pairs: Readonly<Record<string, string>>;
+  /** 同一個標籤出現兩次而值不同——不替原站挑，對應欄位存 conflicting */
+  readonly conflicts: Readonly<Record<string, string>>;
+  /** 頁首「初期費用」摘要（仲介手数料／敷金/保証金／敷引／礼金） */
+  readonly summary: Readonly<Record<string, string>>;
+  /** 站方「重要事項確認」裡「賃貸契約（普通借家プラン）のご契約時に、退去時清掃費として…」那一句；頁面沒有就是 '' */
+  readonly cleaningAtContract: string;
+};
+
+const ENTITY: Readonly<Record<string, string>> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", nbsp: ' ' };
+function cellText(htmlFrag: string): string {
+  return htmlFrag
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_, k: string) => ENTITY[k] ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const PAIR_RE = /<p class="TitleTextItem_title[^"]*">([^<]*)<\/p>\s*<div class="TitleTextItem_pair[^"]*">([\s\S]*?)<\/div>/g;
+const SUMMARY_RE = /<div class="RequiredRentCost_label[^"]*">\s*<p[^>]*>([^<]*)<\/p>\s*<\/div>\s*<p class="RequiredRentCost_cost[^"]*">([\s\S]*?)<\/p>/g;
+const CLEANING_AT_CONTRACT_RE = /賃貸契約（普通借家プラン）のご契約時に、退去時清掃費として[^"\\。]{0,60}?となります。/;
+
+export function parseLeoRoomPage(url: string, html: string): LeoRoomDetail {
+  const body = html.replace(/<script[\s\S]*?<\/script>/g, ' ');
+  const pairs: Record<string, string> = {};
+  const conflicts: Record<string, string> = {};
+  for (const m of body.matchAll(PAIR_RE)) {
+    const label = cellText(m[1] ?? '');
+    const value = cellText(m[2] ?? '');
+    if (label === '') continue;
+    const prev = pairs[label];
+    if (prev === undefined) pairs[label] = value;
+    else if (prev !== value) conflicts[label] = `${prev}／${value}`;
+  }
+  const summary: Record<string, string> = {};
+  for (const m of body.matchAll(SUMMARY_RE)) {
+    const label = cellText(m[1] ?? '');
+    if (label !== '' && summary[label] === undefined) summary[label] = cellText(m[2] ?? '');
+  }
+  return { url, pairs, conflicts, summary, cleaningAtContract: CLEANING_AT_CONTRACT_RE.exec(html)?.[0] ?? '' };
+}
+
+/** 房間頁上某個標籤的值；同標籤兩處不一致時回 conflict。 */
+function roomCell(d: LeoRoomDetail, label: string): { value: string } | { conflict: string } | null {
+  const c = d.conflicts[label];
+  if (c !== undefined) return { conflict: `${label} ${c}` };
+  const v = d.pairs[label];
+  return v === undefined ? null : { value: v };
+}
+
+/** 一般金額欄：「16,500円（税込）」→ 金額；「不要／なし」→ 0；標籤不在頁上 → 頁面未載明。 */
+function roomFee(d: LeoRoomDetail | undefined, label: string, suffix = ''): Field<Yen> {
+  if (d === undefined) return notOffered<Yen>();
+  const c = roomCell(d, label);
+  if (c === null) return notListed<Yen>('');
+  if ('conflict' in c) return unknown<Yen>('conflicting', 'measured', `${c.conflict}（同頁兩處不一致）`);
+  // 區間（「13,130円～26,680円」）與按日計（「30日あたり550円」）不是單一金額：parseMoney 會取第一個數字，不能讓它碰
+  if (/[～〜~]|あたり|％|%/.test(c.value)) return unknown<Yen>('not_listed_on_page', 'excluded_stated', `${label} ${c.value}（不是單一金額，不取值）`);
+  const f = feeField(label, c.value);
+  return suffix !== '' && f.known ? { ...f, srcText: `${f.srcText}${suffix}` } : f;
+}
+
+/**
+ * 房間頁「諸費用」的インターネット利用料（第三十一輪驗證：28 間房頁面寫了「月額3,630円（税込）～」，我們卻標「此來源不公開」，
+ * 原本當成選配只放 notes——但這一列沒標（任意），旁邊的選配都有標）。全量 2,938 頁只有兩種值：
+ * 「月額3,630円（税込）～」（只有下限，不取值，記「原站明寫要付」）與「インターネット利用不可」（這間房沒有網路，沒有費用可比）。
+ */
+function leoInternet(d: LeoRoomDetail | undefined): Field<Yen> {
+  const c = d === undefined ? null : roomCell(d, 'インターネット利用料');
+  if (c !== null && 'value' in c && /利用不可/.test(c.value)) return notListed<Yen>(`インターネット利用料 ${c.value}（這間房不能用網路，沒有網路費）`);
+  return roomFee(d, 'インターネット利用料');
+}
+
+/** 「2026年10月26日」→ 2026-10-26；「即入居可」→ 随時；其他照原文記「頁面寫了但看不懂」。 */
+export function leoAvailableFrom(raw: string): Field<string> {
+  const m = /^(\d{4})年(\d{1,2})月(\d{1,2})日$/.exec(raw.trim());
+  if (m?.[1] !== undefined && m[2] !== undefined && m[3] !== undefined) {
+    return known(`${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`, 'measured', `入居/引渡 ${raw}`);
+  }
+  // 2026-10-17 房間頁實測：「即入居可能」65 筆（舊式只認「即入居可」，多一個「能」就變解析失敗）、「-」4 筆（＝沒寫）
+  if (/^即(?:入居)?(?:可能?|日)?$/.test(raw.trim())) return known('随時', 'measured', `入居/引渡 ${raw}`);
+  if (/^[-－ー―]$/.test(raw.trim())) return notListed<string>(`入居/引渡 ${raw}`);
+  return raw.trim() === '' ? notListed<string>('') : unparsed<string>(`入居/引渡 ${raw}`);
+}
+
+/**
+ * 建物層欄位（建物構造・総戸数・種別）印在每一間房的詳情頁上：各房一致才採用，不一致存 conflicting。
+ * 一間房頁都沒抓到 → 此來源不公開（維持舊行為）；抓到了但沒有這個標籤 → 頁面未載明。
+ */
+function roomAgree<T>(
+  details: readonly LeoRoomDetail[], label: string, parse: (v: string) => T | null,
+): Field<T> {
+  if (details.length === 0) return notOffered<T>();
+  const vals = new Map<string, { v: T; raw: string }>();
+  let sawLabel = false;
+  for (const d of details) {
+    const c = roomCell(d, label);
+    if (c === null) continue;
+    sawLabel = true;
+    if ('conflict' in c) return unknown<T>('conflicting', 'measured', `${c.conflict}（同頁兩處不一致）`);
+    const v = parse(c.value);
+    if (v === null) return unparsed<T>(`${label} ${c.value}`);
+    vals.set(JSON.stringify(v), { v, raw: c.value });
+  }
+  if (!sawLabel) return notListed<T>('');
+  const list = [...vals.values()];
+  if (list.length === 1 && list[0] !== undefined) return known(list[0].v, 'measured', `${label} ${list[0].raw}（房間詳情頁）`);
+  return unknown<T>('conflicting', 'measured', `${label} 各房不一致：${list.map((x) => x.raw).join('／')}`);
+}
+
 /* ────────────────────────── discover ────────────────────────── */
 
 const JA_IMAGE_SITEMAP_RE = /<loc>(https:\/\/www\.leopalace21\.com\/sitemap_image_map_ja_\d+\.xml)<\/loc>/g;
@@ -417,6 +538,19 @@ export function tokyoPropertyUrls(xml: string): readonly string[] {
 
 /* ────────────────────────── adapter ────────────────────────── */
 
+/** discover 放進 hint 的鍵：建物頁本身（fetchMode 'none'，執行器不再抓一次）、房間頁解析結果、建物頁抓取失敗的訊息。 */
+const BUILDING_RAW = '__buildingRaw';
+const ROOM_DETAILS = '__roomDetails';
+const BUILDING_ERROR = '__buildingError';
+
+/** 建物頁 JSON-LD 裡賃貸 Offer 的房間頁網址（マンスリー的 Offer 指向同一頁，不重抓）。 */
+export function roomPageUrls(buildingHtml: string): readonly string[] {
+  const listing = pickLdType(parseLdNodes(buildingHtml), 'RealEstateListing');
+  if (listing === null) return [];
+  const urls = parseOffers(listing).lease.map((o) => o.url).filter((u) => u.startsWith(`${SITE}/properties/chintai/`));
+  return [...new Set(urls)];
+}
+
 export const adapter: SourceAdapter = {
   manifest,
 
@@ -427,22 +561,61 @@ export const adapter: SourceAdapter = {
       throw new Error('[leopalace21] sitemap.xml 裡找不到任何 sitemap_image_map_ja_N.xml，站方可能改了結構');
     }
 
+    const urls: string[] = [];
     const seen = new Set<string>();
     for (const map of maps) {
       const sm = await fetcher.get(map);
       for (const u of tokyoPropertyUrls(sm.body)) {
         if (seen.has(u)) continue;
         seen.add(u);
-        yield { url: u };
+        urls.push(u);
       }
     }
-
-    if (seen.size === 0) {
+    if (urls.length === 0) {
       throw new Error(`[leopalace21] ${maps.length} 個 sitemap 裡一筆東京房源都沒有，解析必然壞了`);
+    }
+
+    // 每棟：建物頁 → 房間頁。房間頁抓不到（離線重解析時本機沒有、或對方暫時錯誤）就退回只有建物頁的欄位，
+    // 最後把筆數講出來——不能讓「欄位又變回不公開」看起來像站方沒寫。
+    let roomsTried = 0;
+    let roomsFailed = 0;
+    let firstRoomError = '';
+    for (const u of urls) {
+      let buildingRaw: RawDoc;
+      try {
+        buildingRaw = await fetcher.get(u);
+      } catch (e) {
+        yield { url: u, hint: { [BUILDING_ERROR]: e instanceof Error ? e.message : String(e) } };
+        continue;
+      }
+      const details: Record<string, LeoRoomDetail> = {};
+      for (const ru of roomPageUrls(buildingRaw.body)) {
+        roomsTried += 1;
+        try {
+          details[ru] = parseLeoRoomPage(ru, (await fetcher.get(ru)).body);
+        } catch (e) {
+          roomsFailed += 1;
+          if (firstRoomError === '') firstRoomError = `${ru} — ${e instanceof Error ? e.message : String(e)}`;
+        }
+      }
+      yield { url: u, hint: { [BUILDING_RAW]: buildingRaw, [ROOM_DETAILS]: details } };
+    }
+    if (roomsFailed > 0) {
+      console.warn(
+        `  ⚠ leopalace21：${roomsFailed}／${roomsTried} 間拿不到房間詳情頁，這些房只有建物頁的欄位` +
+        `（火災保険・鍵交換費・清掃費等記「此來源不公開」）。首例：${firstRoomError}`,
+      );
     }
   },
 
-  extract(raw: RawDoc, ref: TargetRef, _ctx: ExtractContext): Listing | null {
+  extract(rawIn: RawDoc, ref: TargetRef, _ctx: ExtractContext): Listing | null {
+    // fetchMode 'none'：執行器給的 rawIn 是空的，建物頁在 hint 裡；直接呼叫（測試）時 rawIn 就是建物頁
+    const hinted = ref.hint?.[BUILDING_RAW] as RawDoc | undefined;
+    const raw = rawIn.body !== '' ? rawIn : hinted;
+    if (raw === undefined) {
+      throw new Error(String(ref.hint?.[BUILDING_ERROR] ?? `[leopalace21] ${ref.url} 沒有建物頁內容`));
+    }
+    const roomDetails = (ref.hint?.[ROOM_DETAILS] ?? {}) as Readonly<Record<string, LeoRoomDetail>>;
     const nodes = parseLdNodes(raw.body);
     if (nodes.length === 0) {
       throw new Error(`[leopalace21] ${ref.url} 找不到任何 JSON-LD`);
@@ -497,6 +670,8 @@ export const adapter: SourceAdapter = {
       );
     }
 
+    const leaseDetails = offers.lease.map((o) => roomDetails[o.url]).filter((d): d is LeoRoomDetail => d !== undefined);
+
     const building: Building = {
       id: buildingId,
       sourceId: 'leopalace21',
@@ -508,10 +683,9 @@ export const adapter: SourceAdapter = {
       prefecture,
       ward: (asString(address['addressLocality']) ?? '').trim(),
       stations,
-      // 建物構造（木造／鉄骨造…）只在房間詳情頁，建物頁沒有
-      structure: notOffered<string>(),
-      // 這個來源不標建物種別（マンション／アパート…）；那是 SUUMO 這類入口站才有的欄位
-      buildingType: notOffered<string>(),
+      // 建物構造（木造／鉄骨造…）、総戸数、種別只在房間詳情頁
+      structure: roomAgree(leaseDetails, '建物構造', (v) => (v === '' ? null : v)),
+      buildingType: roomAgree(leaseDetails, '種別/築年数', (v) => /^([^/／]+)[/／]/.exec(v)?.[1]?.trim() || null),
       yearBuilt: agree(
         asNumber(apartment['yearBuilt']),
         asNumber(complexProps.get('築年')) ?? summary.yearBuilt,
@@ -523,7 +697,7 @@ export const adapter: SourceAdapter = {
         summary.floorsRaw !== '' ? summary.floorsRaw : '階数',
       ),
       // 総戸数只在房間詳情頁；建物頁只列「入居可能な部屋」，不等於總戶數
-      totalUnits: notOffered<number>(),
+      totalUnits: roomAgree(leaseDetails, '総戸数', (v) => (/^\d+$/.test(v) ? Number(v) : null)),
       imageUrls: asArray(apartment['image']).map(asString).filter((s): s is string => s !== null),
       fetchedAt: raw.fetchedAt,
       sourceUpdatedAt: datePosted === ''
@@ -539,8 +713,20 @@ export const adapter: SourceAdapter = {
       const rentJpy = o.priceJpy;
       const area = parseArea(o.areaRaw);
       const layout = parseLayout(o.layoutRaw);
+      const d = roomDetails[o.url];
       const notes: string[] = [];
       if (o.conditionRaw !== '') notes.push(`契約条件：${o.conditionRaw}`);
+      // 選配（任意）：不進任何費用欄，原文留在 notes
+      if (d !== undefined) {
+        for (const [k, v] of Object.entries(d.pairs)) {
+          if (/（任意）$/.test(k)) notes.push(`${k}：${v}`);
+        }
+      }
+      const cell = (label: string) => (d === undefined ? null : roomCell(d, label));
+      const keyLabel = d === undefined ? undefined : Object.keys(d.pairs).find((k) => k.startsWith('鍵交換費'));
+      const guarantorLabel = d === undefined ? undefined : Object.keys(d.pairs).find((k) => k.startsWith('保証委託料'));
+      // 退去時清掃費：站方重要事項寫「賃貸契約（普通借家プラン）のご契約時に…お支払いが必要」＝入居時就付
+      const cleaningUpfront = d !== undefined && d.cleaningAtContract !== '';
       const mp = monthlyByRoom.get(o.roomNo);
       if (mp !== undefined) {
         // 揭露而不換算：站方的マンスリー price 是日額，跟月額不可比
@@ -564,8 +750,8 @@ export const adapter: SourceAdapter = {
         areaM2: area.kind === 'exact'
           ? known(area.m2, 'measured', `床面積 ${o.areaRaw}`)
           : o.areaRaw === '' ? notListed<number>('') : unparsed<number>(`床面積 ${o.areaRaw}`),
-        // 所在階只在房間詳情頁。房號首位數字看起來像樓層，但那是慣例不是欄位，不可據以推斷。
-        floor: notOffered<number>(),
+        // 所在階只在房間詳情頁（「所在階/階數 2/2」）。房號首位數字看起來像樓層，但那是慣例不是欄位，不可據以推斷。
+        floor: leoFloor(d, cell('所在階/階数')),
         monthly: {
           rent: known(yen(rentJpy), 'measured',
             `賃料 ${jpy(rentJpy)}円（JSON-LD offers[].price，leaseLength=${o.leaseMonths} months）`),
@@ -573,33 +759,47 @@ export const adapter: SourceAdapter = {
             ? notListed<Yen>('')
             : known(yen(o.adminFeeJpy), 'measured', `共益費 ${jpy(o.adminFeeJpy)}円`),
           utilities: notOffered<Yen>(),
-          internet: notOffered<Yen>(),
-          otherMonthly: notOffered<Yen>(),
+          internet: leoInternet(d),
+          // 「環境維持費 30日あたり550円（税込）」：按 30 日計，不是月額——記「原站明寫要付、金額未取得」
+          otherMonthly: roomFee(d, '環境維持費'),
         },
         initial: {
           // 「礼金 1ヶ月」是月數不是金額，必須乘上賃料
           keyMoney: monthsOrAmountField('礼金', o.keyMoneyRaw, rentJpy),
           deposit: monthsOrAmountField('敷金', o.depositRaw, rentJpy),
-          depositNonRefundable: notOffered<Yen>(),
+          // 頁首初期費用摘要的「敷引 不要」；表格的「償却・敷引 -」不判讀
+          depositNonRefundable: d === undefined
+            ? notOffered<Yen>()
+            : d.summary['敷引'] !== undefined
+              ? monthsOrAmountField('敷引', d.summary['敷引'], rentJpy)
+              : notListed<Yen>(d.pairs['償却・敷引'] === undefined ? '' : `償却・敷引 ${d.pairs['償却・敷引']}`),
           agencyFee: feeField('仲介手数料', o.agencyFeeRaw),
-          guarantorInitialFee: notOffered<Yen>(),
-          fireInsurance: notOffered<Yen>(),
-          keyExchangeFee: notOffered<Yen>(),
+          // 「保証委託料（個人契約のみ） 利用料の100％～120％（契約時）」：比例區間，不取值
+          guarantorInitialFee: guarantorLabel === undefined ? (d === undefined ? notOffered<Yen>() : notListed<Yen>('')) : roomFee(d, guarantorLabel),
+          // 「火災保険 2年 13,130円～26,680円」：依保障內容的區間，不取值
+          fireInsurance: roomFee(d, '火災保険'),
+          keyExchangeFee: keyLabel === undefined ? (d === undefined ? notOffered<Yen>() : notListed<Yen>('')) : roomFee(d, keyLabel),
           contractFee: notOffered<Yen>(),
-          cleaningFeeUpfront: notOffered<Yen>(),
+          cleaningFeeUpfront: cleaningUpfront ? roomFee(d, '退去時清掃費', `；站方重要事項「${d.cleaningAtContract}」`) : notOffered<Yen>(),
           otherInitial: notOffered<Yen>(),
         },
         deferred: {
-          renewalFee: notOffered<Yen>(),
+          renewalFee: roomFee(d, '更新料'),
           renewalAdminFee: notOffered<Yen>(),
-          cleaningFeeOnExit: notOffered<Yen>(),
+          cleaningFeeOnExit: cleaningUpfront ? notOffered<Yen>() : roomFee(d, '退去時清掃費'),
           earlyTerminationPenalty: notOffered<Yen>(),
         },
         utilitiesBasis: 'unknown',
-        furnished: notOffered<boolean>(),
-        availableFrom: notOffered<string>(),
-        isVacant: known(o.inStock, 'measured',
-          `availability=${o.inStock ? 'InStock' : 'OutOfStock'}（頁面「入居可能な部屋」區塊）`),
+        furnished: leoFurnished(d, cell('家具・家電')),
+        availableFrom: d === undefined ? notOffered<string>() : (() => {
+          const c = cell('入居/引渡');
+          if (c === null) return notListed<string>('');
+          if ('conflict' in c) return unknown<string>('conflicting', 'measured', c.conflict);
+          return leoAvailableFrom(c.value);
+        })(),
+        // 房間頁的「現況」優先：「退去予定」＝還沒空出（JSON-LD 的 InStock 涵蓋空室與退去予定兩種），
+        // 與ひつじ scheduled、TSH 空室予定同一語意
+        isVacant: leoVacant(o, cell('現況')),
         contractType: 'unknown',
         contractMonths: known(o.leaseMonths, 'measured', `leaseLength ${o.leaseMonths} months`),
         minStayMonths: notOffered<number>(),
@@ -614,6 +814,35 @@ export const adapter: SourceAdapter = {
     return { building, units };
   },
 };
+
+type RoomCell = ReturnType<typeof roomCell>;
+
+function leoFloor(d: LeoRoomDetail | undefined, c: RoomCell): Field<number> {
+  if (d === undefined) return notOffered<number>();
+  if (c === null) return notListed<number>('');
+  if ('conflict' in c) return unknown<number>('conflicting', 'measured', c.conflict);
+  const m = /^(\d+)\s*[/／]\s*\d+$/.exec(c.value);
+  return m?.[1] !== undefined ? known(Number(m[1]), 'measured', `所在階/階数 ${c.value}`) : unparsed<number>(`所在階/階数 ${c.value}`);
+}
+
+function leoFurnished(d: LeoRoomDetail | undefined, c: RoomCell): Field<boolean> {
+  if (d === undefined) return notOffered<boolean>();
+  if (c === null) return notListed<boolean>('');
+  if ('conflict' in c) return unknown<boolean>('conflicting', 'measured', c.conflict);
+  if (c.value === '有り' || c.value === 'あり') return known(true, 'measured', `家具・家電 ${c.value}`);
+  if (c.value === '無し' || c.value === 'なし') return known(false, 'measured', `家具・家電 ${c.value}`);
+  return unparsed<boolean>(`家具・家電 ${c.value}`);
+}
+
+function leoVacant(o: LeoOffer, c: RoomCell): Field<boolean> {
+  const stock = `availability=${o.inStock ? 'InStock' : 'OutOfStock'}（頁面「入居可能な部屋」區塊）`;
+  if (c === null) return known(o.inStock, 'measured', stock);
+  if ('conflict' in c) return unknown<boolean>('conflicting', 'measured', c.conflict);
+  if (c.value === '空室') return known(true, 'measured', '現況 空室（房間詳情頁）');
+  // 「居住中」（2026-10-17 房間頁 742 筆裡 4 筆）＝有人住、還沒空出，與退去予定同為 false
+  if (c.value === '退去予定' || c.value === '居住中') return known(false, 'measured', `現況 ${c.value}（房間詳情頁）`);
+  return unparsed<boolean>(`現況 ${c.value}（房間詳情頁）`);
+}
 
 function toInt(s: string | null): number | null {
   if (s === null) return null;
