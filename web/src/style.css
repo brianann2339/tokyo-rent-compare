@@ -47,8 +47,28 @@ header .sub { color: var(--muted); margin: 0 0 24px; font-size: .92rem; }
   position: sticky; top: 16px; display: grid; gap: 12px;
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 12px; padding: 16px; box-shadow: var(--shadow);
+  /* 比視窗高時自己捲：左右兩欄各用各的滾輪，不必先把右邊列表捲到底才看得到篩選欄下半截。
+     捲到頭也不帶動列表（contain；內容沒超出時 App.tsx 會關掉，免得滾輪在這裡完全沒反應）。
+     可用高度由 App.tsx 的 filtersPane 依它的頂端與右欄底邊算 */
+  max-height: var(--filters-max-h, calc(100vh - 32px));
+  overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-gutter: stable; scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 55%, transparent) transparent; /* 深色模式也是深底捲軸 */
+  scroll-padding-block: 12px;  /* Tab 把欄位捲進來時留一圈，焦點外框不貼邊被切 */
+  overflow-wrap: anywhere;     /* 一長串英數（站名警告裡的輸入）不撐出橫向捲軸 */
 }
-@media (max-width: 860px) { .filters { position: static; } }
+/* 右欄至少跟篩選欄一樣高（最多一個視窗高）：結果很少（甚至 0 筆）時篩選欄才不會跟著縮成一小塊——
+   那正是最需要調條件的時候 */
+.layout > main { min-height: min(calc(100vh - 32px), var(--filters-need, calc(100vh - 32px))); }
+@media (max-width: 860px) {
+  .filters { position: static; max-height: none; overflow: visible; }
+  .layout > main { min-height: 0; }
+}
+/* 列印時沒有捲動可言：限高會把篩選欄截在螢幕上的高度 */
+@media print {
+  .filters { position: static; max-height: none; overflow: visible; }
+  .layout > main { min-height: 0; }
+}
 .filters label { display: grid; gap: 4px; font-size: .82rem; color: var(--muted); }
 .filters input, .filters select {
   font: inherit; font-size: .9rem; color: var(--ink);

@@ -55,6 +55,64 @@ function srcName(dict: Wire['dict'], srcIdx: number): string {
   return dict.sourceMeta[id]?.nameZh ?? id;
 }
 
+/**
+ * 篩選欄自己捲（style.css 的 .filters）。這裡負責 CSS 算不出來的三件事：
+ * 1. 可用高度 --filters-max-h：整塊永遠留在視窗內，它自己捲得到每一欄。黏在視窗頂之後是「視窗高減上下留白」；
+ *    但頁首還在畫面上時它的頂端更低，捲到最底、頁尾進到畫面時 sticky 又會被右欄底邊往上推——
+ *    兩種都會讓一截落到視窗外，得先去捲右邊的列表才看得到，正是要修掉的那個麻煩。
+ *    所以上緣取它實際的頂端、下緣取右欄底邊（不看 .layout：它的高度可能由篩選欄自己撐出來，拿它當尺會越縮越小）。
+ * 2. 右欄最小高度 --filters-need：結果很少（甚至 0 筆）時右欄要撐到篩選欄需要的高度，篩選欄才不會跟著縮成一小塊；
+ *    但不多於篩選欄內容本身，很高的螢幕上才不會平白多一段空白。
+ * 3. 捲到頭不帶動列表（contain）只在真的捲得動時才開：內容沒超出時，contain 會讓滑鼠停在篩選欄上滾輪完全沒反應。
+ * 寫成模組層級的 callback ref（React 19 支援回傳清理函式），身分固定，不會每次 render 重掛監聽。
+ */
+function filtersPane(el: HTMLElement | null): (() => void) | undefined {
+  if (el === null) return undefined;
+  const layout = el.parentElement;
+  const main = layout?.querySelector<HTMLElement>(':scope > main') ?? null;
+  const setVar = (node: HTMLElement, name: string, v: string): void => {
+    if (node.style.getPropertyValue(name) !== v) node.style.setProperty(name, v);
+  };
+  const fit = (): void => {
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'sticky') return; // 窄螢幕單欄與列印：CSS 不限高，這些值用不到
+    const gap = parseFloat(cs.top) || 0;
+    const top = Math.max(gap, el.getBoundingClientRect().top);
+    const bottom = Math.min(window.innerHeight - gap, main?.getBoundingClientRect().bottom ?? Infinity);
+    // 不設下限：再矮的視窗也寧可框小一點，不讓頁尾把它推出視窗
+    setVar(el, '--filters-max-h', `${Math.max(0, Math.floor(bottom - top))}px`);
+    // 整塊的自然高度＝內容（scrollHeight 不含框線）＋框線
+    if (layout !== null) setVar(layout, '--filters-need', `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`);
+    const overscroll = el.scrollHeight > el.clientHeight + 1 ? '' : 'auto';
+    if (el.style.overscrollBehaviorY !== overscroll) el.style.overscrollBehaviorY = overscroll;
+  };
+  fit();
+  // 捲動與縮放事件本來就每格畫面最多一次，直接算。頁面高度變了但沒捲動（按「顯示更多」、換條件）
+  // 右欄底邊一樣會移動，篩選欄內容變多變少則會改變它自己的大小——都交給 ResizeObserver。
+  // 篩選欄的高度不影響頁面高度（右欄至少跟它一樣高），不會互相觸發
+  const ro = new ResizeObserver(fit);
+  ro.observe(document.body);
+  ro.observe(el);
+  addEventListener('scroll', fit, { passive: true });
+  addEventListener('resize', fit);
+  return () => {
+    ro.disconnect();
+    removeEventListener('scroll', fit);
+    removeEventListener('resize', fit);
+  };
+}
+
+/**
+ * Chrome 裡有焦點的數字欄會把游標下的滾輪拿去加減數值、吃掉這次捲動
+ * （2026-10-22 實測：「步行分鐘上限」空白時往下滾兩格變成 -2，篩選條件跟著套用）。
+ * 篩選欄能自己捲之後使用者常在這裡滾，右欄「我的房子」也有數字欄——游標在有焦點的數字欄上滾輪時
+ * 先讓它失焦，滾輪就照常捲。React 的 onWheel 是 passive、擋不掉預設動作，所以掛原生的 capture 監聽。
+ */
+function blurNumberOnWheel(e: WheelEvent): void {
+  const t = e.target;
+  if (t instanceof HTMLInputElement && t.type === 'number' && t === document.activeElement) t.blur();
+}
+
 function useHashFilters(): [Filters, (f: Filters) => void] {
   const [f, setF] = useState<Filters>(() => queryToFilters(location.hash.slice(1)));
   useEffect(() => {
@@ -325,6 +383,10 @@ export default function App() {
       .catch((e: unknown) => setNamesErr(e instanceof Error ? e.message : String(e)));
   }, [wire]);
   useEffect(() => setLimit(60), [f]);
+  useEffect(() => {
+    addEventListener('wheel', blurNumberOnWheel, { capture: true, passive: true });
+    return () => removeEventListener('wheel', blurNumberOnWheel, { capture: true });
+  }, []);
   useEffect(() => { if (f.my !== null) setShowMy(true); }, [f.my]);
 
   // names 必須在依賴陣列裡：名稱檔晚到時若不重算，關鍵字搜尋會永遠停在
@@ -468,7 +530,7 @@ export default function App() {
       </header>
 
       <div className="layout">
-        <form className="filters" onSubmit={(e) => e.preventDefault()}>
+        <form className="filters" ref={filtersPane} onSubmit={(e) => e.preventDefault()}>
           <label>關鍵字
             <input value={f.q} onChange={(e) => set({ q: e.target.value })} placeholder="物件名、車站、區" />
           </label>
