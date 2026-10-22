@@ -153,6 +153,8 @@ footer p { margin: 0 0 8px; }
 /* 賃料未知時不顯示金額：一個看起來合理的錯數字比留白危險 */
 .price .big .nodata { font-size: 1rem; font-weight: 500; color: var(--muted); }
 .price .parts .nodata { color: var(--warn); font-weight: 600; }
+/* 原站自己寫錯的數值（60000㎡）：照原文印，但一眼看得出不可信 */
+.station .suspect { color: var(--warn); font-weight: 600; }
 
 /* 生效條件指示器：篩選器捲出視野後，使用者仍看得到為什麼結果變少 */
 .active {

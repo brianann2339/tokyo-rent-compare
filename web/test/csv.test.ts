@@ -55,7 +55,7 @@ const HEADER = [
   '車站1', '徒歩1', '車站2', '徒歩2', '車站3', '徒歩3',
   '賃料', '管理費', '水電', '水電基準',
   '禮金', '敷金', '敷引', '月額下限', '月額區', '初期現金', '初期現金區', '沉沒成本',
-  '實質月成本12', '每㎡單價', '缺項', '外國人可租', '性別', '空室', '仲介數', '確認日', '原站URL',
+  '實質月成本12', '每㎡單價', '缺項', '原站數值可疑', '外國人可租', '性別', '空室', '仲介數', '確認日', '原站URL',
 ];
 
 /** 每欄都被 " 包住、內部 " 加倍；這個解析只給測試用。 */
@@ -248,5 +248,115 @@ describe('站名／路線用比對鍵找序號（2026-10-17）', () => {
     assert.equal(lineIndexOf(ln, 'ＪＲ山手線'), 0, '舊分享連結帶全形 ＪＲ');
     assert.equal(lineIndexOf(ln, '東京地下鉄丸ノ内線'), 1);
     assert.equal(lineIndexOf(ln, '西武新宿線'), -1);
+  });
+});
+
+describe('rowsToCsv：原站自己寫錯的值', () => {
+  /** build-data 的 FLAG（只放這裡用得到的位元） */
+  const FLAG_BITS = {
+    invariantViolation: 1024, rentSuspect: 2048, areaSuspect: 4096, initialSuspect: 8192,
+    adminSuspect: 16384, sunkSuspect: 32768, walkYearSuspect: 65536,
+  };
+  const withFlags = (w: Wire): Wire => ({ ...w, meta: { ...w.meta, flagBits: FLAG_BITS } });
+
+  test('賃料 ￥1（ひつじ REVE 吉祥寺 203）：賃料欄照原文，月額等加總欄留空，標出「賃料」', () => {
+    const w = withFlags(makeWire({
+      area: [8.6], rent: [1], admin: [0], key: [0], dep: [0],
+      monthlyLower: [1], monthlyTier: [2], initCash: [0], initCashTier: [2], effMonthly12: [1],
+      missing: [0], flags: [1024 | 2048],
+    }));
+    const r = rec(parseCsv(rowsToCsv(w, NAMES, [{ i: 0, tier: 2, key: 1 }], { assumeUtil: null }))[1] as string[]);
+    assert.equal(r['賃料'], '1', '原站寫的數字照原文保留');
+    assert.equal(r['月額下限'], '', '由不可信的賃料加總出來的月額不寫');
+    assert.equal(r['實質月成本12'], '');
+    assert.equal(r['每㎡單價'], '');
+    assert.equal(r['月額區'], 'C');
+    assert.equal(r['原站數值可疑'], '賃料');
+  });
+
+  test('面積 60000㎡：面積欄照原文、不算每㎡單價、標出「面積」', () => {
+    const w = withFlags(makeWire({
+      area: [60000], rent: [80000], admin: [5000], key: [0], dep: [0],
+      monthlyLower: [85000], monthlyTier: [0], initCash: [0], initCashTier: [0], effMonthly12: [85000],
+      missing: [0], flags: [1024 | 4096],
+    }));
+    const r = rec(parseCsv(rowsToCsv(w, NAMES, [{ i: 0, tier: 0, key: 85000 }], { assumeUtil: null }))[1] as string[]);
+    assert.equal(r['面積㎡'], '60000');
+    assert.equal(r['每㎡單價'], '');
+    assert.equal(r['月額下限'], '85000', '賃料可信時月額照常');
+    assert.equal(r['原站數值可疑'], '面積');
+  });
+
+  test('只有棟層的徒歩分違反：標「徒歩／築年」，其餘欄照常', () => {
+    const w = withFlags(makeWire({
+      area: [20], rent: [80000], admin: [0], monthlyLower: [80000], monthlyTier: [0], initCashTier: [0],
+      effMonthly12: [80000], missing: [0], flags: [1024 | 65536],
+    }));
+    const r = rec(parseCsv(rowsToCsv(w, NAMES, [{ i: 0, tier: 0, key: 80000 }], { assumeUtil: null }))[1] as string[]);
+    assert.equal(r['原站數值可疑'], '徒歩／築年');
+    assert.equal(r['每㎡單價'], String(Math.round(80000 / 20)));
+  });
+
+  test('賃料與徒歩分同時違反：兩個都標，不會只剩賃料', () => {
+    const w = withFlags(makeWire({
+      area: [20], rent: [1], admin: [0], monthlyLower: [1], monthlyTier: [2], initCashTier: [2],
+      effMonthly12: [1], missing: [0], flags: [1024 | 2048 | 65536],
+    }));
+    const r = rec(parseCsv(rowsToCsv(w, NAMES, [{ i: 0, tier: 2, key: 1 }], { assumeUtil: null }))[1] as string[]);
+    assert.equal(r['原站數值可疑'], '賃料/徒歩／築年');
+  });
+
+  test('舊索引沒有細分位元：只說「有」，不猜是哪一欄', () => {
+    const w: Wire = { ...makeWire({ rent: [1], monthlyLower: [1], flags: [1024] }), meta: { ...makeWire().meta, flagBits: { invariantViolation: 1024 } } };
+    const r = rec(parseCsv(rowsToCsv(w, NAMES, [{ i: 0, tier: 2, key: 1 }], { assumeUtil: null }))[1] as string[]);
+    assert.equal(r['原站數值可疑'], '有（細目見網站費用拆解）');
+  });
+
+  test('只有管理費可疑（同棟另一列是十分之一）：月額留空，初期現金照寫——初期費用不含管理費', () => {
+    const w = withFlags(makeWire({
+      area: [21.45], rent: [113500], admin: [75000], key: [113500], dep: [113500], depNR: [0],
+      monthlyLower: [188500], monthlyTier: [2], initCash: [340500], initCashTier: [1], initSunk: [227000],
+      effMonthly12: [207417], missing: [0], flags: [1024 | 16384],
+    }));
+    const r = rec(parseCsv(rowsToCsv(w, NAMES, [{ i: 0, tier: 2, key: 0 }], { assumeUtil: null }))[1] as string[]);
+    assert.equal(r['管理費'], '75000', '原文照留');
+    assert.equal(r['月額下限'], '');
+    assert.equal(r['實質月成本12'], '');
+    assert.equal(r['初期現金'], '340500');
+    assert.equal(r['初期現金區'], 'B');
+    assert.equal(r['沉沒成本'], '227000');
+    assert.equal(r['原站數值可疑'], '管理費');
+  });
+
+  test('礼金可疑（279 万＝10 個月）：初期費用與實質月成本留空、區寫 C，月額照寫', () => {
+    const w = withFlags(makeWire({
+      area: [60], rent: [279000], admin: [0], key: [2790000], dep: [279000], depNR: [0],
+      monthlyLower: [279000], monthlyTier: [0], initCash: [3069000], initCashTier: [2], initSunk: [2790000],
+      effMonthly12: [511500], missing: [0], flags: [1024 | 8192 | 32768],
+    }));
+    const r = rec(parseCsv(rowsToCsv(w, NAMES, [{ i: 0, tier: 2, key: 0 }], { assumeUtil: null }))[1] as string[]);
+    assert.equal(r['禮金'], '2790000', '原文照留');
+    assert.equal(r['初期現金'], '');
+    assert.equal(r['初期現金區'], 'C');
+    assert.equal(r['沉沒成本'], '');
+    assert.equal(r['實質月成本12'], '', '實質月成本攤進了可疑的礼金');
+    assert.equal(r['月額下限'], '279000');
+    assert.equal(r['原站數值可疑'], '初期費用');
+  });
+
+  test('只有敷金可疑：初期現金留空，實質月成本照寫——敷金可退，沒攤進實質月成本', () => {
+    const w = withFlags(makeWire({
+      area: [60], rent: [290000], admin: [0], key: [0], dep: [8410000], depNR: [0],
+      monthlyLower: [290000], monthlyTier: [0], initCash: [8410000], initCashTier: [2], initSunk: [0],
+      effMonthly12: [290000], missing: [0], flags: [1024 | 8192],
+    }));
+    const r = rec(parseCsv(rowsToCsv(w, NAMES, [{ i: 0, tier: 0, key: 290000 }], { assumeUtil: null }))[1] as string[]);
+    assert.equal(r['初期現金'], '');
+    assert.equal(r['實質月成本12'], '290000');
+  });
+
+  test('沒有任何旗標：欄位空白', () => {
+    const r = rec(parseCsv(rowsToCsv(withFlags(makeWire()), NAMES, [{ i: 0, tier: 2, key: 0 }], { assumeUtil: null }))[1] as string[]);
+    assert.equal(r['原站數值可疑'], '');
   });
 });

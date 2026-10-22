@@ -416,6 +416,15 @@ export function kindGroup(w: Wire, kindIdx: number): 'apt' | 'share' | 'unknown'
 }
 
 /**
+ * 這間房有沒有 build-data 打的某個旗標（FLAG 的鍵名）。
+ * 舊索引的 flagBits 沒有這個鍵時一律當沒有——不可把 undefined 的位元當 0 去 AND 出 true。
+ */
+export function hasFlag(w: Wire, i: number, key: string): boolean {
+  const bit = w.meta.flagBits[key];
+  return bit !== undefined && ((w.u.flags[i] as number) & bit) !== 0;
+}
+
+/**
  * 每㎡單價算不算得出來。
  *
  * 多人房（ドミトリー／棟層 kind=dormitory）的「面積」是整間共用房、「賃料」是一個床位——
@@ -426,6 +435,8 @@ export function kindGroup(w: Wire, kindIdx: number): 'apt' | 'share' | 'unknown'
 export function perM2Comparable(w: Wire, i: number): boolean {
   const area = w.u.area[i];
   if (area === null || area === undefined || area <= 0) return false;
+  // 原站自己寫錯的面積（「60000㎡ ／ 7.2帖」）照原文顯示，但不拿來除
+  if (hasFlag(w, i, 'areaSuspect')) return false;
   const li = w.u.layout[i] as number;
   if (li >= 0 && w.dict.layouts[li] === 'ドミトリー') return false;
   return w.dict.kinds[w.b.kind[w.u.bid[i] as number] as number] !== 'dormitory';
@@ -550,7 +561,8 @@ export function query(w: Wire, f: Filters, now: Date = new Date(), names: Names 
     if (f.utilIncluded && u.utilBasis[i] !== 1) continue;
     if (layoutIdx !== null && !layoutIdx.has(u.layout[i] as number)) continue;
 
-    const area = u.area[i];
+    // 原站寫錯的面積比照未知：照原文顯示，但不能證明它在區間內
+    const area = hasFlag(w, i, 'areaSuspect') ? null : u.area[i];
     if (f.minArea !== null && (area === null || area === undefined || area < f.minArea)) continue;
     // 上限跟下限一樣排除面積未知者：出租方在圈「同量級競品」，
     // 無法確認在區間內的物件混進來只會污染行情。
@@ -562,12 +574,16 @@ export function query(w: Wire, f: Filters, now: Date = new Date(), names: Names 
     }
 
     const monthly = monthlyWithAssumption(w, i, f.assumeUtil);
-    if (f.maxMonthly !== null && monthly > f.maxMonthly) continue;
-    if (f.maxInitCash !== null && (u.initCash[i] as number) > f.maxInitCash) continue;
+    // C 區的金額不能拿來比上限：賃料未知時只是管理費的殘值，原站寫錯時是「¥1」「119.5万円」。
+    // 比照未知——不能證明它超過上限，就留下來、排在資料不足區（跟排序同一條規則）
+    if (f.maxMonthly !== null && u.monthlyTier[i] !== 2 && monthly > f.maxMonthly) continue;
+    if (f.maxInitCash !== null && u.initCashTier[i] !== 2 && (u.initCash[i] as number) > f.maxInitCash) continue;
 
     let tier = (f.sort === 'initCash' || f.sort === 'initSunk'
       ? u.initCashTier[i]
       : u.monthlyTier[i]) as number;
+    // 實質月成本攤進了礼金、仲介費、敷引：其中有原站寫錯的（礼金 279 万＝10 個月），預設排序也不比它
+    if (f.sort === 'eff12' && hasFlag(w, i, 'sunkSuspect')) tier = 2;
 
     let key: number;
     switch (f.sort) {

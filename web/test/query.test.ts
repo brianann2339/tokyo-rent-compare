@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   query, queryToFilters, filtersToQuery, DEFAULT_FILTERS, buildingStations, lineBuildingCounts,
-  perM2Comparable, type Wire, type Filters, type Names,
+  perM2Comparable, hasFlag, type Wire, type Filters, type Names,
 } from '../src/data.ts';
 
 /**
@@ -219,5 +219,85 @@ describe('關鍵字搜尋要比對建物名稱，而名稱在第二個檔案裡'
     const r = query(w, F({ q: '   ' }), new Date(2026, 7, 23), null);
     assert.equal(r.pendingNames, false);
     assert.equal(r.rows.length, 3);
+  });
+});
+
+describe('query：原站自己寫錯的面積（build-data 打 areaSuspect）', () => {
+  /** 間 0 的面積改成 60000㎡ 並打上旗標（Couverture 中野 210「60000㎡ ／ 7.2帖」） */
+  const suspectWire = (): Wire => {
+    const w = makeWire();
+    w.meta.flagBits = { invariantViolation: 1024, rentSuspect: 2048, areaSuspect: 4096, initialSuspect: 8192 };
+    w.u.area[0] = 60000;
+    w.u.flags[0] = 1024 | 4096;
+    return w;
+  };
+
+  test('不算每㎡單價；按單價排序時落資料不足區', () => {
+    const w = suspectWire();
+    assert.equal(perM2Comparable(w, 0), false);
+    assert.equal(perM2Comparable(w, 1), true);
+    const r = query(w, F({ sort: 'perM2' }), new Date(2026, 7, 23), NAMES);
+    assert.equal(r.rows.find((x) => x.i === 0)?.tier, 2);
+  });
+
+  test('面積篩選比照未知：60000 不能證明它 ≥ 30㎡，也不能證明它 ≤ 100㎡', () => {
+    const w = suspectWire();
+    assert.deepEqual(ids(w, F({ minArea: 30 })), [1]);
+    assert.deepEqual(ids(w, F({ maxArea: 100000 })), [1]);
+  });
+
+  test('按面積排序不會因為 60000 排第一', () => {
+    const w = suspectWire();
+    const r = query(w, F({ sort: 'area' }), new Date(2026, 7, 23), NAMES);
+    assert.notEqual(r.rows[0]?.i, 0);
+  });
+
+  test('舊索引沒有這個旗標鍵：hasFlag 一律 false，不可把 undefined 位元 AND 成 true', () => {
+    const w = makeWire();
+    w.u.flags[0] = 0xffff;
+    assert.equal(hasFlag(w, 0, 'areaSuspect'), false);
+    assert.equal(perM2Comparable(w, 0), true);
+  });
+});
+
+describe('query：原站自己寫錯的價格（rentSuspect／initialSuspect／sunkSuspect）', () => {
+  const BITS = {
+    invariantViolation: 1024, rentSuspect: 2048, areaSuspect: 4096, initialSuspect: 8192,
+    adminSuspect: 16384, sunkSuspect: 32768, walkYearSuspect: 65536,
+  };
+  const day = new Date(2026, 7, 23);
+
+  test('月額上限比照未知：寫錯的 150 万（實為 15 万）不因錯值被排除，留在資料不足區', () => {
+    const w = makeWire();
+    w.meta.flagBits = BITS;
+    w.u.rent[1] = 1500000; w.u.monthlyLower[1] = 1500000; w.u.monthlyTier[1] = 2; w.u.flags[1] = 1024 | 2048;
+    const r = query(w, F({ maxMonthly: 100000 }), day, NAMES);
+    assert.deepEqual(r.rows.map((x) => x.i).sort(), [0, 1, 2]);
+    assert.equal(r.rows.find((x) => x.i === 1)?.tier, 2);
+  });
+
+  test('初期費用上限比照未知：礼金 279 万（10 個月）那間不因錯值被排除', () => {
+    const w = makeWire();
+    w.meta.flagBits = BITS;
+    w.u.initCash[0] = 3069000; w.u.initCashTier[0] = 2; w.u.flags[0] = 1024 | 8192 | 32768;
+    w.u.initCash[1] = 2000000;
+    assert.deepEqual(ids(w, F({ maxInitCash: 1000000 })), [0, 2]);
+  });
+
+  test('預設排序（實質月成本）：攤進了可疑礼金的那間落資料不足區，不憑錯值排前或排後', () => {
+    const w = makeWire();
+    w.meta.flagBits = BITS;
+    w.u.effMonthly12[0] = 10; w.u.flags[0] = 1024 | 8192 | 32768;
+    const r = query(w, F({}), day, NAMES);
+    assert.equal(r.rows.find((x) => x.i === 0)?.tier, 2);
+    assert.deepEqual(r.rows.map((x) => x.i), [2, 1, 0]);
+  });
+
+  test('只有敷金可疑：敷金可退、沒攤進實質月成本，預設排序不動；按初期現金排序才落資料不足區', () => {
+    const w = makeWire();
+    w.meta.flagBits = BITS;
+    w.u.initCashTier[0] = 2; w.u.flags[0] = 1024 | 8192;
+    assert.equal(query(w, F({}), day, NAMES).rows.find((x) => x.i === 0)?.tier, 0);
+    assert.equal(query(w, F({ sort: 'initCash' }), day, NAMES).rows.find((x) => x.i === 0)?.tier, 2);
   });
 });

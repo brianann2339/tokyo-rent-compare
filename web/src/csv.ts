@@ -3,7 +3,7 @@
  * 未知值一律空字串——絕不寫 0，0 在這裡是「零円」的意思。
  */
 
-import { buildingStations, monthlyWithAssumption, perM2Comparable, type Wire, type Row, type Names } from './data.ts';
+import { buildingStations, monthlyWithAssumption, perM2Comparable, hasFlag, type Wire, type Row, type Names } from './data.ts';
 import { isGeneratedBuildingName } from '../../packages/jp-parse/src/name.ts';
 
 const HEADER = [
@@ -11,7 +11,7 @@ const HEADER = [
   '車站1', '徒歩1', '車站2', '徒歩2', '車站3', '徒歩3',
   '賃料', '管理費', '水電', '水電基準',
   '禮金', '敷金', '敷引', '月額下限', '月額區', '初期現金', '初期現金區', '沉沒成本',
-  '實質月成本12', '每㎡單價', '缺項', '外國人可租', '性別', '空室', '仲介數', '確認日', '原站URL',
+  '實質月成本12', '每㎡單價', '缺項', '原站數值可疑', '外國人可租', '性別', '空室', '仲介數', '確認日', '原站URL',
 ];
 
 const TIER_ZH = ['A', 'B', 'C'];
@@ -25,6 +25,11 @@ const MISSING_ZH: Record<string, string> = {
   depositNonRefundable: '敷引', agencyFee: '仲介', guarantorInitialFee: '保證公司',
   fireInsurance: '火災保險', renewalFee: '更新料',
 };
+
+const SUSPECT_ZH: ReadonlyArray<readonly [string, string]> = [
+  ['rentSuspect', '賃料'], ['adminSuspect', '管理費'], ['areaSuspect', '面積'],
+  ['initialSuspect', '初期費用'], ['walkYearSuspect', '徒歩／築年'],
+];
 
 const yesNo = (v: number | undefined): string => (v === 1 ? '是' : v === 0 ? '否' : '');
 const num = (v: number | null | undefined): string => (v === null || v === undefined ? '' : String(v));
@@ -45,13 +50,16 @@ export function rowsToCsv(
     const bi = u.bid[i] as number;
     const srcId = dict.sources[b.src[bi] as number] ?? '';
     const tier = u.monthlyTier[i] as number;
+    const iTier = u.initCashTier[i] as number;
     const area = u.area[i] ?? null;
-    // 賃料未知（C 區）時 monthlyLower／initCash／initSunk／effMonthly12 只是管理費等的殘值，
-    // 寫出來會變成一個看起來合理但完全錯誤的數字——一律留空。
-    const rentKnown = u.rent[i] !== null && u.rent[i] !== undefined;
-    const monthly = rentKnown ? monthlyWithAssumption(wire, i, opts.assumeUtil) : null;
+    // C 區的金額一律留空：賃料未知時 monthlyLower／initCash／initSunk／effMonthly12 只是管理費等的殘值，
+    // 原站自己寫錯時（「賃料 ￥ 1」「119.5万円」「礼金 279万円」）是錯的數字加出來的——
+    // 寫出來都會變成一個看起來合理但完全錯誤的數字。原始各欄照原文寫，加總不寫。
+    // 用區判斷而不是自己再拼一次條件：「X區＝C」跟「X 欄有數字」永遠不會互相矛盾
+    const monthly = tier !== 2 ? monthlyWithAssumption(wire, i, opts.assumeUtil) : null;
     const assumed = monthly === null ? 0 : monthly - (u.monthlyLower[i] as number);
-    const eff12 = rentKnown ? (u.effMonthly12[i] as number) + assumed : null;
+    // 實質月成本攤進了礼金、仲介費、敷引；其中有原站寫錯的，月額可信也不寫
+    const eff12 = monthly !== null && !hasFlag(wire, i, 'sunkSuspect') ? (u.effMonthly12[i] as number) + assumed : null;
     const perM2 = monthly !== null && tier === 0 && perM2Comparable(wire, i) ? Math.round(monthly / (area as number)) : null;
     const sts = buildingStations(wire, bi);
     const st = (k: number): [string, string] => {
@@ -63,6 +71,10 @@ export function rowsToCsv(
       .filter((_, k) => (mask & (1 << k)) !== 0)
       .map((id) => MISSING_ZH[id] ?? id)
       .join('/');
+    // 哪一種值是原站自己寫錯的
+    const suspect = SUSPECT_ZH.filter(([k]) => hasFlag(wire, i, k)).map(([, zh]) => zh);
+    // 舊索引沒有細分位元：只知道「有」，不猜是哪一欄
+    if (suspect.length === 0 && hasFlag(wire, i, 'invariantViolation')) suspect.push('有（細目見網站費用拆解）');
     const layoutIdx = u.layout[i] as number;
     const fields = [
       dict.sourceMeta[srcId]?.nameZh ?? srcId,
@@ -80,11 +92,12 @@ export function rowsToCsv(
       UTIL_ZH[u.utilBasis[i] as number] ?? '',
       num(u.key[i]), num(u.dep[i]), num(u.depNR[i]),
       num(monthly), TIER_ZH[tier] ?? '',
-      rentKnown ? num(u.initCash[i]) : '', TIER_ZH[u.initCashTier[i] as number] ?? '',
-      rentKnown ? num(u.initSunk[i]) : '',
+      iTier !== 2 ? num(u.initCash[i]) : '', TIER_ZH[iTier] ?? '',
+      iTier !== 2 ? num(u.initSunk[i]) : '',
       num(eff12),
       num(perM2),
       missing,
+      suspect.join('/'),
       yesNo(u.foreigner[i]), GENDER_ZH[u.gender[i] as number] ?? '', yesNo(u.vacant[i]),
       num(u.ads[i]),
       b.fetchedAt[bi] ?? '', names.url[bi] ?? '',

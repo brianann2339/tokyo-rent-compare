@@ -220,6 +220,167 @@ describe('棟層不變式：徒歩分超出合理範圍', () => {
   });
 });
 
+describe('房間不變式：原站自己寫錯的賃料與面積不拿來比', () => {
+  /**
+   * ひつじ REVE 吉祥寺 203 的原頁房間表就印著「賃料 ￥ 1」（payload rent=1，2026-10-17 抓），
+   * 先前只打 invariantViolation 旗標，月額區仍是 A——於是按月額排序時它排第一名，
+   * 卡片大字印「¥1／月」。這裡證明它現在比照「賃料未知」落 C 區，原值照留。
+   */
+  const decode = async (): Promise<{ u: { rent: Array<number | null>; area: Array<number | null>; flags: number[]; monthlyTier: number[]; initCashTier: number[] } }> =>
+    decodeIndex(JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'index.json.gz'))).toString('utf8')) as EncodedIndex) as unknown as {
+      u: { rent: Array<number | null>; area: Array<number | null>; flags: number[]; monthlyTier: number[]; initCashTier: number[] };
+    };
+  const only = async (l: Listing): Promise<void> => {
+    await writeFile(path.join(dir, 'data', 'aliases', 'buildings.json'), JSON.stringify({ version: 1, groups: [] }), 'utf8');
+    await rm(path.join(dir, 'data', 'normalized', 'leopalace21.ndjson.gz'), { force: true });
+    await writeFile(path.join(dir, 'data', 'normalized', 'suumo.ndjson.gz'), gzipSync(Buffer.from(`${JSON.stringify(l)}\n`, 'utf8')));
+  };
+
+  test('賃料 1 円 → 月額與初期費用都落 C 區，打 rentSuspect，賃料照原文保留', async () => {
+    await only(listing('suumo', 1));
+    const r = await build();
+    assert.equal(r.code, 0, `stderr=${r.stderr}`);
+    assert.match(r.stdout, /rent_range ×1/);
+    const { u } = await decode();
+    assert.equal(u.rent[0], 1, '原站寫的數字照原文保留');
+    assert.equal(u.monthlyTier[0], 2, '不可信的賃料不參與月額排序與行情');
+    assert.equal(u.initCashTier[0], 2, '比照賃料未知：初期費用也不參與排序');
+    assert.equal((u.flags[0] as number) & (1024 | 2048), 1024 | 2048);
+    assert.equal((u.flags[0] as number) & 4096, 0, '面積沒問題就不可打 areaSuspect');
+  });
+
+  test('面積 60000㎡ → 打 areaSuspect，月額區照常（賃料可信）', async () => {
+    const l = listing('suumo', 95000);
+    (l.units[0] as unknown as { areaM2: Field<number> }).areaM2 = known(60000, 'measured', '60000㎡ ／ 7.2帖');
+    await only(l);
+    const r = await build();
+    assert.equal(r.code, 0, `stderr=${r.stderr}`);
+    const { u } = await decode();
+    assert.equal(u.area[0], 60000, '原值照留');
+    assert.equal((u.flags[0] as number) & 4096, 4096);
+    assert.equal((u.flags[0] as number) & 2048, 0);
+    assert.equal(u.monthlyTier[0], 0);
+  });
+
+  test('同区 40 間 ¥80,000 前後的 1K 裡混一間「80.1万円」→ 統計離群，打 rentSuspect 落 C 區', async () => {
+    // 各間賃料、面積略不同，免得被站內去重（7 元組相同＝多家仲介刊同一間）併掉
+    const one = listing('suumo', 80_000);
+    const l: Listing = {
+      ...one,
+      units: [
+        ...Array.from({ length: 40 }, (_, k) => unit(one.building.id, `n${k}`, 80_000 + k * 100, 20 + k * 0.1)),
+        unit(one.building.id, 'typo', 801_000, 20.05),
+      ],
+    };
+    await only(l);
+    const r = await build();
+    assert.equal(r.code, 0, `stderr=${r.stderr}`);
+    assert.match(r.stdout, /per_m2_outlier ×1/, '只有那一間');
+    const { u } = await decode();
+    const typo = u.rent.indexOf(801_000);
+    assert.ok(typo >= 0);
+    assert.equal(u.monthlyTier[typo], 2);
+    assert.equal((u.flags[typo] as number) & 2048, 2048);
+    assert.equal(u.rent.filter((x, k) => k !== typo && ((u.flags[k] as number) & 1024) !== 0).length, 0, '其他 40 間不可被波及');
+  });
+
+  /** 同区 40 間 1K（賃料 80,000 前後、面積 20〜24㎡、管理費 5,000）當行情；extra 是要測的那幾間 */
+  const market = (extra: (bid: string) => Unit[]): Listing => {
+    const one = listing('suumo', 80_000);
+    const admin5000 = (x: Unit): Unit => ({ ...x, monthly: { ...x.monthly, adminFee: known(yen(5000), 'measured', '5000円') } });
+    return {
+      ...one,
+      units: [
+        ...Array.from({ length: 40 }, (_, k) => admin5000(unit(one.building.id, `n${k}`, 80_000 + k * 100, 20 + k * 0.1))),
+        ...extra(one.building.id),
+      ],
+    };
+  };
+  const withMoney = (x: Unit, over: { admin?: number; key?: number; deposit?: number }): Unit => {
+    const m = (n: number): Field<Yen> => known(yen(n), 'measured', `${n}円`);
+    return {
+      ...x,
+      monthly: over.admin === undefined ? x.monthly : { ...x.monthly, adminFee: m(over.admin) },
+      initial: {
+        ...x.initial,
+        ...(over.key === undefined ? {} : { keyMoney: m(over.key) }),
+        ...(over.deposit === undefined ? {} : { deposit: m(over.deposit) }),
+      },
+    };
+  };
+  const decodeAll = async (): Promise<{ rent: Array<number | null>; admin: Array<number | null>; flags: number[]; monthlyTier: number[]; initCashTier: number[] }> =>
+    (decodeIndex(JSON.parse(gunzipSync(await readFile(path.join(dir, 'out', 'index.json.gz'))).toString('utf8')) as EncodedIndex) as unknown as {
+      u: { rent: Array<number | null>; admin: Array<number | null>; flags: number[]; monthlyTier: number[]; initCashTier: number[] };
+    }).u;
+
+  test('同棟同房型、賃料相近的另一間管理費 7,500，這間 75,000（0.66 倍，比例門檻抓不到）→ adminSuspect、月額落 C 區', async () => {
+    await only(market((bid) => [
+      withMoney(unit(bid, 'ok', 113_500, 21.45), { admin: 7500 }),
+      withMoney(unit(bid, 'slip', 114_500, 21.45), { admin: 75_000 }),
+    ]));
+    const r = await build();
+    assert.equal(r.code, 0, `stderr=${r.stderr}`);
+    assert.match(r.stdout, /sibling_admin_x10 ×1/);
+    const u = await decodeAll();
+    const slip = u.admin.indexOf(75_000);
+    const ok = u.admin.indexOf(7500);
+    assert.equal(u.admin[slip], 75_000, '原值照留');
+    assert.equal((u.flags[slip] as number) & 16384, 16384);
+    assert.equal(u.monthlyTier[slip], 2, '月額＝賃料＋管理費，管理費可疑月額就不能比');
+    assert.notEqual(u.initCashTier[slip], 2, '初期費用不含管理費，不受影響');
+    assert.equal((u.flags[ok] as number) & 1024, 0, '對的那一列不可被波及');
+  });
+
+  test('礼金 10 個月 → initialSuspect＋sunkSuspect，初期費用落 C 區、月額照常；只有敷金可疑時不打 sunkSuspect', async () => {
+    await only(market((bid) => [
+      withMoney(unit(bid, 'key', 81_050, 21), { key: 810_500 }),
+      withMoney(unit(bid, 'dep', 82_050, 22), { deposit: 820_500 }),
+    ]));
+    const r = await build();
+    assert.equal(r.code, 0, `stderr=${r.stderr}`);
+    assert.match(r.stdout, /deposit_key_months ×2/);
+    const u = await decodeAll();
+    const key = u.rent.indexOf(81_050);
+    const dep = u.rent.indexOf(82_050);
+    assert.equal((u.flags[key] as number) & (8192 | 32768), 8192 | 32768);
+    assert.equal(u.initCashTier[key], 2);
+    assert.notEqual(u.monthlyTier[key], 2, '賃料與管理費沒問題，月額照常比');
+    assert.equal((u.flags[dep] as number) & (8192 | 32768), 8192, '敷金可退，沒攤進實質月成本');
+    assert.equal(u.initCashTier[dep], 2);
+  });
+
+  test('賃料少打一個 0（14,800）被判可疑後，不再拿它當尺量敷金：敷金 148,000 不可被連帶判成 10 個月', async () => {
+    await only(market((bid) => [withMoney(unit(bid, 'typo', 14_800, 42.91), { deposit: 148_000 })]));
+    const r = await build();
+    assert.equal(r.code, 0, `stderr=${r.stderr}`);
+    assert.match(r.stdout, /per_m2_outlier ×1/);
+    assert.doesNotMatch(r.stdout, /deposit_key_months/);
+    const u = await decodeAll();
+    const typo = u.rent.indexOf(14_800);
+    assert.equal((u.flags[typo] as number) & 2048, 2048);
+    assert.equal((u.flags[typo] as number) & 8192, 0, '錯的是賃料，不是敷金');
+  });
+
+  test('徒歩 200 分 → walkYearSuspect，價格各區照常', async () => {
+    await only(listing('suumo', 95000, 200));
+    const r = await build();
+    assert.equal(r.code, 0, `stderr=${r.stderr}`);
+    const u = await decodeAll();
+    assert.equal((u.flags[0] as number) & (1024 | 65536), 1024 | 65536);
+    assert.equal((u.flags[0] as number) & (2048 | 4096 | 8192 | 16384 | 32768), 0);
+    assert.equal(u.monthlyTier[0], 0);
+  });
+
+  test('賃料 95,000 円、面積 20㎡ → 沒有任何可疑旗標', async () => {
+    await only(listing('suumo', 95000));
+    const r = await build();
+    assert.equal(r.code, 0);
+    const { u } = await decode();
+    assert.equal((u.flags[0] as number) & (1024 | 2048 | 4096 | 8192), 0);
+    assert.equal(u.monthlyTier[0], 0);
+  });
+});
+
 describe('顯示字串拆到 names.json.gz：兩個檔案必須綁在一起', () => {
   /**
    * b.name／b.url 佔 index.json 的 46%，而且完全不參與篩選排序，所以拆成第二個檔。

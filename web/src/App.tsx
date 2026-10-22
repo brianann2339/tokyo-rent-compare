@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   loadWire, loadNames, loadProv, query, queryToFilters, filtersToQuery, yen, floorLabel, availLabel, stationIndexOf, lineIndexOf,
   type LoadProgress,
-  buildingStations, lineBuildingCounts, kindGroup, monthlyWithAssumption, perM2Comparable,
+  buildingStations, lineBuildingCounts, kindGroup, monthlyWithAssumption, perM2Comparable, hasFlag,
   GENDER, type Wire, type Filters, type Prov, type MyProperty, type Names,
   STALE_DAYS, daysSince, sourceFreshness,
 } from './data.ts';
@@ -116,7 +116,7 @@ function Detail({ wire, unitIdx, onClose }: { wire: Wire; unitIdx: number; onClo
           )}
           {p.invariants !== undefined && p.invariants.length > 0 && (
             <ul className="caveats">
-              {p.invariants.map((c) => <li key={c}>⚠️ 原站寫的數值不合常理（照原文顯示、未修正）：{c}</li>)}
+              {p.invariants.map((c) => <li key={c}>⚠️ 原站寫的數值不合常理（照原文顯示、未修正，不列入相關的排序、篩選與行情）：{c}</li>)}
             </ul>
           )}
           <table className="breakdown">
@@ -716,6 +716,12 @@ export default function App() {
               // 按「每㎡單價」排序時，算不出單價的房會被歸到排序的資料不足區——
               // 但它的月額可能是知道的，拿排序的區去決定要不要顯示金額會把已知的月額藏起來。
               const mTier = u.monthlyTier[i] as number;
+              // 原站自己寫錯的賃料／面積：照原文印出，但不當成價格或拿來比
+              const priceSuspect = hasFlag(wire, i, 'rentSuspect') || hasFlag(wire, i, 'adminSuspect');
+              const areaSuspect = hasFlag(wire, i, 'areaSuspect');
+              // 初期費用的區：賃料未知或原站寫錯（礼金常是用錯的賃料乘出來的）就是 C，跟月額一樣不印金額
+              const iTier = u.initCashTier[i] as number;
+              const initSuspect = hasFlag(wire, i, 'rentSuspect') || hasFlag(wire, i, 'initialSuspect');
               const layoutIdx = u.layout[i] as number;
               const layout = layoutIdx >= 0 ? dict.layouts[layoutIdx] : null;
               const kindName = dict.kinds[b.kind[bi] as number] ?? 'unknown';
@@ -753,7 +759,9 @@ export default function App() {
                     {sts.length > 1 && <span className="more-st" title={sts.map((s) => `${s.name}${s.walk !== null ? ` ${s.walk}分` : ''}`).join('／')}> +{sts.length - 1} 站</span>}
                     {u.room[i] !== null ? ` · ${u.room[i]} 號室` : ''}
                     {floor !== null && floor !== undefined ? ` · ${floorLabel(floor)}` : ''}
-                    {u.area[i] !== null ? ` · ${u.area[i]}㎡` : ''}
+                    {u.area[i] !== null && (areaSuspect
+                      ? <> · <span className="suspect" title="原站寫的面積不合常理：照原文顯示，不用於面積篩選、排序與每㎡單價">{u.area[i]}㎡（原站數值可疑）</span></>
+                      : ` · ${u.area[i]}㎡`)}
                     {layout !== null && layout !== undefined ? ` · ${layout}` : ''}
                     {year !== null && year !== undefined ? ` · ${year}年築（${thisYear - year} 年）` : ''}
                   </p>
@@ -762,16 +770,24 @@ export default function App() {
                     {/* 賃料未知時（tier C）絕不顯示金額——只有管理費的合計會變成
                         一個看起來合理但完全錯誤的「月額」，那比留白危險得多。 */}
                     <div className="big">
-                      {mTier === 2
-                        ? <span className="nodata">月額未提供</span>
-                        : <>{mTier === 1 && <span className="ge">≥</span>}{yen(monthly)}<small>／月</small></>}
+                      {priceSuspect
+                        ? <span className="nodata">原站標價可疑</span>
+                        : mTier === 2
+                          ? <span className="nodata">月額未提供</span>
+                          : <>{mTier === 1 && <span className="ge">≥</span>}{yen(monthly)}<small>／月</small></>}
                     </div>
                     <div className="parts">
-                      賃料 {u.rent[i] === null ? <b className="nodata">未提供</b> : yen(u.rent[i])} ＋ 管理費 {yen(u.admin[i])}
-                      {assumed && <> ＋ <b className="assumed">你的水電假設 {yen(f.assumeUtil)}</b></>}
+                      {priceSuspect
+                        ? <>原站寫 賃料 <b className="nodata">{yen(u.rent[i])}</b> ＋ 管理費 <b className="nodata">{yen(u.admin[i])}</b>（疑似原站 key 錯，照原文顯示，不列入排序與行情；明細見「費用拆解」）</>
+                        : <>
+                          賃料 {u.rent[i] === null ? <b className="nodata">未提供</b> : yen(u.rent[i])} ＋ 管理費 {yen(u.admin[i])}
+                          {assumed && <> ＋ <b className="assumed">你的水電假設 {yen(f.assumeUtil)}</b></>}
+                        </>}
                     </div>
                     <div className="parts">
-                      初期現金 {yen(u.initCash[i])} · 拿不回來的 {yen(u.initSunk[i])}
+                      {iTier === 2
+                        ? <span className="nodata">{initSuspect ? '初期費用：原站數值可疑（照原文見「費用拆解」）' : '初期費用資料不足'}</span>
+                        : <>初期現金 {iTier === 1 && '≥ '}{yen(u.initCash[i])} · 拿不回來的 {iTier === 1 && '≥ '}{yen(u.initSunk[i])}</>}
                       {mTier === 0 && (perM2Comparable(wire, i)
                         ? <> · 單價 {yen(Math.round(monthly / (u.area[i] as number)))}／㎡</>
                         : isDorm(wire, i) && <> · <span className="muted">多人房不計每㎡單價（面積是整間共用）</span></>)}
@@ -841,7 +857,8 @@ export default function App() {
             const d = daysSince(latest, today);
             return `${dict.sourceMeta[src]?.nameZh ?? src} ${latest}${d !== null && d > STALE_DAYS ? `（${d} 天前）` : ''}`;
           }).join('、')} · 產生於 {meta.generatedAt.slice(0, 16).replace('T', ' ')}
-          {meta.violations > 0 && ` · ${meta.violations} 筆欄位因數值互相矛盾而未採用`}
+          {/* 這些值照原文顯示（卡片標「原站數值可疑」），只是不拿去排序與算行情——不是「未採用」 */}
+          {meta.violations > 0 && ` · ${meta.violations} 處原站數值不合常理，照原文顯示但不列入相關排序與行情`}
         </p>
       </footer>
     </div>

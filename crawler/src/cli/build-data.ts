@@ -38,6 +38,10 @@ import {
   checkRentRange, checkAgencyFeeCap, checkAreaRange, checkAreaVsJo, checkYearBuilt,
   checkWalkMinutes, checkMonthlyAtLeastRent, checkDepositNonRefundable, type Violation,
 } from '../../../packages/schema/src/invariants.ts';
+import {
+  marketBaseline, checkPerM2Outlier, checkDepositKeyMonths, checkAdminVsRent, checkMultiRoomArea, checkSiblingSlips,
+  type MarketBaseline, type MarketGroup, type MarketRow,
+} from '../../../packages/schema/src/outliers.ts';
 
 // 這兩個路徑可用環境變數覆蓋——閘門的端到端測試要能在臨時目錄跑，
 // 否則「無 alias 必須 exit 非零」只能靠讀程式碼相信，不能實際證明。
@@ -62,12 +66,31 @@ export const FLAG = {
   fixedTerm: 16, ordinary: 32, minStayKnown: 64, ageLimitKnown: 128,
   guarantorPersonYes: 256, guarantorPersonNo: 512,
   /**
-   * 這間房至少違反一條合理性不變式（面積 14000㎡、賃料 8,800 円 之類）。
+   * 這間房至少有一個值被判為原站寫錯：違反合理性不變式（面積 14000㎡、賃料 1 円），
+   * 或跟同区行情差十倍的統計離群（outliers.ts：1K 22㎡「119.5万円」）。
    * 值照原文保留——那些數字是原站自己寫的，不是我們編的——但衍生比較
    * （每㎡單價、費用排序）不該把它當一般資料看，所以在這裡標出來。
    * 明細在該房 provenance 的 invariants 欄。
    */
   invariantViolation: 1024,
+  /**
+   * 違反的是哪一種值（從 Violation.fieldIds 來）。前端靠這些位元決定
+   * 把哪些衍生比較當成「算不出來」：
+   *   rentSuspect      賃料不合常理（ひつじ REVE 吉祥寺 203「賃料 ￥ 1」）→ 月額與初期費用都進 C 區，卡片不把它當價格
+   *   adminSuspect     管理費不合常理 → 月額進 C 區（月額＝賃料＋管理費；初期費用不含管理費，不受影響）
+   *   areaSuspect      面積不合常理（「60000㎡ ／ 7.2帖」）→ 不算每㎡單價、不參與面積篩選與排序
+   *   initialSuspect   敷金・礼金超過 8 個月、仲介費超過法定上限、敷引大於敷金 → 初期費用進 C 區
+   *   sunkSuspect      其中拿不回來的那幾項（礼金、仲介費、敷引）→ 實質月成本（預設排序）也進 C 區；
+   *                    敷金本體可退，不算進實質月成本，只有敷金可疑時預設排序不動
+   *   walkYearSuspect  徒歩分或築年不合常理：不是排序鍵，卡片照原文印、加標籤就夠；
+   *                    單獨一個位元是為了讓 CSV 說得出「哪一欄」可疑，不必用猜的
+   */
+  rentSuspect: 2048,
+  areaSuspect: 4096,
+  initialSuspect: 8192,
+  adminSuspect: 16384,
+  sunkSuspect: 32768,
+  walkYearSuspect: 65536,
 } as const;
 
 function flagsOf(u: Unit): number {
@@ -219,6 +242,55 @@ function checkUnit(u: Unit, provided: ReadonlySet<string>, g: GateResult): Viola
   if (u.monthly.rent.known) push(checkMonthlyAtLeastRent(monthlyCost(u).lower.jpy, u.monthly.rent.v.jpy));
   if (u.initial.depositNonRefundable.known && u.initial.deposit.known) {
     push(checkDepositNonRefundable(u.initial.depositNonRefundable.v.jpy, u.initial.deposit.v.jpy));
+  }
+  return hits;
+}
+
+const GROUP_OF: Record<PropertyKind, MarketGroup> = {
+  unknown: 'unk', apartment: 'apt', sharehouse: 'share', social: 'share', dormitory: 'share',
+};
+
+/** 拿來跟同区行情比的那幾個值；多人房不算每㎡，理由同 web/src/data.ts 的 perM2Comparable。 */
+function marketRow(b: Building, u: Unit): MarketRow {
+  const layout = normLayout(u.layout).v;
+  const p = layout === null ? null : parseLayout(layout);
+  return {
+    ward: b.ward, group: GROUP_OF[b.kind], layout,
+    rentJpy: yenOrNull(u.monthly.rent), adminJpy: yenOrNull(u.monthly.adminFee), areaM2: numOrNull(u.areaM2),
+    perM2Comparable: layout !== 'ドミトリー' && b.kind !== 'dormitory',
+    rooms: p?.kind === 'rooms' ? p.rooms : null,
+  };
+}
+
+/**
+ * 統計離群（outliers.ts）：跟同区行情差十倍、但沒違反硬界線的值。
+ * 已被不變式抓到的欄位不再重複判——賃料 1 円 已經是 rent_range，不必再算它的每㎡。
+ */
+function checkMarket(
+  b: Building, u: Unit, base: MarketBaseline, hard: readonly Violation[], slips: readonly Violation[], g: GateResult,
+): Violation[] {
+  // 已經判成可疑的欄位：硬界線命中的，加上這裡前面幾條剛判的。
+  // 賃料一被判可疑就不能再拿它當尺去量管理費與敷金——賃料少打一個 0（14,800）時，
+  // 正常的管理費 12,000、敷金 148,000 會被連帶判錯。
+  const blamed = new Set(hard.flatMap((v) => v.fieldIds));
+  const hits: Violation[] = [];
+  // 建置記錄要帶房源 id 才查得回原頁；費用拆解裡已經是這一間，不必再印一次
+  const push = (v: Violation | null): void => {
+    if (v === null) return;
+    hits.push(v); g.violations.push({ ...v, detail: `${u.id}：${v.detail}` });
+    for (const id of v.fieldIds) blamed.add(id);
+  };
+  const row = marketRow(b, u);
+  // 面積先判：兩房以上卻只有同房型四成的面積，那每㎡也一定離群——不要再把它怪到賃料頭上
+  if (!blamed.has('areaM2')) push(checkMultiRoomArea(row, base));
+  if (!blamed.has('rent') && !blamed.has('areaM2')) push(checkPerM2Outlier(row, base));
+  // 同棟十倍差（同棟另一列直接作證）：賃料的先判，管理費兩條規則都要拿賃料當尺
+  for (const v of slips) if (v.fieldIds.includes('rent') && !blamed.has('rent')) push(v);
+  if (!blamed.has('rent') && !blamed.has('adminFee')) push(checkAdminVsRent(row));
+  // 比例門檻抓不到的（管理費 75,000 是賃料 0.66 倍）
+  for (const v of slips) if (v.fieldIds.includes('adminFee') && !blamed.has('rent') && !blamed.has('adminFee')) push(v);
+  if (u.monthly.rent.known && !blamed.has('rent')) {
+    for (const v of checkDepositKeyMonths(yenOrNull(u.initial.deposit), yenOrNull(u.initial.keyMoney), u.monthly.rent.v.jpy)) push(v);
   }
   return hits;
 }
@@ -438,6 +510,11 @@ async function main(): Promise<void> {
     }
   }
 
+  // ── 同区行情（統計離群用）：去重與跨來源合併之後算，同一間房多家刊登不會被算好幾次 ──
+  const market = marketBaseline((function* rows() {
+    for (const w of work) for (const u of w.units) yield marketRow(w.b, u);
+  })());
+
   // ── 字典與欄式陣列 ────────────────────────────────────────────
   const wards = dict();
   // 站名與路線各來源寫法不一（「大塚(東京)」「ＪＲ山手線／JR山手線／山手線」）——用比對鍵合併，見 jp-parse/station.ts
@@ -540,8 +617,18 @@ async function main(): Promise<void> {
     B.btype.push(b.buildingType.known ? btypes.idx(b.buildingType.v) : -1);
 
     const bViolations = checkBuilding(b, g);
-    for (const u of units) {
-      const violations = [...bViolations, ...checkUnit(u, provided, g)];
+    const slips = checkSiblingSlips(units.map((u) => marketRow(b, u)), market);
+    for (const [k, u] of units.entries()) {
+      const hard = checkUnit(u, provided, g);
+      const violations = [...bViolations, ...hard, ...checkMarket(b, u, market, hard, slips[k] ?? [], g)];
+      // 原站自己寫錯的值照原文保留，但不拿去比大小：比照「賃料未知」落 C 區（tierOf 同一條規則）
+      const suspect = new Set(violations.flatMap((v) => v.fieldIds));
+      const rentSuspect = suspect.has('rent');
+      const adminSuspect = suspect.has('adminFee');
+      const areaSuspect = suspect.has('areaM2');
+      const sunkSuspect = ['agencyFee', 'depositNonRefundable', 'keyMoney'].some((id) => suspect.has(id));
+      const initialSuspect = sunkSuspect || suspect.has('deposit');
+      const walkYearSuspect = suspect.has('stations') || suspect.has('yearBuilt');
       const m = monthlyCost(u);
       const c = initialCash(u);
       const s = initialSunk(u);
@@ -563,11 +650,18 @@ async function main(): Promise<void> {
       U.gender.push(GENDER[u.genderRestriction]);
       U.foreigner.push(boolOrNull(u.foreigner.welcomed));
       U.vacant.push(boolOrNull(u.isVacant));
-      U.monthlyLower.push(m.lower.jpy); U.monthlyTier.push(TIER[tierOf(u, m)]);
-      U.initCash.push(c.lower.jpy); U.initCashTier.push(TIER[tierOf(u, c)]);
+      U.monthlyLower.push(m.lower.jpy); U.monthlyTier.push(rentSuspect || adminSuspect ? TIER.C : TIER[tierOf(u, m)]);
+      U.initCash.push(c.lower.jpy); U.initCashTier.push(rentSuspect || initialSuspect ? TIER.C : TIER[tierOf(u, c)]);
       U.initSunk.push(s.lower.jpy); U.effMonthly12.push(e.lower.jpy);
       U.missing.push(missingMask(u));
-      U.flags.push(flagsOf(u) | (violations.length > 0 ? FLAG.invariantViolation : 0));
+      U.flags.push(flagsOf(u)
+        | (violations.length > 0 ? FLAG.invariantViolation : 0)
+        | (rentSuspect ? FLAG.rentSuspect : 0)
+        | (adminSuspect ? FLAG.adminSuspect : 0)
+        | (areaSuspect ? FLAG.areaSuspect : 0)
+        | (sunkSuspect ? FLAG.sunkSuspect : 0)
+        | (walkYearSuspect ? FLAG.walkYearSuspect : 0)
+        | (initialSuspect ? FLAG.initialSuspect : 0));
       U.ads.push(merged?.adCount ?? 1);
 
       // provenance：每欄的原文出處，只在使用者點開房源時才載入。
@@ -755,7 +849,7 @@ async function main(): Promise<void> {
   console.log(`  provenance ${provBucketCount} 桶（邊產邊寫，不在記憶體累積）`);
   if (gz > 500 * 1024) console.warn(`  ⚠️ 首屏資料 ${(gz / 1024).toFixed(0)} KB gzip 已超過 500 KB 預算，該啟動分片了`);
   if (g.violations.length > 0) {
-    console.log(`  ⚠️ ${g.violations.length} 筆合理性不變式違反（值照原文保留，該房標記 invariantViolation）：`);
+    console.log(`  ⚠️ ${g.violations.length} 處原站數值不合常理（硬界線＋統計離群；值照原文保留，該房標記 invariantViolation 與對應的 *Suspect 位元）：`);
     // 按規則分組：只印前 5 筆的話，一個規則爆 3000 筆會把其他規則整個蓋掉
     const byRule = new Map<string, Violation[]>();
     for (const v of g.violations) byRule.set(v.rule, [...(byRule.get(v.rule) ?? []), v]);
